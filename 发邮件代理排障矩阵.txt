@@ -1,0 +1,248 @@
+发邮件代理排障矩阵
+
+适用场景
+- 当前项目是 Spring Boot + JavaMailSender 发邮件。
+- 代理工具是 Clash。
+- 当前已讨论的两种主要测试模式：
+  1. 普通代理：只开 TUN，应用不显式配置 SMTP SOCKS。
+  2. 显式 SOCKS：关闭 TUN，应用显式走 127.0.0.1:7897。
+
+需要先分清的两个维度
+- 第 1 维：流量怎么进入 Clash
+  - TUN：系统层进入 Clash
+  - mail.smtp.socks.host=127.0.0.1 + port=7897：应用层显式进入 Clash
+- 第 2 维：流量进了 Clash 以后怎么出去
+  - 单节点直出
+  - 代理链出站
+
+不要把这两个维度混在一起。排障时要一次只改一个维度。
+
+一、排障矩阵
+
+模式 A：直连基线
+- 配置方式
+  - 关闭 Clash TUN
+  - 去掉 application.yaml 里的 mail.smtp.socks.host 和 mail.smtp.socks.port
+- 预期链路
+  - JavaMail -> smtp.qq.com:587
+- 重点观察
+  - 是否能直接发信成功
+  - JavaMail debug 卡在什么阶段
+- 如果失败，说明什么
+  - 直连都失败时，不要先怀疑 Clash
+  - 优先看 QQ SMTP、账号授权码、邮箱策略、本机网络本身
+
+模式 B：普通代理
+- 配置方式
+  - 开启 Clash TUN
+  - 去掉 application.yaml 里的 mail.smtp.socks.host 和 mail.smtp.socks.port
+- 预期链路
+  - JavaMail -> 系统网络栈 -> Clash TUN -> 节点 -> smtp.qq.com:587
+- 重点观察
+  - PowerShell 的 Test-NetConnection 是否走到 198.18.x.x / Meta 接口
+  - JavaMail debug 是否能完整到 STARTTLS
+- 如果失败，说明什么
+  - 更像是 TUN、节点、系统路由问题
+
+模式 C：显式 SOCKS
+- 配置方式
+  - 关闭 Clash TUN
+  - 保留 application.yaml 里的 mail.smtp.socks.host=127.0.0.1 和 port=7897
+- 预期链路
+  - JavaMail -> 127.0.0.1:7897 -> Clash -> 节点 -> smtp.qq.com:587
+- 重点观察
+  - JavaMail debug
+  - Clash 连接里是否出现 smtp.qq.com:587
+- 如果失败，说明什么
+  - 更像是 SOCKS、节点、SMTP 出口问题
+
+模式 D：链式/双层
+- 配置方式
+  - 开启 Clash TUN
+  - 同时保留 application.yaml 里的 mail.smtp.socks.host 和 port
+- 预期链路
+  - JavaMail -> 本地 SOCKS -> Clash -> TUN/规则 -> 节点 -> smtp.qq.com:587
+- 重点观察
+  - 一般不建议先测这个
+- 如果失败，说明什么
+  - 难定位
+  - 只能最后作为补充测试
+
+建议测试顺序
+1. 直连基线
+2. 普通代理
+3. 显式 SOCKS
+4. 最后才测链式/双层
+
+不要一开始就把所有代理层都叠上，否则 EOF 根因看不出来。
+
+二、每种模式怎么测
+
+统一操作步骤
+1. 在 shopping-web/src/main/resources/application.yaml 中只保留当前模式对应的 SMTP 配置。
+2. 打开 JavaMail debug。
+3. 重启 shopping-web。
+4. 只触发一次“发送邮箱验证码”。
+5. 记录关键日志，不要连续触发多次。
+
+建议打开的邮件调试配置
+spring:
+  mail:
+    properties:
+      mail:
+        debug: true
+
+三、系统层要看的东西
+
+在普通代理模式下执行
+PowerShell:
+Test-NetConnection smtp.qq.com -Port 587
+
+如果输出里出现
+- RemoteAddress = 198.18.x.x
+- InterfaceAlias = Meta
+- SourceAddress = 198.18.x.x
+
+说明这次连接已经被 Clash TUN 接管。
+
+注意
+- 这只能证明 TCP 到 587 端口可达
+- 不能证明 SMTP 会话一定成功
+- 不能证明 EHLO、STARTTLS、AUTH 阶段不会 EOF
+
+在显式 SOCKS 模式下
+- Test-NetConnection 只能代表系统层，不一定代表 JavaMail 的实际代理路径
+- 这时更应该看 JavaMail debug 和 Clash 的连接记录
+
+四、JavaMail debug 里重点看什么
+
+关键观察点
+- 是否出现 trying to connect to host "smtp.qq.com", port 587
+- 是否收到服务器 banner
+- 是否发出了 EHLO
+- 是否进入了 STARTTLS
+- 是否在 AUTH 前后断开
+- 是否直接出现 EOF
+
+五、怎么判断根因
+
+情况 1：TCP 不通
+- 现象
+  - Test-NetConnection 失败
+- 结论
+  - 先看路由、节点、防火墙、587 端口是否被拦
+  - 这不是 SMTP 账号层问题
+
+情况 2：TCP 通，但刚连上就 EOF
+- 现象
+  - 端口可达
+  - JavaMail 刚开始会话就断
+- 结论
+  - 更像是代理出口或对端服务器直接断链
+  - 常见于节点不适合 SMTP，或 QQ 对该出口 IP 风控
+
+情况 3：EHLO 后 EOF
+- 现象
+  - 已经建立 TCP
+  - 也开始 SMTP 会话
+  - 但在 EHLO 阶段后断开
+- 结论
+  - 更像是 SMTP 会话被中间链路或服务器拒绝
+  - 优先怀疑代理节点对 SMTP 支持差
+
+情况 4：STARTTLS 前后失败
+- 现象
+  - 会话能起来
+  - 但 TLS 升级时断
+- 结论
+  - 常见是代理链路对 TLS 升级不稳定
+  - 这类问题更容易出现在 TUN、多跳代理链、某些出口节点上
+
+情况 5：AUTH 失败
+- 现象
+  - 连接、EHLO、STARTTLS 都能过
+  - 认证时报错
+- 结论
+  - 这通常不是代理主因
+  - 先看邮箱授权码、QQ SMTP 设置、账户风控
+
+情况 6：535 / 认证错误
+- 结论
+  - 账号、授权码或邮箱配置问题
+
+情况 7：421 / 服务不可用
+- 结论
+  - 服务器或出口 IP 被限流、封禁、风控
+
+情况 8：证书错误、主机名不匹配
+- 结论
+  - TLS 或代理链路篡改/中断了会话
+
+六、如果 Clash 本身用了代理链
+
+如果 Clash 的出站本身是代理链，例如
+- 入口：香港 VLESS
+- 出口：美国 SOCKS5
+
+那么真实路径会变成
+- 普通代理模式
+  - JavaMail -> 系统网络栈 -> Clash TUN -> 香港 VLESS -> 美国 SOCKS5 -> smtp.qq.com:587
+- 显式 SOCKS 模式
+  - JavaMail -> 127.0.0.1:7897 -> Clash -> 香港 VLESS -> 美国 SOCKS5 -> smtp.qq.com:587
+
+这时 TCP 能通，不代表 SMTP 稳。
+
+尤其多跳链路更容易在以下阶段出现 EOF
+- EHLO
+- STARTTLS
+- TLS 升级后长连接保持
+
+七、最有价值的对照实验
+
+实验 1
+- 保持应用显式 SOCKS
+- Clash 改成单节点直出
+- 测一次邮件发送
+
+实验 2
+- 保持应用显式 SOCKS
+- Clash 切回代理链
+- 再测一次邮件发送
+
+如果单节点直出成功、代理链失败
+- 根因更接近 Clash 的多跳代理链，不是项目代码
+
+实验 3
+- 开 TUN，去掉 mail.smtp.socks.*
+- 测一次
+
+实验 4
+- 关 TUN，保留 mail.smtp.socks.*
+- 测一次
+
+如果显式 SOCKS 成功、普通代理失败
+- 根因更接近 TUN 或系统层路由
+
+如果普通代理成功、显式 SOCKS 失败
+- 根因更接近 mail.smtp.socks 配置或本地 SOCKS 接入方式
+
+如果两者都失败，但直连成功
+- 根因更接近 Clash 节点或规则
+
+如果两者都失败，直连也失败
+- 根因更接近 QQ SMTP、账号授权码、邮箱策略、本机网络
+
+八、最终建议
+
+- 排障时不要长期同时开 TUN 和 application.yaml 里的 mail.smtp.socks.*
+- 先拆成单变量测试
+- 最稳定的结论来自两组对照：
+  1. 单节点直出 vs 代理链
+  2. 普通代理(TUN) vs 显式 SOCKS
+
+只有把这两组对照做完，才能准确判断 EOF 是：
+- 系统层代理问题
+- 应用显式代理问题
+- Clash 代理链问题
+- 节点出口问题
+- 还是 QQ SMTP 自身风控问题

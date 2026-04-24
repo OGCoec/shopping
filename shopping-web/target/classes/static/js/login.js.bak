@@ -1,0 +1,1869 @@
+﻿// ============ PRETEXT ENGINE ============
+const Pretext = {
+    _canvas: document.createElement('canvas'),
+    _ctx: null,
+    prepare: function(text, font) {
+        if (!this._ctx) this._ctx = this._canvas.getContext('2d');
+        this._ctx.font = font;
+        const segments = text.split(/(\s+)/).filter(Boolean);
+        return { 
+            preparedSegments: segments.map(seg => ({ text: seg, width: this._ctx.measureText(seg).width })), 
+            font 
+        };
+    },
+    layout: function(prepared, containerWidth, lineHeight) {
+        const lines = [];
+        let currentLine = { text: '', width: 0 };
+        prepared.preparedSegments.forEach(seg => {
+            if (currentLine.width + seg.width > containerWidth && currentLine.text !== '') {
+                lines.push(currentLine);
+                currentLine = { text: '', width: 0 };
+            }
+            currentLine.text += seg.text;
+            currentLine.width += seg.width;
+        });
+        lines.push(currentLine);
+        return { lines, height: lines.length * lineHeight };
+    }
+};
+
+// ============ UI & FORM STATE ============
+const emailInput = document.getElementById("email");
+const phoneNumberInput = document.getElementById("phone-number");
+const passwordInput = document.getElementById("password-input");
+const emailLoginView = document.getElementById("email-login-view");
+const phoneLoginView = document.getElementById("phone-login-view");
+const passwordLoginView = document.getElementById("password-login-view");
+const otpLoginView = document.getElementById("otp-login-view");
+const phoneBtn = document.getElementById("btn-phone");
+const switchToEmailBtn = document.getElementById("switch-to-email");
+const identifierLabel = document.getElementById("identifier-label");
+const identifierValue = document.getElementById("identifier-value");
+const editIdentifierBtn = document.getElementById("edit-identifier-btn");
+const togglePasswordVisibilityBtn = document.getElementById("toggle-password-visibility");
+const otpLoginBtn = document.getElementById("otp-login-btn");
+const githubBtn = document.getElementById("btn-github");
+const googleBtn = document.getElementById("btn-google");
+const microsoftBtn = document.getElementById("btn-microsoft");
+const otpCodeInput = document.getElementById("otp-code-input");
+const otpStepSubtitle = document.getElementById("otp-step-subtitle");
+const otpResendBtn = document.getElementById("otp-resend-btn");
+const backToPasswordBtn = document.getElementById("back-to-password-btn");
+const formContainer = document.querySelector(".form-container");
+const registerView = document.getElementById("register-view");
+const forgotPasswordView = document.getElementById("forgot-password-view");
+const signupLinkWrap = document.getElementById("signup-link-wrap");
+const routeFragments = {
+  register: {
+    container: registerView,
+    path: "/fragments/register-view.html",
+    loaded: false,
+    loadingTask: null
+  },
+  "forgot-password": {
+    container: forgotPasswordView,
+    path: "/fragments/forgot-password-view.html",
+    loaded: false,
+    loadingTask: null
+  }
+};
+
+const PASSWORD_STRENGTH_COLORS = ["#ccc", "red", "orange", "yellowgreen", "green"];
+const PASSWORD_STRENGTH_LABELS = ["太短", "极弱", "中等", "强", "极强"];
+const PASSWORD_STRENGTH_BASE_WIDTH = 40;
+const PASSWORD_STRENGTH_STEP_WIDTH = 30;
+
+let pendingRegisterPayload = null;
+let currentRegisterCaptchaUuid = "";
+let currentTianaiRotateCaptchaId = "";
+let authView = "email";
+let isLoginError = false;
+let lastIdentifierView = "email";
+let currentIdentifierType = "email";
+let currentIdentifierValue = "";
+
+// ============ MOUSE & TRACKING ============
+let mouseX = 0, mouseY = 0;
+let isTyping = false, isLookingAtEachOther = false;
+let isPhoneCodeFocused = false;
+let isPurpleBlinking = false, isBlackBlinking = false;
+let typingTimer = null;
+
+document.addEventListener("mousemove", (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  if (!isTyping && !isLoginError) updateCharacters();
+});
+
+// Typing detection
+if (emailInput) {
+    emailInput.addEventListener("focus", () => setTyping(true));
+    emailInput.addEventListener("blur", () => setTyping(false));
+    emailInput.addEventListener("input", () => updateCharacters());
+}
+if (phoneNumberInput) {
+  phoneNumberInput.addEventListener("focus", () => setTyping(true));
+  phoneNumberInput.addEventListener("blur", () => setTyping(false));
+  phoneNumberInput.addEventListener("input", () => updateCharacters());
+}
+
+
+function setTyping(typing) {
+  isTyping = typing;
+  if (typing) {
+    isLookingAtEachOther = true;
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => { isLookingAtEachOther = false; updateCharacters(); }, 800);
+  } else {
+    isLookingAtEachOther = false;
+  }
+  updateCharacters();
+}
+
+function appendFragmentNodes(container, fragmentHtml) {
+  if (!container) return;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(fragmentHtml, "text/html");
+  container.replaceChildren(...doc.body.childNodes);
+}
+
+function checkRegisterPasswordStrength(password) {
+  if (!password || password.length <= 6) return 0;
+
+  const isSingleCharacterTypePassword =
+    /^[0-9]{7,}$/.test(password) || /^[a-z]{7,}$/.test(password) || /^[A-Z]{7,}$/.test(password);
+
+  if (isSingleCharacterTypePassword) {
+    return 1;
+  }
+
+  let score = 0;
+  if (/[a-z]/.test(password)) score += 1;
+  if (/[A-Z]/.test(password)) score += 1;
+  if (/[0-9]/.test(password)) score += 1;
+  if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) score += 1;
+
+  if (password.length >= 9 && score === 4) return 4;
+  if (password.length >= 9 && score === 3) return 3;
+  return 2;
+}
+
+function getRegisterPasswordStrengthWidth(level) {
+  if (level === 0) {
+    return PASSWORD_STRENGTH_BASE_WIDTH;
+  }
+
+  return PASSWORD_STRENGTH_BASE_WIDTH + level * PASSWORD_STRENGTH_STEP_WIDTH;
+}
+
+function updateRegisterPasswordStrengthDisplay(password) {
+  const passwordStrengthBar = document.getElementById("pwdStrengthBar");
+  const passwordStrengthText = document.getElementById("pwdStrengthText");
+  if (!passwordStrengthBar || !passwordStrengthText) return;
+
+  if (!password) {
+    passwordStrengthBar.style.width = "0";
+    passwordStrengthBar.style.background = "transparent";
+    passwordStrengthText.innerText = "";
+    return;
+  }
+
+  const level = checkRegisterPasswordStrength(password);
+  const color = PASSWORD_STRENGTH_COLORS[level];
+
+  passwordStrengthBar.style.background = color;
+  passwordStrengthBar.style.width = `${getRegisterPasswordStrengthWidth(level)}px`;
+  passwordStrengthText.innerText = PASSWORD_STRENGTH_LABELS[level];
+  passwordStrengthText.style.color = color;
+}
+
+function showRegisterError(message, triggerAnimation = true) {
+  const registerErrorMessage = document.getElementById("register-error-msg");
+  if (!registerErrorMessage) return;
+  registerErrorMessage.textContent = message;
+  registerErrorMessage.style.display = "block";
+  if (triggerAnimation) {
+    triggerLoginError();
+  }
+}
+
+function clearRegisterError() {
+  const registerErrorMessage = document.getElementById("register-error-msg");
+  if (!registerErrorMessage) return;
+  registerErrorMessage.textContent = "";
+  registerErrorMessage.style.display = "none";
+}
+
+function buildRegisterDeviceFingerprint() {
+  const parts = [
+    navigator.userAgent || "unknown",
+    navigator.language || "unknown",
+    navigator.platform || "unknown",
+    String(screen.width || 0),
+    String(screen.height || 0),
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown"
+  ];
+  return parts.join("|");
+}
+
+function showRegisterCaptchaError(message) {
+  const captchaErrorMessage = document.getElementById("register-captcha-error-msg");
+  if (!captchaErrorMessage) return;
+  captchaErrorMessage.textContent = message;
+  captchaErrorMessage.style.display = "block";
+}
+
+function clearRegisterCaptchaError() {
+  const captchaErrorMessage = document.getElementById("register-captcha-error-msg");
+  if (!captchaErrorMessage) return;
+  captchaErrorMessage.textContent = "";
+  captchaErrorMessage.style.display = "none";
+}
+
+function openRegisterCaptchaModal() {
+  const captchaModal = document.getElementById("register-captcha-modal");
+  if (!captchaModal) return;
+  captchaModal.style.display = "flex";
+}
+
+function closeRegisterCaptchaModal() {
+  const captchaModal = document.getElementById("register-captcha-modal");
+  const captchaCodeInput = document.getElementById("register-captcha-code");
+  if (captchaModal) {
+    captchaModal.style.display = "none";
+  }
+  if (captchaCodeInput) {
+    captchaCodeInput.value = "";
+  }
+  clearRegisterCaptchaError();
+}
+
+// === NEW TIANAI UNIVERSAL HANDLING ===
+let currentTianaiCaptchaId = "";
+let currentTianaiSubType = "";
+let tianaiTrackData = null; // Will hold the ImageCaptchaTrack JSON string or plain angle
+let tianaiActive = false;
+
+function showTianaiError(message) {
+  const errorNode = document.getElementById("register-tianai-error-msg");
+  if (!errorNode) return;
+  errorNode.textContent = message;
+  errorNode.style.display = "block";
+}
+function clearTianaiError() {
+  const errorNode = document.getElementById("register-tianai-error-msg");
+  if (!errorNode) return;
+  errorNode.textContent = "";
+  errorNode.style.display = "none";
+}
+function closeTianaiModal() {
+  const modal = document.getElementById("register-tianai-modal");
+  if (modal) modal.style.display = "none";
+  clearTianaiError();
+  tianaiActive = false;
+}
+function openTianaiModal() {
+  const modal = document.getElementById("register-tianai-modal");
+  if (modal) modal.style.display = "flex";
+  tianaiActive = true;
+}
+
+// Reset UI state
+function resetTianaiUI() {
+  clearTianaiError();
+  document.getElementById("register-tianai-slider-area").style.display = "none";
+  document.getElementById("register-tianai-click-area").style.display = "none";
+  document.getElementById("register-tianai-confirm").style.display = "none";
+  
+  // Reset Slider
+  const tpl = document.getElementById("register-tianai-slider-tpl");
+  const btn = document.getElementById("register-tianai-track-btn");
+  const prog = document.getElementById("register-tianai-track-progress");
+  if (tpl) tpl.style.left = "0px";
+  if (btn) btn.style.left = "0px";
+  if (prog) prog.style.width = "20px";
+  if (tpl && currentTianaiSubType === "ROTATE") {
+    tpl.style.transform = "rotate(0deg)";
+    tpl.style.left = "calc(50% - " + (tpl.width/2) + "px)"; // center it for rotate
+  } else if (tpl) {
+    tpl.style.transform = "none";
+  }
+
+  // Reset Click
+  const markers = document.getElementById("register-tianai-click-markers");
+  if (markers) markers.innerHTML = "";
+}
+
+async function loadTianaiCaptcha(subType) {
+  currentTianaiSubType = subType || "SLIDER";
+  resetTianaiUI();
+  
+  // determine url
+  let urlMap = {
+    "SLIDER": "/shopping/user/register/tianai/slider",
+    "ROTATE": "/shopping/user/register/tianai/rotate",
+    "CONCAT": "/shopping/user/register/tianai/concat",
+    "WORD_IMAGE_CLICK": "/shopping/user/register/tianai/word-click"
+  };
+  let url = urlMap[currentTianaiSubType] || urlMap["SLIDER"];
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Load failed");
+    const payload = await response.json();
+    currentTianaiCaptchaId = payload.captchaId || "";
+    
+    // Set images
+    if (currentTianaiSubType === "WORD_IMAGE_CLICK") {
+      document.getElementById("register-tianai-click-area").style.display = "block";
+      document.getElementById("register-tianai-confirm").style.display = "block";
+      document.getElementById("register-tianai-click-bg").src = payload.backgroundImage || "";
+      const clickTpl = document.getElementById("register-tianai-click-tpl");
+      if (clickTpl) clickTpl.src = payload.templateImage || "";
+      setupClickTracking();
+    } else {
+      document.getElementById("register-tianai-slider-area").style.display = "block";
+      document.getElementById("register-tianai-slider-bg").src = payload.backgroundImage || "";
+      
+      const tpl = document.getElementById("register-tianai-slider-tpl");
+      tpl.style.display = "block";
+      tpl.src = payload.templateImage || "";
+      
+      // 涓撻棬澶勭悊 CONCAT
+      const bgImgNode = document.getElementById("register-tianai-slider-bg");
+      let concatContainer = document.getElementById("ti-concat-container");
+      if (currentTianaiSubType === "CONCAT") {
+        bgImgNode.style.display = "none"; // 闅愯棌鍘熷鍏ㄥ浘
+        tpl.style.display = "none";       // 闅愯棌鍒囧潡鍥撅紙CONCAT娌℃湁鍒囧潡锛?
+        
+        if (!concatContainer) {
+          concatContainer = document.createElement("div");
+          concatContainer.id = "ti-concat-container";
+          concatContainer.style.position = "absolute";
+          concatContainer.style.top = "0";
+          concatContainer.style.left = "0";
+          concatContainer.style.width = "100%";
+          concatContainer.style.height = "100%";
+          bgImgNode.parentNode.appendChild(concatContainer);
+        }
+        concatContainer.style.display = "block";
+        const randomY = (payload.data && payload.data.randomY) ? payload.data.randomY : 100;
+        const bgImgHeight = payload.backgroundImageHeight || 200;
+        const percentageY = (randomY / bgImgHeight) * 100;
+        
+        concatContainer.innerHTML = `
+          <div id="ti-concat-top" style="position:absolute; top:0; left:0; width:100%; height:${percentageY}%; background-image:url(${payload.backgroundImage}); background-size:100% 200px; background-repeat:repeat-x; background-position:0% 0%;"></div>
+          <div id="ti-concat-bottom" style="position:absolute; top:${percentageY}%; left:0; width:100%; height:${100 - percentageY}%; background-image:url(${payload.backgroundImage}); background-size:100% 200px; background-position:0% 100%;"></div>
+        `;
+      } else {
+        bgImgNode.style.display = "block";
+        tpl.style.display = "block";
+        if (concatContainer) concatContainer.style.display = "none";
+        
+        if (currentTianaiSubType === "ROTATE") {
+          tpl.style.borderRadius = "50%";
+          tpl.onload = () => { tpl.style.left = "calc(50% - " + (tpl.width/2) + "px)"; };
+        } else {
+          tpl.style.borderRadius = "0";
+          tpl.onload = () => { tpl.style.left = "0px"; };
+        }
+      }
+      setupSliderTracking();
+    }
+  } catch (e) {
+    showTianaiError("楠岃瘉鐮佸姞杞藉け璐ワ紝璇风◢鍚庨噸璇?);
+  }
+}
+
+// Track variables
+let trackList = [];
+let startTime = 0;
+let clickCoords = [];
+
+function setupSliderTracking() {
+  const btn = document.getElementById("register-tianai-track-btn");
+  const prog = document.getElementById("register-tianai-track-progress");
+  const tpl = document.getElementById("register-tianai-slider-tpl");
+  const bg = document.getElementById("register-tianai-slider-bg");
+  
+  let isDragging = false;
+  let startX = 0;
+  
+  // unbind old
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+  
+  newBtn.addEventListener("mousedown", (e) => {
+    isDragging = true;
+    startX = e.clientX;
+    startTime = Date.now();
+    trackList = [{ x: 0, y: 0, type: "DOWN", t: 0 }];
+  });
+  
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging || !tianaiActive) return;
+    let diffX = e.clientX - startX;
+    // bg width ~ 372px inside modal, track is ~372. Max offset ~ 320
+    const maxOffset = newBtn.parentNode.offsetWidth - newBtn.offsetWidth;
+    if (diffX < 0) diffX = 0;
+    if (diffX > maxOffset) diffX = maxOffset;
+    
+    newBtn.style.left = diffX + "px";
+    prog.style.width = (diffX + 20) + "px";
+    
+    trackList.push({ x: diffX, y: 0, type: "MOVE", t: Date.now() - startTime });
+    
+    if (currentTianaiSubType === "ROTATE") {
+      let angle = (diffX / maxOffset) * 360;
+      tpl.style.transform = `rotate(${angle}deg)`;
+    } else if (currentTianaiSubType === "CONCAT") {
+      const topSlice = document.getElementById("ti-concat-top");
+      if (topSlice) topSlice.style.backgroundPosition = diffX + "px 0%";
+    } else {
+      tpl.style.left = diffX + "px";
+    }
+  });
+  
+  document.addEventListener("mouseup", (e) => {
+    if (!isDragging || !tianaiActive) return;
+    isDragging = false;
+    trackList.push({ x: parseInt(newBtn.style.left), y: 0, type: "UP", t: Date.now() - startTime });
+    
+    // Evaluate Data
+    let diffX = parseInt(newBtn.style.left);
+    const maxOffset = newBtn.parentNode.offsetWidth - newBtn.offsetWidth;
+    
+    if (currentTianaiSubType === "ROTATE") {
+      let angle = (diffX / maxOffset) * 360;
+      tianaiTrackData = angle.toString(); // Fallback string numeric for rotate
+    } else {
+      // Build JSON track
+      let out = {
+        bgImageWidth: bg.naturalWidth || 278,
+        bgImageHeight: bg.naturalHeight || 200,
+        templateImageWidth: tpl.naturalWidth || 50,
+        templateImageHeight: tpl.naturalHeight || 50,
+        startTime: new Date(startTime).toISOString(), // rough format
+        stopTime: new Date().toISOString(),
+        trackList: trackList,
+        left: diffX,
+        top: 0
+      };
+      tianaiTrackData = JSON.stringify(out);
+    }
+    
+    // Trigger automatically upon release
+    continueRegisterWithTianai();
+  });
+}
+
+function setupClickTracking() {
+  const box = document.getElementById("register-tianai-click-box");
+  const markers = document.getElementById("register-tianai-click-markers");
+  const bg = document.getElementById("register-tianai-click-bg");
+  
+  clickCoords = [];
+  trackList = [];
+  startTime = Date.now();
+  
+  let newBox = box.cloneNode(true);
+  box.parentNode.replaceChild(newBox, box);
+  
+  newBox.addEventListener("click", (e) => {
+    if (!tianaiActive) return;
+    const rect = newBox.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    trackList.push({ x: Math.round(x), y: Math.round(y), type: "DOWN", t: Date.now() - startTime });
+    trackList.push({ x: Math.round(x), y: Math.round(y), type: "UP", t: Date.now() - startTime + 10 });
+    
+    let m = document.createElement("div");
+    m.style.position = "absolute";
+    m.style.left = (x - 10) + "px";
+    m.style.top = (y - 10) + "px";
+    m.style.width = "20px";
+    m.style.height = "20px";
+    m.style.background = "#3b82f6";
+    m.style.color = "white";
+    m.style.borderRadius = "50%";
+    m.style.textAlign = "center";
+    m.style.lineHeight = "20px";
+    m.style.fontSize = "12px";
+    m.innerText = (clickCoords.length + 1);
+    document.getElementById("register-tianai-click-markers").appendChild(m);
+    
+    clickCoords.push({x, y});
+  });
+}
+
+async function continueRegisterWithTianai() {
+  if (!currentTianaiCaptchaId) {
+    showTianaiError("楠岃瘉鐮佷笂涓嬫枃宸插け鏁堬紝璇烽噸鏂板姞杞?);
+    return;
+  }
+  
+  if (currentTianaiSubType === "WORD_IMAGE_CLICK") {
+    // Collect clicks into JSON
+    const bg = document.getElementById("register-tianai-click-bg");
+    let out = {
+      bgImageWidth: bg.naturalWidth || 278,
+      bgImageHeight: bg.naturalHeight || 200,
+      templateImageWidth: 0,
+      templateImageHeight: 0,
+      startTime: new Date(startTime).toISOString(),
+      stopTime: new Date().toISOString(),
+      trackList: trackList,
+      left: 0,
+      top: 0
+    };
+    tianaiTrackData = JSON.stringify(out);
+  }
+
+  const response = await fetch("/shopping/user/register/email-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...pendingRegisterPayload,
+      captchaUuid: currentTianaiCaptchaId, // use the id as uuid
+      captchaCode: tianaiTrackData,
+      captchaPassed: false  // We pass the data in so backend validates it!
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || !payload.success) {
+    showTianaiError(payload.message || "楠岃瘉澶辫触锛岃閲嶈瘯");
+    setTimeout(() => { loadTianaiCaptcha(currentTianaiSubType); }, 1000);
+    return;
+  }
+
+  closeTianaiModal();
+  showRegisterError(payload.message || "閭楠岃瘉鐮佸凡鍙戦€侊紝璇锋煡鏀堕偖绠?, false);
+}
+
+async function loadRegisterCaptcha(existingUuid = "") {
+  const imageNode = document.getElementById("register-captcha-image");
+  if (!imageNode) return;
+
+  clearRegisterCaptchaError();
+  const query = existingUuid ? `?uuid=${encodeURIComponent(existingUuid)}` : "";
+  const response = await fetch(`/shopping/user/register/hutoolcaptcha${query}`);
+  if (!response.ok) {
+    showRegisterCaptchaError("楠岃瘉鐮佸姞杞藉け璐ワ紝璇风◢鍚庨噸璇?);
+    return;
+  }
+
+  const payload = await response.json();
+  currentRegisterCaptchaUuid = payload.uuid || "";
+  imageNode.src = payload.image || "";
+}
+
+async function continueRegisterWithCaptcha() {
+  const captchaCodeInput = document.getElementById("register-captcha-code");
+  if (!captchaCodeInput) return;
+  const captchaCode = captchaCodeInput.value.trim();
+  if (!captchaCode) {
+    showRegisterCaptchaError("璇疯緭鍏ュ浘褰㈤獙璇佺爜");
+    return;
+  }
+  if (!pendingRegisterPayload) {
+    showRegisterCaptchaError("娉ㄥ唽涓婁笅鏂囧凡澶辨晥锛岃閲嶆柊鎻愪氦");
+    return;
+  }
+
+  const response = await fetch("/shopping/user/register/email-code", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      ...pendingRegisterPayload,
+      captchaUuid: currentRegisterCaptchaUuid,
+      captchaCode,
+      captchaPassed: false
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok || !payload.success) {
+    if (payload.challengeType === "HUTOOL_SHEAR_CAPTCHA") {
+      showRegisterCaptchaError(payload.message || "楠岃瘉鐮佹牎楠屽け璐ワ紝璇烽噸璇?);
+      await loadRegisterCaptcha(currentRegisterCaptchaUuid);
+      return;
+    }
+    closeRegisterCaptchaModal();
+    showRegisterError(payload.message || "娉ㄥ唽璇锋眰澶辫触");
+    return;
+  }
+
+  closeRegisterCaptchaModal();
+  showRegisterError(payload.message || "閭楠岃瘉鐮佸凡鍙戦€侊紝璇锋煡鏀堕偖绠?, false);
+}
+
+async function submitRegisterEmailCode() {
+  const registerEmailInput = document.getElementById("register-email");
+  const registerUsernameInput = document.getElementById("register-username");
+  const registerPasswordInput = document.getElementById("register-password");
+  const registerConfirmInput = document.getElementById("register-confirm");
+
+  if (!registerEmailInput || !registerUsernameInput || !registerPasswordInput || !registerConfirmInput) {
+    return;
+  }
+
+  clearRegisterError();
+
+  const email = registerEmailInput.value.trim();
+  const username = registerUsernameInput.value.trim();
+  const password = registerPasswordInput.value;
+  const confirmPassword = registerConfirmInput.value;
+  const passwordStrengthLevel = checkRegisterPasswordStrength(password);
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showRegisterError("璇疯緭鍏ユ湁鏁堢殑鐢靛瓙閭鍦板潃");
+    return;
+  }
+  if (!username) {
+    showRegisterError("鐢ㄦ埛鍚嶄笉鑳戒负绌?);
+    return;
+  }
+  if (!password || password.length < 6) {
+    showRegisterError("瀵嗙爜鑷冲皯 6 浣?);
+    return;
+  }
+  if (passwordStrengthLevel < 2) {
+    showRegisterError("瀵嗙爜寮哄害鑷冲皯杈惧埌涓瓑");
+    return;
+  }
+  if (password !== confirmPassword) {
+    showRegisterError("涓ゆ杈撳叆鐨勫瘑鐮佷笉涓€鑷?);
+    return;
+  }
+
+  pendingRegisterPayload = {
+    email,
+    username,
+    password,
+    deviceFingerprint: buildRegisterDeviceFingerprint()
+  };
+
+  const response = await fetch("/shopping/user/register/email-code", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      ...pendingRegisterPayload,
+      captchaUuid: currentRegisterCaptchaUuid,
+      captchaCode: "",
+      captchaPassed: false
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    showRegisterError(payload.message || "娉ㄥ唽璇锋眰澶辫触");
+    return;
+  }
+
+  if (!payload.success) {
+    if (payload.challengeType === "HUTOOL_SHEAR_CAPTCHA") {
+      await loadRegisterCaptcha();
+      openRegisterCaptchaModal();
+      showRegisterError(`褰撳墠椋庨櫓绛夌骇 ${payload.riskLevel}锛岄渶瑕佸厛瀹屾垚楠岃瘉鐮侊細${payload.challengeType}`, false);
+      return;
+    }
+    if (payload.challengeType === "TIANAI_CAPTCHA") {
+      await loadTianaiCaptcha(payload.challengeSubType);
+      openTianaiModal();
+      showRegisterError(`褰撳墠椋庨櫓绛夌骇 ${payload.riskLevel}锛岄渶瑕佸厛瀹屾垚瀹夊叏楠岃瘉锛?{payload.challengeSubType}`, false);
+      return;
+    }
+    if (payload.challengeType) {
+      const challengeLabel = payload.challengeSubType ? `${payload.challengeType}(${payload.challengeSubType})` : payload.challengeType;
+      showRegisterError(`褰撳墠椋庨櫓绛夌骇 ${payload.riskLevel}锛岄渶瑕佸厛瀹屾垚楠岃瘉鐮侊細${challengeLabel}`);
+      return;
+    }
+    showRegisterError(payload.message || "娉ㄥ唽璇锋眰澶辫触");
+    return;
+  }
+
+  showRegisterError(payload.message || "閭楠岃瘉鐮佸凡鍙戦€侊紝璇锋煡鏀堕偖绠?, false);
+}
+
+function initializeRegisterFragment() {
+  const registerPasswordInput = document.getElementById("register-password");
+  if (registerPasswordInput && registerPasswordInput.dataset.strengthBound !== "true") {
+    registerPasswordInput.dataset.strengthBound = "true";
+    registerPasswordInput.addEventListener("input", (event) => {
+      updateRegisterPasswordStrengthDisplay(event.target.value || "");
+    });
+  }
+  if (registerPasswordInput) {
+    updateRegisterPasswordStrengthDisplay(registerPasswordInput.value || "");
+  }
+
+  const registerSubmitButton = document.getElementById("btn-register-submit");
+  if (registerSubmitButton && registerSubmitButton.dataset.submitBound !== "true") {
+    registerSubmitButton.dataset.submitBound = "true";
+    registerSubmitButton.addEventListener("click", () => {
+      submitRegisterEmailCode().catch(() => {
+        showRegisterError("娉ㄥ唽璇锋眰澶辫触锛岃绋嶅悗閲嶈瘯");
+      });
+    });
+  }
+
+  const captchaRefreshButton = document.getElementById("register-captcha-refresh");
+  if (captchaRefreshButton && captchaRefreshButton.dataset.refreshBound !== "true") {
+    captchaRefreshButton.dataset.refreshBound = "true";
+    captchaRefreshButton.addEventListener("click", () => {
+      loadRegisterCaptcha(currentRegisterCaptchaUuid).catch(() => {
+        showRegisterCaptchaError("楠岃瘉鐮佸姞杞藉け璐ワ紝璇风◢鍚庨噸璇?);
+      });
+    });
+  }
+
+  const captchaCancelButton = document.getElementById("register-captcha-cancel");
+  if (captchaCancelButton && captchaCancelButton.dataset.cancelBound !== "true") {
+    captchaCancelButton.dataset.cancelBound = "true";
+    captchaCancelButton.addEventListener("click", () => {
+      closeRegisterCaptchaModal();
+    });
+  }
+
+  const captchaConfirmButton = document.getElementById("register-captcha-confirm");
+  if (captchaConfirmButton && captchaConfirmButton.dataset.confirmBound !== "true") {
+    captchaConfirmButton.dataset.confirmBound = "true";
+    captchaConfirmButton.addEventListener("click", () => {
+      continueRegisterWithCaptcha().catch(() => {
+        showRegisterCaptchaError("楠岃瘉鐮佹牎楠屽け璐ワ紝璇风◢鍚庨噸璇?);
+      });
+    });
+  }
+
+  const tianaiCancel = document.getElementById("register-tianai-cancel");
+  if (tianaiCancel && tianaiCancel.dataset.bound !== "true") {
+    tianaiCancel.dataset.bound = "true";
+    tianaiCancel.addEventListener("click", closeTianaiModal);
+  }
+  const tianaiRefresh = document.getElementById("register-tianai-refresh");
+  if (tianaiRefresh && tianaiRefresh.dataset.bound !== "true") {
+    tianaiRefresh.dataset.bound = "true";
+    tianaiRefresh.addEventListener("click", () => loadTianaiCaptcha(currentTianaiSubType));
+  }
+  const tianaiConfirm = document.getElementById("register-tianai-confirm");
+  if (tianaiConfirm && tianaiConfirm.dataset.bound !== "true") {
+    tianaiConfirm.dataset.bound = "true";
+    tianaiConfirm.addEventListener("click", continueRegisterWithTianai);
+  }
+
+  const tianaiRotateCancel = document.getElementById("register-tianai-rotate-cancel");
+  if (tianaiRotateCancel && tianaiRotateCancel.dataset.cancelBound !== "true") {
+    tianaiRotateCancel.dataset.cancelBound = "true";
+    tianaiRotateCancel.addEventListener("click", () => {
+      closeTianaiRotateModal();
+    });
+  }
+
+  const tianaiRotateConfirm = document.getElementById("register-tianai-rotate-confirm");
+  if (tianaiRotateConfirm && tianaiRotateConfirm.dataset.confirmBound !== "true") {
+    tianaiRotateConfirm.dataset.confirmBound = "true";
+    tianaiRotateConfirm.addEventListener("click", () => {
+      continueRegisterWithTianaiRotate().catch(() => {
+        showTianaiRotateError("鏃嬭浆楠岃瘉鐮佹牎楠屽け璐ワ紝璇风◢鍚庨噸璇?);
+      });
+    });
+  }
+}
+
+async function ensureRouteFragmentLoaded(view) {
+  const fragment = routeFragments[view];
+  if (!fragment?.container) return;
+  if (fragment.loaded) return;
+
+  // 灏嗗鍣ㄣ€佽矾寰勫拰鍔犺浇鐘舵€佹敹鏁涘埌鍚屼竴澶勶紝渚夸簬鍚庣画鏂板璺敱鏃朵竴璧风淮鎶ゃ€?
+  // 閫氳繃 Promise 缂撳瓨淇濊瘉鍚屼竴璺敱鐗囨鍙彂璧蜂竴娆¤姹傦紝閬垮厤閲嶅鍔犺浇銆?
+  if (!fragment.loadingTask) {
+    fragment.loadingTask = fetch(fragment.path, { method: "GET", cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`鐗囨鍔犺浇澶辫触: ${fragment.path}`);
+        }
+        return response.text();
+      })
+      .then((html) => {
+        appendFragmentNodes(fragment.container, html);
+        // 鐗囨涓殑杩斿洖鐧诲綍/鍘绘敞鍐岄摼鎺ユ槸杩愯鏃舵彃鍏ョ殑锛屾彃鍏ュ悗闇€瑕侀噸鏂扮粦瀹?SPA 璺敱浜嬩欢銆?
+        bindSpaRouteLinks();
+        if (view === "register") {
+          initializeRegisterFragment();
+        }
+        fragment.loaded = true;
+      })
+      .catch((error) => {
+        fragment.loadingTask = null;
+        throw error;
+      });
+  }
+
+  await fragment.loadingTask;
+}
+
+async function setAuthView(view) {
+  authView = view;
+
+  if (!emailLoginView || !phoneLoginView || !passwordLoginView || !otpLoginView || !registerView || !forgotPasswordView) return;
+
+  const isEmail = view === "email";
+  const isPhone = view === "phone";
+  const isPassword = view === "password";
+  const isOtp = view === "otp";
+  const isRegister = view === "register";
+  const isForgotPassword = view === "forgot-password";
+
+  if (isRegister || isForgotPassword) {
+    await ensureRouteFragmentLoaded(view);
+  }
+
+  emailLoginView.classList.toggle("is-hidden", !isEmail);
+  emailLoginView.classList.toggle("is-active", isEmail);
+
+  phoneLoginView.classList.toggle("is-hidden", !isPhone);
+  phoneLoginView.classList.toggle("is-active", isPhone);
+
+  passwordLoginView.classList.toggle("is-hidden", !isPassword);
+  passwordLoginView.classList.toggle("is-active", isPassword);
+
+  otpLoginView.classList.toggle("is-hidden", !isOtp);
+  otpLoginView.classList.toggle("is-active", isOtp);
+
+  registerView.classList.toggle("is-hidden", !isRegister);
+  registerView.classList.toggle("is-active", isRegister);
+
+  forgotPasswordView.classList.toggle("is-hidden", !isForgotPassword);
+  forgotPasswordView.classList.toggle("is-active", isForgotPassword);
+
+  if (signupLinkWrap) {
+    signupLinkWrap.style.display = (isEmail || isPhone || isPassword || isOtp) ? "block" : "none";
+  }
+
+  if (formContainer) {
+    formContainer.classList.toggle("password-step-active", isPassword || isRegister || isForgotPassword);
+    formContainer.classList.toggle("otp-step-active", isOtp);
+  }
+}
+
+if (phoneBtn) {
+  phoneBtn.addEventListener("click", () => setAuthView("phone"));
+}
+
+function bindOAuthLogin(button, provider) {
+  if (!button) return;
+
+  button.addEventListener("click", () => {
+    window.location.href = `/oauth2/${provider}/login`;
+  });
+}
+
+bindOAuthLogin(githubBtn, "github");
+bindOAuthLogin(googleBtn, "google");
+bindOAuthLogin(microsoftBtn, "microsoft");
+
+function mapPathToView(pathname) {
+  if (pathname === "/shopping/user/register") return "register";
+  if (pathname === "/shopping/user/forgot-password") return "forgot-password";
+  return "email";
+}
+
+function applyRoute(pathname) {
+  const view = mapPathToView(pathname);
+  setAuthView(view);
+}
+
+function navigateTo(pathname) {
+  if (window.location.pathname !== pathname) {
+    window.history.pushState({}, "", pathname);
+  }
+  applyRoute(pathname);
+}
+
+function bindSpaRouteLinks() {
+  document.querySelectorAll("a[data-spa-route]").forEach((anchor) => {
+    anchor.addEventListener("click", (event) => {
+      event.preventDefault();
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+      navigateTo(href);
+    });
+  });
+}
+
+window.addEventListener("popstate", () => {
+  applyRoute(window.location.pathname);
+});
+
+if (switchToEmailBtn) {
+  switchToEmailBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    navigateTo("/shopping/user/login");
+  });
+}
+
+if (editIdentifierBtn) {
+  editIdentifierBtn.addEventListener("click", () => {
+    setAuthView(lastIdentifierView);
+    if (lastIdentifierView === "phone" && phoneNumberInput) {
+      phoneNumberInput.focus();
+      return;
+    }
+    if (emailInput) emailInput.focus();
+  });
+}
+
+if (togglePasswordVisibilityBtn && passwordInput) {
+  togglePasswordVisibilityBtn.addEventListener("click", () => {
+    passwordInput.type = passwordInput.type === "password" ? "text" : "password";
+  });
+}
+
+function getOtpDeliveryText(destination) {
+  if (currentIdentifierType === "phone") {
+    return `杈撳叆鎴戜滑鍒氬垰鍚?${destination} 鍙戦€佺殑鐭俊楠岃瘉鐮乣;
+  }
+
+  return `杈撳叆鎴戜滑鍒氬垰鍚?${destination} 鍙戦€佺殑閭楠岃瘉鐮乣;
+}
+
+function openOtpStep() {
+  if (!otpStepSubtitle || !otpCodeInput) return;
+
+  const destination = currentIdentifierValue || identifierValue?.textContent || "";
+  otpStepSubtitle.textContent = getOtpDeliveryText(destination);
+
+  const otpErrorMessage = document.getElementById("otp-error-msg");
+  if (otpErrorMessage) otpErrorMessage.style.display = "none";
+
+  otpCodeInput.value = "";
+  setAuthView("otp");
+  otpCodeInput.focus();
+}
+
+if (otpLoginBtn) {
+  otpLoginBtn.addEventListener("click", openOtpStep);
+}
+
+if (backToPasswordBtn) {
+  backToPasswordBtn.addEventListener("click", () => {
+    setAuthView("password");
+    if (passwordInput) passwordInput.focus();
+  });
+}
+
+function getOtpResendMessage() {
+  if (currentIdentifierType === "phone") {
+    return "鐭俊楠岃瘉鐮佸凡閲嶆柊鍙戦€侊紙婕旂ず锛?;
+  }
+
+  return "閭楠岃瘉鐮佸凡閲嶆柊鍙戦€侊紙婕旂ず锛?;
+}
+
+if (otpResendBtn) {
+  otpResendBtn.addEventListener("click", () => {
+    const otpErrorMessage = document.getElementById("otp-error-msg");
+    if (otpErrorMessage) {
+      otpErrorMessage.textContent = getOtpResendMessage();
+      otpErrorMessage.style.display = "block";
+    }
+  });
+}
+
+const DEFAULT_PHONE_COUNTRY_CODE = "+86";
+let phoneCountryPicker = null;
+
+const FALLBACK_COUNTRIES = [
+  { name: "涓浗", iso2: "cn", dialCode: "+86" },
+  { name: "缇庡浗", iso2: "us", dialCode: "+1" },
+  { name: "鍔犳嬁澶?, iso2: "ca", dialCode: "+1" },
+  { name: "鑻卞浗", iso2: "gb", dialCode: "+44" },
+  { name: "娉曞浗", iso2: "fr", dialCode: "+33" },
+  { name: "寰峰浗", iso2: "de", dialCode: "+49" },
+  { name: "鏃ユ湰", iso2: "jp", dialCode: "+81" },
+  { name: "闊╁浗", iso2: "kr", dialCode: "+82" },
+  { name: "鏂板姞鍧?, iso2: "sg", dialCode: "+65" },
+  { name: "涓浗棣欐腐", iso2: "hk", dialCode: "+852" },
+  { name: "涓浗婢抽棬", iso2: "mo", dialCode: "+853" },
+  { name: "涓浗鍙版咕", iso2: "tw", dialCode: "+886" },
+  { name: "婢冲ぇ鍒╀簹", iso2: "au", dialCode: "+61" },
+  { name: "鏂拌タ鍏?, iso2: "nz", dialCode: "+64" },
+  { name: "鍗板害", iso2: "in", dialCode: "+91" },
+  { name: "宸磋タ", iso2: "br", dialCode: "+55" }
+];
+
+const NORTH_AMERICA_ONE_ISO2 = new Set(["us", "ca"]);
+const SHARED_DIAL_CODE_PREFERRED_ISO2 = {
+  "+1": "us"
+};
+
+function normalizeDialCode(rawDialCode) {
+  if (typeof rawDialCode !== "string") return "";
+
+  const compact = rawDialCode.replace(/[^\d+]/g, "").trim();
+  if (!compact) return "";
+  if (compact.startsWith("+")) return compact;
+
+  return `+${compact}`;
+}
+
+function normalizeCountryOption(country) {
+  const iso2 = (country?.iso2 || "").toString().toLowerCase();
+  const name = (country?.name || "").toString().trim();
+  const rawDialCode = country?.dialCode || "";
+  let dialCode = normalizeDialCode(rawDialCode);
+
+  if (!iso2 || !name || !dialCode) return null;
+
+  if (NORTH_AMERICA_ONE_ISO2.has(iso2) && dialCode.startsWith("+1")) {
+    dialCode = "+1";
+  }
+
+  return { name, iso2, dialCode };
+}
+
+function compareCountriesByDialCode(firstCountry, secondCountry) {
+  const dialOrder = firstCountry.dialCode.localeCompare(secondCountry.dialCode, "en");
+  if (dialOrder !== 0) return dialOrder;
+
+  const preferredIso2 = SHARED_DIAL_CODE_PREFERRED_ISO2[firstCountry.dialCode];
+  if (preferredIso2) {
+    if (firstCountry.iso2 === preferredIso2 && secondCountry.iso2 !== preferredIso2) return -1;
+    if (secondCountry.iso2 === preferredIso2 && firstCountry.iso2 !== preferredIso2) return 1;
+  }
+
+  const nameOrder = firstCountry.name.localeCompare(secondCountry.name, "zh-CN");
+  if (nameOrder !== 0) return nameOrder;
+
+  return firstCountry.iso2.localeCompare(secondCountry.iso2, "en");
+}
+
+function createCountryDisplayNameResolver() {
+  if (typeof Intl === "undefined" || !Intl.DisplayNames) return null;
+  return new Intl.DisplayNames(["zh-CN"], { type: "region" });
+}
+
+function normalizeAndSortCountries(countries) {
+  const dedupedCountries = new Map();
+
+  (Array.isArray(countries) ? countries : []).forEach((country) => {
+    const normalizedCountry = normalizeCountryOption(country);
+    if (!normalizedCountry) return;
+
+    const key = `${normalizedCountry.iso2}|${normalizedCountry.dialCode}`;
+    if (dedupedCountries.has(key)) return;
+
+    dedupedCountries.set(key, normalizedCountry);
+  });
+
+  return Array.from(dedupedCountries.values()).sort(compareCountriesByDialCode);
+}
+
+async function fetchCountryOptions() {
+  const response = await fetch("https://restcountries.com/v3.1/all?fields=cca2,idd,name", {
+    method: "GET",
+    cache: "force-cache"
+  });
+
+  if (!response.ok) return [];
+
+  const payload = await response.json();
+  if (!Array.isArray(payload)) return [];
+
+  const displayNameResolver = createCountryDisplayNameResolver();
+  const options = [];
+
+  payload.forEach((item) => {
+    const isoRaw = (item?.cca2 || "").toString().toUpperCase();
+    if (!isoRaw || isoRaw.length !== 2) return;
+
+    const iddRoot = item?.idd?.root;
+    if (typeof iddRoot !== "string") return;
+
+    const countryName = displayNameResolver?.of(isoRaw) || item?.name?.common || isoRaw;
+    const iso2 = isoRaw.toLowerCase();
+    const dialCode = normalizeDialCode(iddRoot + (item?.idd?.suffixes?.[0] || ""));
+    if (!dialCode) return;
+
+    if (dialCode === "+1" && !NORTH_AMERICA_ONE_ISO2.has(iso2)) return;
+
+    options.push({ name: countryName, iso2, dialCode });
+  });
+
+  return normalizeAndSortCountries(options);
+}
+
+class CountryPicker {
+  constructor() {
+    this.container = document.getElementById("phone-country-picker");
+    this.hiddenInput = document.getElementById("phone-country-code");
+    this.trigger = document.getElementById("phone-country-trigger");
+    this.popover = document.getElementById("phone-country-popover");
+    this.searchInput = document.getElementById("phone-country-search");
+    this.list = document.getElementById("phone-country-list");
+    this.triggerFlag = document.getElementById("phone-country-flag");
+    this.triggerName = document.getElementById("phone-country-name");
+    this.triggerCode = document.getElementById("phone-country-code-label");
+
+    this.allCountries = [];
+    this.filteredCountries = [];
+    this.highlightedIndex = -1;
+    this.selectedCountry = null;
+  }
+
+  init() {
+    if (!this.container || !this.hiddenInput || !this.trigger || !this.popover || !this.searchInput || !this.list) {
+      return false;
+    }
+
+    this.bindEvents();
+    this.setCountries(FALLBACK_COUNTRIES);
+    this.setDialCode(DEFAULT_PHONE_COUNTRY_CODE, { silent: true });
+    this.hydrateCountryOptions();
+    return true;
+  }
+
+  bindEvents() {
+    this.trigger.addEventListener("click", () => this.toggle());
+
+    this.trigger.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        if (!this.isOpen()) this.open();
+        this.moveHighlight(1);
+      }
+    });
+
+    this.searchInput.addEventListener("input", (event) => {
+      this.applyFilter(event.target.value);
+    });
+
+    this.searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        this.moveHighlight(1);
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        this.moveHighlight(-1);
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const country = this.filteredCountries[this.highlightedIndex];
+        if (country) this.select(country);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.close();
+      }
+    });
+
+    this.list.addEventListener("mousemove", (event) => {
+      const index = this.getOptionIndexFromEventTarget(event.target);
+      if (index < 0 || index === this.highlightedIndex) return;
+      this.highlightedIndex = index;
+      this.renderList();
+    });
+
+    this.list.addEventListener("click", (event) => {
+      const index = this.getOptionIndexFromEventTarget(event.target);
+      if (index < 0) return;
+
+      const country = this.filteredCountries[index];
+      if (!country) return;
+
+      this.select(country);
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!this.isOpen()) return;
+      if (this.container.contains(event.target)) return;
+      this.close();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !this.isOpen()) return;
+      this.close();
+    });
+  }
+
+  async hydrateCountryOptions() {
+    try {
+      const remoteCountries = await fetchCountryOptions();
+      if (!Array.isArray(remoteCountries) || remoteCountries.length === 0) return;
+
+      const currentDialCode = this.hiddenInput.value || DEFAULT_PHONE_COUNTRY_CODE;
+      this.setCountries(remoteCountries);
+      this.setDialCode(currentDialCode, { silent: true });
+    } catch (_) {
+    }
+  }
+
+  setCountries(countries) {
+    this.allCountries = normalizeAndSortCountries(countries);
+    this.applyFilter(this.searchInput.value || "");
+  }
+
+  applyFilter(keyword) {
+    const query = (keyword || "").trim().toLowerCase();
+
+    if (!query) {
+      this.filteredCountries = [...this.allCountries];
+    } else {
+      this.filteredCountries = this.allCountries.filter((country) => this.matchesCountryQuery(country, query));
+    }
+
+    const selectedIndex = this.filteredCountries.findIndex((country) => this.isSameCountry(country, this.selectedCountry));
+    this.highlightedIndex = selectedIndex >= 0 ? selectedIndex : (this.filteredCountries.length > 0 ? 0 : -1);
+    this.renderList();
+  }
+
+  matchesCountryQuery(country, query) {
+    return country.name.toLowerCase().includes(query)
+      || country.iso2.toLowerCase().includes(query)
+      || country.dialCode.toLowerCase().includes(query);
+  }
+
+  isSameCountry(firstCountry, secondCountry) {
+    if (!firstCountry || !secondCountry) return false;
+
+    return firstCountry.iso2 === secondCountry.iso2
+      && firstCountry.dialCode === secondCountry.dialCode;
+  }
+
+  getOptionIndexFromEventTarget(target) {
+    const option = target.closest(".phone-country-option");
+    if (!option) return -1;
+
+    const index = Number(option.dataset.index);
+    return Number.isNaN(index) ? -1 : index;
+  }
+
+  getOptionId(index) {
+    return `phone-country-option-${index}`;
+  }
+
+  renderList() {
+    this.list.innerHTML = "";
+
+    if (this.filteredCountries.length === 0) {
+      const emptyNode = document.createElement("li");
+      emptyNode.className = "phone-country-empty";
+      emptyNode.textContent = "娌℃湁鍖归厤鐨勫浗瀹?鍦板尯";
+      this.list.appendChild(emptyNode);
+      this.list.removeAttribute("aria-activedescendant");
+      return;
+    }
+
+    this.filteredCountries.forEach((country, index) => {
+      const option = document.createElement("li");
+      option.className = "phone-country-option";
+      option.dataset.index = String(index);
+      option.id = this.getOptionId(index);
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(this.isSameCountry(country, this.selectedCountry)));
+
+      if (index === this.highlightedIndex) {
+        option.classList.add("is-highlighted");
+      }
+
+      const main = document.createElement("span");
+      main.className = "phone-country-option-main";
+
+      const flag = document.createElement("span");
+      flag.className = `fi fi-${country.iso2}`;
+
+      const name = document.createElement("span");
+      name.className = "phone-country-option-name";
+      name.textContent = country.name;
+
+      const code = document.createElement("span");
+      code.className = "phone-country-option-code";
+      code.textContent = country.dialCode;
+
+      main.append(flag, name);
+      option.append(main, code);
+      this.list.appendChild(option);
+    });
+
+    if (this.highlightedIndex >= 0) {
+      this.list.setAttribute("aria-activedescendant", this.getOptionId(this.highlightedIndex));
+      return;
+    }
+
+    this.list.removeAttribute("aria-activedescendant");
+  }
+
+  moveHighlight(step) {
+    if (this.filteredCountries.length === 0) return;
+
+    if (this.highlightedIndex < 0) {
+      this.highlightedIndex = 0;
+    } else {
+      this.highlightedIndex = (this.highlightedIndex + step + this.filteredCountries.length) % this.filteredCountries.length;
+    }
+
+    this.renderList();
+
+    const targetNode = document.getElementById(this.getOptionId(this.highlightedIndex));
+    if (targetNode) {
+      targetNode.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  updateTrigger(country) {
+    this.hiddenInput.value = country.dialCode;
+    this.triggerFlag.className = `fi fi-${country.iso2}`;
+    this.triggerName.textContent = country.name;
+    this.triggerCode.textContent = country.dialCode;
+  }
+
+  select(country, options = {}) {
+    const { silent = false } = options;
+    if (!country) return;
+
+    this.selectedCountry = country;
+    this.updateTrigger(country);
+    this.applyFilter(this.searchInput.value || "");
+
+    if (!silent) {
+      this.hiddenInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    this.close();
+  }
+
+  setDialCode(dialCode, options = {}) {
+    const normalized = normalizeDialCode(dialCode);
+    if (!normalized) return false;
+
+    const exactMatch = this.allCountries.find((country) => country.dialCode === normalized);
+    if (exactMatch) {
+      this.select(exactMatch, options);
+      return true;
+    }
+
+    if (normalized.startsWith("+1")) {
+      const northAmerica = this.allCountries.find((country) => country.dialCode === "+1");
+      if (northAmerica) {
+        this.select(northAmerica, options);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  isOpen() {
+    return this.container.dataset.open === "true";
+  }
+
+  open() {
+    this.container.dataset.open = "true";
+    this.trigger.setAttribute("aria-expanded", "true");
+    this.popover.hidden = false;
+    this.applyFilter(this.searchInput.value || "");
+    this.searchInput.focus();
+  }
+
+  close() {
+    this.container.dataset.open = "false";
+    this.trigger.setAttribute("aria-expanded", "false");
+    this.popover.hidden = true;
+    this.searchInput.value = "";
+    this.applyFilter("");
+  }
+
+  toggle() {
+    if (this.isOpen()) {
+      this.close();
+      return;
+    }
+    this.open();
+  }
+}
+
+function setPhoneCountryCode(dialCode) {
+  if (!phoneCountryPicker || !dialCode) return false;
+  return phoneCountryPicker.setDialCode(dialCode);
+}
+
+function initPhoneCountryPicker() {
+  phoneCountryPicker = new CountryPicker();
+  return phoneCountryPicker.init();
+}
+
+async function autoDetectPhoneCountryCode() {
+  if (!setPhoneCountryCode(DEFAULT_PHONE_COUNTRY_CODE)) return;
+
+  const fetchDialCode = async (url, readDialCode) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal
+      });
+
+      if (!response.ok) return "";
+
+      const payload = await response.json();
+      return normalizeDialCode(readDialCode(payload));
+    } catch (_) {
+      return "";
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  const detectedDialCode = await fetchDialCode(
+    "https://ipapi.co/json/",
+    (payload) => payload?.country_calling_code
+  ) || await fetchDialCode(
+    "https://ipwho.is/",
+    (payload) => payload?.calling_code || payload?.country_calling_code
+  );
+
+  if (setPhoneCountryCode(detectedDialCode)) return;
+
+  if (detectedDialCode.startsWith("+1")) {
+    setPhoneCountryCode("+1");
+  }
+}
+
+// ============ GOOGLE DONUT PARTICLE SYSTEM ============
+const pCanvas = document.getElementById('canvas-container');
+const pCtx = pCanvas ? pCanvas.getContext('2d') : null;
+let pWidth, pHeight;
+let particles = [];
+const BASE_PARTICLES = 180;
+const TARGET_FPS = 48;
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
+const PARTICLE_INTERACTION_DISTANCE = 120;
+const PARTICLE_INTERACTION_DISTANCE_SQ = PARTICLE_INTERACTION_DISTANCE * PARTICLE_INTERACTION_DISTANCE;
+let numParticles = BASE_PARTICLES;
+let particleFrameRequestId = null;
+let lastParticleFrameTime = 0;
+const HUE_SPEED_MIN = 0.2;
+const HUE_SPEED_MAX = 1.2;
+
+function getAdaptiveParticleCount() {
+    const cores = navigator.hardwareConcurrency || 8;
+    const memory = navigator.deviceMemory || 8;
+    const isLowPerformanceDevice = cores <= 4 || memory <= 4;
+    return isLowPerformanceDevice ? Math.round(BASE_PARTICLES * 0.6) : BASE_PARTICLES;
+}
+
+function resizeParticles() {
+    if (!pCanvas) return;
+    pWidth = pCanvas.width = window.innerWidth;
+    pHeight = pCanvas.height = window.innerHeight;
+}
+
+class DonutParticle {
+    constructor() {
+        this.x = Math.random() * pWidth;
+        this.y = Math.random() * pHeight;
+        this.baseX = this.x;
+        this.baseY = this.y;
+        const baseSize = Math.random() * 8 + 4;
+        this.size = baseSize * (Math.random() * 2 + 0.5);
+        const baseThickness = Math.random() * 2 + 1.5;
+        const originalInnerRadius = Math.max(0, this.size - baseThickness / 2);
+        const innerRadius = originalInnerRadius * Math.random();
+        this.thickness = Math.max(0.5, (this.size - innerRadius) * 2);
+        this.alpha = Math.random() * 0.1 + 0.1;
+        this.hue = Math.random() * 360;
+        this.hueSpeed = Math.random() * (HUE_SPEED_MAX - HUE_SPEED_MIN) + HUE_SPEED_MIN;
+        this.velocity = { x: 0, y: 0 };
+    }
+    update() {
+        const dx = mouseX - this.x;
+        const dy = mouseY - this.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < PARTICLE_INTERACTION_DISTANCE_SQ) {
+            const distance = Math.sqrt(distSq) || 1;
+            const force = (PARTICLE_INTERACTION_DISTANCE - distance) / PARTICLE_INTERACTION_DISTANCE;
+            const directionX = dx / distance;
+            const directionY = dy / distance;
+            this.x -= directionX * force * 8;
+            this.y -= directionY * force * 8;
+        } else {
+            this.x -= (this.x - this.baseX) * 0.04;
+            this.y -= (this.y - this.baseY) * 0.04;
+        }
+
+        this.hue = (this.hue + this.hueSpeed) % 360;
+    }
+    draw() {
+        pCtx.beginPath();
+        pCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        pCtx.strokeStyle = `hsla(${this.hue}, 85%, 60%, ${this.alpha})`;
+        pCtx.lineWidth = this.thickness;
+        pCtx.stroke();
+    }
+}
+
+function initParticles() {
+    particles = [];
+    for (let i = 0; i < numParticles; i++) particles.push(new DonutParticle());
+}
+
+function animateParticles(timestamp = 0) {
+    if (!pCtx) return;
+    if (timestamp - lastParticleFrameTime < FRAME_INTERVAL) {
+        particleFrameRequestId = requestAnimationFrame(animateParticles);
+        return;
+    }
+
+    lastParticleFrameTime = timestamp;
+    pCtx.clearRect(0, 0, pWidth, pHeight);
+    particles.forEach(p => { p.update(); p.draw(); });
+    particleFrameRequestId = requestAnimationFrame(animateParticles);
+}
+
+function stopParticlesAnimation() {
+    if (particleFrameRequestId !== null) {
+        cancelAnimationFrame(particleFrameRequestId);
+        particleFrameRequestId = null;
+    }
+}
+
+function startParticlesAnimation() {
+    if (particleFrameRequestId === null) {
+        lastParticleFrameTime = 0;
+        particleFrameRequestId = requestAnimationFrame(animateParticles);
+    }
+}
+
+// ============ TEXT RENDERING (PRETEXT) ============
+function renderWithPretext() {
+    const titleText = "娆㈣繋鍥炴潵锛?;
+    const subtitleText = "璇疯緭鍏ユ偍鐨勭櫥褰曚俊鎭?;
+    const titlePrepared = Pretext.prepare(titleText, '700 28px "Inter", "PingFang SC", sans-serif');
+    const subtitlePrepared = Pretext.prepare(subtitleText, '400 14px "Inter", "PingFang SC", sans-serif');
+
+    function updateLayout() {
+        const container = document.querySelector('.form-container');
+        if (!container) return;
+        const width = container.clientWidth - 40;
+        const tLay = Pretext.layout(titlePrepared, width, 36);
+        const sLay = Pretext.layout(subtitlePrepared, width, 20);
+        renderLines('pretext-title', tLay.lines, 0);
+        renderLines('pretext-subtitle', sLay.lines, titleText.length);
+    }
+
+    function renderLines(id, lines, offset) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.innerHTML = '';
+        let charIdx = 0;
+        lines.forEach(line => {
+            const div = document.createElement('div');
+            div.className = 'pt-line';
+            [...line.text].forEach(char => {
+                const span = document.createElement('span');
+                span.className = 'pt-char';
+                span.textContent = char;
+                if (char === ' ') span.style.width = '0.25em';
+                div.appendChild(span);
+                setTimeout(() => span.classList.add('visible'), (offset + charIdx++) * 30 + 300);
+            });
+            el.appendChild(div);
+        });
+    }
+    window.addEventListener('resize', updateLayout);
+    updateLayout();
+}
+
+// ============ CHARACTER ANIMATION (AnimatedLogin) ============
+function calcPosition(el) {
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 3;
+  const dx = mouseX - cx;
+  const dy = mouseY - cy;
+  return { 
+    faceX: Math.max(-15, Math.min(15, dx / 20)), 
+    faceY: Math.max(-10, Math.min(10, dy / 30)), 
+    bodySkew: Math.max(-6, Math.min(6, -dx / 120)) 
+  };
+}
+
+function calcPupilOffset(el, maxDist) {
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  const dx = mouseX - cx, dy = mouseY - cy;
+  const dist = Math.min(Math.sqrt(dx * dx + dy * dy), maxDist);
+  const angle = Math.atan2(dy, dx);
+  return { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist };
+}
+
+function updateCharacters() {
+  const purple = document.getElementById("char-purple"), black = document.getElementById("char-black");
+  const orange = document.getElementById("char-orange"), yellow = document.getElementById("char-yellow");
+  if (!purple || !black || !orange || !yellow) return;
+
+  const pPos = calcPosition(purple), bPos = calcPosition(black);
+  const oPos = calcPosition(orange), yPos = calcPosition(yellow);
+  const isLookingAway = isPhoneCodeFocused;
+  const isShowingPwd = false;
+
+  // Body transforms
+  purple.style.transform = isShowingPwd ? "skewX(0deg)" : (isLookingAway ? "skewX(-14deg) translateX(-20px)" : `skewX(${isTyping ? pPos.bodySkew - 12 : pPos.bodySkew}deg)${isTyping ? " translateX(40px)" : ""}`);
+  purple.style.height = (isLookingAway || isTyping) ? "410px" : "370px";
+  black.style.transform = isShowingPwd ? "skewX(0deg)" : (isLookingAway ? "skewX(12deg) translateX(-10px)" : `skewX(${isTyping ? bPos.bodySkew - 8 : bPos.bodySkew}deg)`);
+  
+  // Orange & Yellow body transforms
+  if (isShowingPwd) {
+      orange.style.transform = "skewX(0deg)";
+      yellow.style.transform = "skewX(0deg)";
+  } else {
+      orange.style.transform = `skewX(${oPos.bodySkew}deg)`;
+      yellow.style.transform = `skewX(${yPos.bodySkew}deg)`;
+  }
+
+  // Character detailed state updates
+  document.getElementById("purple-eye-l").style.height = isPurpleBlinking ? "2px" : "18px";
+  document.getElementById("purple-eye-r").style.height = isPurpleBlinking ? "2px" : "18px";
+  document.getElementById("black-eye-l").style.height = isBlackBlinking ? "2px" : "16px";
+  document.getElementById("black-eye-r").style.height = isBlackBlinking ? "2px" : "16px";
+
+  const pEyes = document.getElementById("purple-eyes"), bEyes = document.getElementById("black-eyes");
+  const oEyes = document.getElementById("orange-eyes"), yEyes = document.getElementById("yellow-eyes");
+  const yMouth = document.getElementById("yellow-mouth");
+
+  if (isLoginError) {
+      pEyes.style.left = "30px"; pEyes.style.top = "55px";
+      bEyes.style.left = "15px"; bEyes.style.top = "40px";
+      oEyes.style.left = "60px"; oEyes.style.top = "95px";
+      yEyes.style.left = "35px"; yEyes.style.top = "45px";
+      yMouth.style.left = "30px"; yMouth.style.top = "92px"; yMouth.style.transform = "rotate(-8deg)";
+  } else if (isLookingAway) {
+      pEyes.style.left = "20px"; pEyes.style.top = "25px";
+      bEyes.style.left = "10px"; bEyes.style.top = "20px";
+      oEyes.style.left = "50px"; oEyes.style.top = "75px";
+      yEyes.style.left = "20px"; yEyes.style.top = "30px";
+  } else {
+      pEyes.style.left = (45 + pPos.faceX) + "px"; pEyes.style.top = (40 + pPos.faceY) + "px";
+      bEyes.style.left = (26 + bPos.faceX) + "px"; bEyes.style.top = (32 + bPos.faceY) + "px";
+      oEyes.style.left = (82 + oPos.faceX) + "px"; oEyes.style.top = (90 + oPos.faceY) + "px";
+      yEyes.style.left = (52 + yPos.faceX) + "px"; yEyes.style.top = (40 + yPos.faceY) + "px";
+      yMouth.style.left = (40 + yPos.faceX) + "px"; yMouth.style.top = (88 + yPos.faceY) + "px";
+  }
+}
+
+// ============ LOGIN ERROR ANIMATION ============
+let errorRecoverTimer = null;
+const shakeIds = ["purple-eyes", "black-eyes", "orange-eyes", "yellow-eyes", "yellow-mouth"];
+
+function blinkOnce(character) {
+  const setBlink = (value) => {
+    if (character === "purple") {
+      isPurpleBlinking = value;
+    } else {
+      isBlackBlinking = value;
+    }
+  };
+
+  setBlink(true);
+  updateCharacters();
+  setTimeout(() => {
+    setBlink(false);
+    updateCharacters();
+  }, 130 + Math.random() * 50);
+}
+
+function scheduleRandomBlink(character) {
+  const nextDelay = 2500 + Math.random() * 3500;
+  setTimeout(() => {
+    if (!document.hidden) {
+      blinkOnce(character);
+      if (Math.random() < 0.2) {
+        setTimeout(() => blinkOnce(character), 140 + Math.random() * 120);
+      }
+    }
+    scheduleRandomBlink(character);
+  }, nextDelay);
+}
+
+function triggerLoginError() {
+  if (errorRecoverTimer) { clearTimeout(errorRecoverTimer); errorRecoverTimer = null; }
+  const shakeEls = shakeIds.map(id => document.getElementById(id));
+  shakeEls.forEach(el => { if (el) el.classList.remove("shake-head"); });
+  void document.body.offsetHeight;
+  isLoginError = true; updateCharacters();
+  setTimeout(() => { shakeEls.forEach(el => { if (el) el.classList.add("shake-head"); }); }, 350);
+  errorRecoverTimer = setTimeout(() => {
+    isLoginError = false; errorRecoverTimer = null;
+    shakeEls.forEach(el => { if (el) el.classList.remove("shake-head"); });
+    updateCharacters();
+  }, 2500);
+}
+
+const phoneErrorMessage = document.getElementById("phone-error-msg");
+const phoneNumberLabel = document.getElementById("phone-number-label");
+
+function resetPhoneValidationState() {
+  if (phoneErrorMessage) phoneErrorMessage.style.display = "none";
+  if (phoneNumberInput) phoneNumberInput.classList.remove("error");
+  if (phoneNumberLabel) phoneNumberLabel.classList.remove("error-label");
+}
+
+function showPhoneValidationError(message, input, label) {
+  if (input) input.classList.add("error");
+  if (label) label.classList.add("error-label");
+  if (phoneErrorMessage) {
+    phoneErrorMessage.textContent = message;
+    phoneErrorMessage.style.display = "block";
+  }
+  triggerLoginError();
+}
+
+function goToPasswordStep(identifierType, identifierText) {
+  if (!identifierLabel || !identifierValue || !passwordInput) return;
+
+  currentIdentifierType = identifierType;
+  currentIdentifierValue = identifierText;
+  identifierLabel.textContent = identifierType === "phone" ? "鎵嬫満鍙风爜" : "鐢靛瓙閭欢鍦板潃";
+  identifierValue.textContent = identifierText;
+  passwordInput.value = "";
+  passwordInput.type = "password";
+  setAuthView("password");
+  passwordInput.focus();
+}
+
+// ============ FORM VALIDATION ============
+const loginForm = document.getElementById("login-form");
+if (loginForm) {
+  loginForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+
+    if (authView === "phone") {
+      const rawPhone = phoneNumberInput ? phoneNumberInput.value.trim() : "";
+
+      resetPhoneValidationState();
+
+      if (!/^\d{6,15}$/.test(rawPhone)) {
+        showPhoneValidationError("璇疯緭鍏ユ湁鏁堟墜鏈哄彿", phoneNumberInput, phoneNumberLabel);
+        return;
+      }
+
+      const dialCode = document.getElementById("phone-country-code")?.value || DEFAULT_PHONE_COUNTRY_CODE;
+      lastIdentifierView = "phone";
+      goToPasswordStep("phone", `${dialCode} ${rawPhone}`);
+      return;
+    }
+
+    if (authView === "password") {
+      const passwordErrorMessage = document.getElementById("password-error-msg");
+      const rawPassword = passwordInput ? passwordInput.value : "";
+
+      if (passwordErrorMessage) passwordErrorMessage.style.display = "none";
+
+      if (!rawPassword || rawPassword.length < 6) {
+        if (passwordErrorMessage) {
+          passwordErrorMessage.textContent = "璇疯緭鍏ヨ嚦灏?6 浣嶅瘑鐮?;
+          passwordErrorMessage.style.display = "block";
+        }
+        triggerLoginError();
+        return;
+      }
+
+      if (passwordErrorMessage) {
+        passwordErrorMessage.textContent = "瀵嗙爜鏍￠獙閫氳繃锛堟紨绀猴級";
+        passwordErrorMessage.style.display = "block";
+      }
+      return;
+    }
+
+    if (authView === "otp") {
+      const otpErrorMessage = document.getElementById("otp-error-msg");
+      const rawOtp = otpCodeInput ? otpCodeInput.value.trim() : "";
+
+      if (otpErrorMessage) otpErrorMessage.style.display = "none";
+
+      if (!/^\d{4,8}$/.test(rawOtp)) {
+        if (otpErrorMessage) {
+          otpErrorMessage.textContent = "璇疯緭鍏ユ湁鏁堥獙璇佺爜";
+          otpErrorMessage.style.display = "block";
+        }
+        triggerLoginError();
+        return;
+      }
+
+      if (otpErrorMessage) {
+        otpErrorMessage.textContent = "楠岃瘉鐮佹牎楠岄€氳繃锛堟紨绀猴級";
+        otpErrorMessage.style.display = "block";
+      }
+      return;
+    }
+
+    const email = emailInput.value.trim();
+    const errEl = document.getElementById("error-msg");
+    const emailLabel = document.getElementById("email-label");
+
+    errEl.style.display = "none";
+    emailInput.classList.remove("error");
+    emailLabel.classList.remove("error-label");
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      emailInput.classList.add("error");
+      emailLabel.classList.add("error-label");
+      errEl.textContent = "璇疯緭鍏ユ湁鏁堢殑鐢靛瓙閭鍦板潃銆?;
+      errEl.style.display = "block";
+      triggerLoginError();
+      return;
+    }
+
+    lastIdentifierView = "email";
+    goToPasswordStep("email", email);
+  });
+}
+
+// ============ INITIALIZATION ============
+window.addEventListener('load', () => {
+    numParticles = getAdaptiveParticleCount();
+    resizeParticles();
+    initParticles();
+    startParticlesAnimation();
+    renderWithPretext();
+    scheduleRandomBlink("purple");
+    scheduleRandomBlink("black");
+    initPhoneCountryPicker();
+    autoDetectPhoneCountryCode();
+    bindSpaRouteLinks();
+    applyRoute(window.location.pathname);
+    updateCharacters();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopParticlesAnimation();
+    } else {
+        startParticlesAnimation();
+    }
+});
+
+window.addEventListener('resize', () => {
+    resizeParticles();
+    numParticles = getAdaptiveParticleCount();
+    initParticles();
+});

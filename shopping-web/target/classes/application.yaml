@@ -1,0 +1,224 @@
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID}
+            client-secret: ${GITHUB_CLIENT_SECRET}
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+          microsoft:
+            client-id: ${AZURE_CLIENT_ID}
+            client-secret: ${AZURE_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope:
+              - User.Read
+        provider:
+          microsoft:
+            authorization-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+            token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
+            user-info-uri: https://graph.microsoft.com/v1.0/me
+            user-name-attribute: id
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 2962943171@qq.com
+    password: ${EMAIL_SMTP_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+          socks:
+            host: 127.0.0.1
+            port: 7892
+          starttls:
+            enable: true
+  rabbitmq:
+    host: 127.0.0.1
+    port: ${RABBITMQ_PORT:5672}
+    username: admin
+    password: admin123
+    virtual-host: /
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 10MB
+  application:
+    name: shopping
+  jpa:
+    show-sql: true
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6380
+      password: 123456
+      database: 1
+      timeout: 5000ms
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+          max-wait: 1000ms
+          test-on-borrow: true
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/shopping
+    username: postgres
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+server:
+  port: 6655
+  ssl:
+    enabled: true
+    key-store: classpath:local-https.p12
+    key-store-type: PKCS12
+    key-store-password: changeit
+    key-alias: shopping-local
+
+logging:
+  level:
+    com.example.ShoppingSystem: debug
+
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  github:
+    redirect-uri: https://localhost:6655/login/github/callback
+  google:
+    redirect-uri: https://localhost:6655/login/google/callback
+  rabbitmq:
+    register-email:
+      exchange: ${REGISTER_EMAIL_EXCHANGE:register.email.code.exchange}
+      queue: ${REGISTER_EMAIL_QUEUE:register.email.code.queue}
+      retry-queue: ${REGISTER_EMAIL_RETRY_QUEUE:register.email.code.retry.queue}
+      dead-letter-queue: ${REGISTER_EMAIL_DLQ:register.email.code.dlq}
+      routing-key: ${REGISTER_EMAIL_ROUTING_KEY:register.email.code.send}
+      retry-routing-key: ${REGISTER_EMAIL_RETRY_ROUTING_KEY:register.email.code.retry}
+      dead-routing-key: ${REGISTER_EMAIL_DEAD_ROUTING_KEY:register.email.code.dead}
+      concurrency: 2
+      max-concurrency: 10
+      prefetch: 1
+      max-retry-count: 2
+    ip-risk-writeback:
+      exchange: ${IP_RISK_WRITEBACK_EXCHANGE:ip.risk.writeback.exchange}
+      queue: ${IP_RISK_WRITEBACK_QUEUE:ip.risk.writeback.queue}
+      retry-queue: ${IP_RISK_WRITEBACK_RETRY_QUEUE:ip.risk.writeback.retry.queue}
+      dead-letter-queue: ${IP_RISK_WRITEBACK_DLQ:ip.risk.writeback.dlq}
+      routing-key: ${IP_RISK_WRITEBACK_ROUTING_KEY:ip.risk.writeback.execute}
+      retry-routing-key: ${IP_RISK_WRITEBACK_RETRY_ROUTING_KEY:ip.risk.writeback.retry}
+      dead-routing-key: ${IP_RISK_WRITEBACK_DEAD_ROUTING_KEY:ip.risk.writeback.dead}
+      concurrency: 2
+      max-concurrency: 8
+      prefetch: 5
+      max-retry-count: 3
+
+elasticsearch:
+  host: localhost
+  port: 9200
+  scheme: http
+
+canal:
+  host: 127.0.0.1
+  port: 11111
+  destination: example
+  username:
+  password:
+  stream-key: canal:sync:es
+  consumer-group: es_sync_group
+  subscribe-filter: ".*\\.(category|dish|setmeal|employee)"
+
+captcha:
+  prefix: captcha
+  init-default-resource: false
+  trace:
+    enabled: true
+  turnstile:
+    site-key: ${TURNSTILE_SITE_KEY}
+    secret-key: ${TURNSTILE_SECRET_KEY}
+    verify-url: https://challenges.cloudflare.com/turnstile/v0/siteverify
+  hcaptcha:
+    site-key: ${HCAPTCHA_SITE_KEY}
+    secret-key: ${HCAPTCHA_SECRET_KEY}
+    verify-url: https://api.hcaptcha.com/siteverify
+  expire:
+    default: 300000
+
+register:
+  pre-auth:
+    enabled: true
+    redis-key-prefix: "register:preauth:bind:"
+    ttl-minutes: 60
+    recent-ip-limit: 3
+    cookie-name: "PREAUTH_TOKEN"
+    cookie-path: "/"
+    cookie-http-only: true
+    cookie-secure: false
+    cookie-same-site: "Lax"
+  operation-timeout:
+    wait-min-seconds: 5
+    wait-max-seconds: 10
+  ip-l6-counting-bloom:
+    enabled: true
+    realtime-enabled: true
+    l6-fast-score: 2999
+    score-threshold: 3000
+    capacity: 150000
+    hash-count: 7
+    page-size: 2000
+    ipv4-key: "register:ip:l6:cbf:ipv4"
+    ipv6-key: "register:ip:l6:cbf:ipv6"
+    member-key-prefix: "register:ip:l6:member:"
+  ip-risk-multi-level:
+    enabled: true
+    redis-key-prefix: "register:ip:risk:"
+    redis-ttl-minutes: 60
+    redis-ttl-jitter-minutes: 120
+    db-expire-hours: 24
+    local-max-size: 100000
+    local-ttl-min-minutes: 10
+    local-ttl-max-minutes: 50
+  ip-country-cache:
+    enabled: true
+    redis-key-prefix: "register:ip:country:"
+    redis-ttl-minutes: 360
+    redis-ttl-jitter-minutes: 1080
+    local-max-size: 100000
+    local-ttl-min-minutes: 10
+    local-ttl-max-minutes: 50
+    bin-enabled: true
+    bin-path: "IP2LOCATION-LITE-DB11.IPV6.BIN"
+  ip-risk-writeback:
+    enabled: true
+    mode: ASYNC
+    fallback-sync-on-publish-failure: true
+    idempotency-key-prefix: "register:ip:risk:writeback:idempotency:"
+    idempotency-ttl-minutes: 90
+    source-actions:
+      API: "UPSERT_DB,WRITE_REDIS_CACHE,SYNC_BLOOM"
+      DB: "WRITE_REDIS_CACHE"
+      REDIS: ""
+      CAFFEINE: ""
+      NONE: ""
+
+iping:
+  api:
+    enabled: true
+    url: https://api.iping.cc/v1/query
+    language: en

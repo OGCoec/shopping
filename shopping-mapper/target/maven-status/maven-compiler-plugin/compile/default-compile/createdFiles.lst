@@ -1,0 +1,3 @@
+com\example\ShoppingSystem\mapper\UserLoginIdentityMapper.class
+com\example\ShoppingSystem\mapper\IpReputationProfileMapper.class
+com\example\ShoppingSystem\mapper\UserProfileMapper.class

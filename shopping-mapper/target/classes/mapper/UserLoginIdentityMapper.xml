@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.ShoppingSystem.mapper.UserLoginIdentityMapper">
+
+    <sql id="baseIdentityColumns">
+        id,
+        user_id,
+        email,
+        email_password_hash,
+        email_verified,
+        phone,
+        phone_verified,
+        github_id,
+        google_id,
+        microsoft_id,
+        token_version,
+        status,
+        last_login_at,
+        created_at,
+        updated_at
+    </sql>
+
+    <sql id="baseIdentityValues">
+        #{id},
+        #{userId},
+        #{email},
+        #{emailPasswordHash},
+        #{emailVerified},
+        #{phone},
+        #{phoneVerified},
+        #{githubId},
+        #{googleId},
+        #{microsoftId},
+        #{tokenVersion},
+        #{status},
+        #{lastLoginAt},
+        #{createdAt},
+        #{updatedAt}
+    </sql>
+
+    <!-- 新增 GitHub 登录身份记录 -->
+    <insert id="insertGithubIdentity" parameterType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        INSERT INTO user_login_identity (
+            <include refid="baseIdentityColumns"/>
+        ) VALUES (
+            <include refid="baseIdentityValues"/>
+        )
+    </insert>
+
+    <!-- 新增 Google 登录身份记录 -->
+    <insert id="insertGoogleIdentity" parameterType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        INSERT INTO user_login_identity (
+            <include refid="baseIdentityColumns"/>
+        ) VALUES (
+            <include refid="baseIdentityValues"/>
+        )
+    </insert>
+
+    <!-- 新增 Microsoft 登录身份记录 -->
+    <insert id="insertMicrosoftIdentity" parameterType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        INSERT INTO user_login_identity (
+            <include refid="baseIdentityColumns"/>
+        ) VALUES (
+            <include refid="baseIdentityValues"/>
+        )
+    </insert>
+
+</mapper>

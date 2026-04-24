@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.ShoppingSystem.mapper.UserProfileMapper">
+
+    <!-- 首次登录初始化 profile：不写 avatar/created_at/updated_at，走后续接口与数据库默认值 -->
+    <insert id="insertUserProfile" parameterType="com.example.ShoppingSystem.entity.entity.UserProfile">
+        INSERT INTO user_profile (
+            id,
+            first_name,
+            last_name,
+            gender,
+            bio,
+            birthday,
+            country,
+            language,
+            timezone
+        ) VALUES (
+            #{id},
+            #{firstName},
+            #{lastName},
+            #{gender},
+            #{bio},
+            #{birthday},
+            #{country},
+            #{language},
+            #{timezone}
+        )
+    </insert>
+
+</mapper>

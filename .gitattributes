@@ -1,0 +1,2 @@
+*.BIN filter=lfs diff=lfs merge=lfs -text
+IP2LOCATION-LITE-DB11.IPV6.BIN filter=lfs diff=lfs merge=lfs -text

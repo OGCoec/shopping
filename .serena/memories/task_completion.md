@@ -1,0 +1,1 @@
+完成任务后，优先运行用户指定的 Maven 编译或验证命令。当前项目本次任务要求的验证命令为：1) mvn -DskipTests -pl shopping-service,shopping-mapper -am compile；2) mvn -DskipTests -pl shopping-web -am compile。若用户限定作用域，只修改指定文件，不扩展到其他模块。

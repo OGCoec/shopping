@@ -1,0 +1,245 @@
+IP 信誉参考分（reference_score）与初始分（base_score）计算公式说明
+========================================================
+
+说明：
+1. reference_score 只基于外部 API 返回结果计算，不考虑你系统内的行为分。
+2. base_score 第一版建议直接等于 reference_score。
+3. 满分 10000 分，分数越高表示信誉越好。
+4. 最终结果需要限制在 0 ~ 10000 区间内。
+
+--------------------------------------------------------
+一、总公式
+--------------------------------------------------------
+
+reference_score = clamp(
+    10000
+    - fraud_penalty
+    - usage_type_penalty
+    - proxy_type_penalty
+    - flag_penalty
+    - as_usage_penalty
+    + trust_bonus
+, 0, 10000)
+
+其中：
+- clamp(x, 0, 10000) 表示把分数限制在 0~10000。
+- 第一版建议：base_score = reference_score
+
+--------------------------------------------------------
+二、各部分计算规则
+--------------------------------------------------------
+
+1）欺诈分惩罚 fraud_penalty
+----------------------------------------
+如果第三方 API 返回 fraud_score（范围假设为 0~100）：
+
+fraud_penalty = fraud_score * 46
+
+举例：
+- fraud_score = 0   -> 扣 0 分
+- fraud_score = 10  -> 扣 460 分
+- fraud_score = 50  -> 扣 2300 分
+- fraud_score = 100 -> 扣 4600 分
+
+----------------------------------------
+2）用途类型惩罚 usage_type_penalty
+----------------------------------------
+根据 usage_type：
+
+说明：
+- 本项分数在原始建议值基础上统一调整为 0.84 倍。
+- 结果保留到十位。
+
+调整后：
+- RESIDENTIAL = 0
+- MOBILE      = 170
+- BUSINESS    = 340
+- UNKNOWN     = 670
+- DCH         = 1510
+
+说明：
+- RESIDENTIAL（住宅宽带）最可信，不扣分。
+- DCH（数据中心 / 托管 / 中转）显著扣分。
+
+----------------------------------------
+3）代理类型惩罚 proxy_type_penalty
+----------------------------------------
+根据 proxy.proxy_type：
+
+说明：
+- 本项分数在原始建议值基础上统一调整为 0.84 倍。
+- 结果保留到十位。
+
+调整后：
+- null / 空 / - = 0
+- VPN           = 1260
+- WEB           = 1510
+- PUB           = 1850
+- TOR           = 2690
+- DCH           = 1340
+- RES           = 420
+- CPN           = 670
+- EPN           = 500
+- SES           = 1010
+- 其它未知值     = 420
+
+----------------------------------------
+4）布尔风险标志惩罚 flag_penalty
+----------------------------------------
+根据 proxy 对象中的布尔字段累加：
+
+flag_penalty =
+    (is_tor                        ? 800 : 0)
+  + (is_public_proxy               ? 600 : 0)
+  + (is_web_proxy                  ? 500 : 0)
+  + (is_vpn                        ? 500 : 0)
+  + (is_data_center                ? 400 : 0)
+  + (is_residential_proxy          ? 200 : 0)
+  + (is_consumer_privacy_network   ? 300 : 0)
+  + (is_enterprise_private_network ? 200 : 0)
+
+说明：
+- 这些布尔值是“增强确认信号”，扣分力度低于 proxy_type 本身。
+
+----------------------------------------
+5）ASN 用途惩罚 as_usage_penalty
+----------------------------------------
+根据 as_info.as_usage_type：
+
+- DCH      = 600
+- MOBILE   = 100
+- BUSINESS = 200
+- UNKNOWN  = 300
+- null / 空 / - = 0
+- 其它      = 0
+
+说明：
+- 如果 ASN 层面也显示为 DCH，说明整个网络背景偏机房/托管网络，应补充扣分。
+
+----------------------------------------
+6）可信加分 trust_bonus
+----------------------------------------
+建议加分规则：
+
+trust_bonus =
+    (address_type == "Unicast" ? 100 : 0)
+  + (fraud_score <= 5 ? 150 : 0)
+  + ((usage_type == "RESIDENTIAL" 或 usage_type == "MOBILE")
+      且所有 proxy 布尔值都为 false ? 300 : 0)
+
+说明：
+- 加分一定要比扣分保守。
+- 可信信号可以拉高参考分，但不要加太猛。
+
+--------------------------------------------------------
+三、Java 伪代码
+--------------------------------------------------------
+
+int fraudPenalty = fraudScore * 46;
+
+int usageTypePenalty = switch (usageType) {
+    case "RESIDENTIAL" -> 0;
+    case "MOBILE" -> 170;
+    case "BUSINESS" -> 340;
+    case "UNKNOWN" -> 670;
+    case "DCH" -> 1510;
+    default -> 670;
+};
+
+int proxyTypePenalty = switch (proxyType) {
+    case "VPN" -> 1260;
+    case "WEB" -> 1510;
+    case "PUB" -> 1850;
+    case "TOR" -> 2690;
+    case "DCH" -> 1340;
+    case "RES" -> 420;
+    case "CPN" -> 670;
+    case "EPN" -> 500;
+    case "SES" -> 1010;
+    case "-", null, "" -> 0;
+    default -> 420;
+};
+
+int flagPenalty = 0;
+if (isTor) flagPenalty += 800;
+if (isPublicProxy) flagPenalty += 600;
+if (isWebProxy) flagPenalty += 500;
+if (isVpn) flagPenalty += 500;
+if (isDataCenter) flagPenalty += 400;
+if (isResidentialProxy) flagPenalty += 200;
+if (isConsumerPrivacyNetwork) flagPenalty += 300;
+if (isEnterprisePrivateNetwork) flagPenalty += 200;
+
+int asUsagePenalty = switch (asUsageType) {
+    case "DCH" -> 600;
+    case "MOBILE" -> 100;
+    case "BUSINESS" -> 200;
+    case "UNKNOWN" -> 300;
+    case "-", null, "" -> 0;
+    default -> 0;
+};
+
+int trustBonus = 0;
+if ("Unicast".equals(addressType)) trustBonus += 100;
+if (fraudScore <= 5) trustBonus += 150;
+if (("RESIDENTIAL".equals(usageType) || "MOBILE".equals(usageType))
+        && !isVpn && !isTor && !isDataCenter && !isPublicProxy && !isWebProxy) {
+    trustBonus += 300;
+}
+
+int referenceScore = 10000
+        - fraudPenalty
+        - usageTypePenalty
+        - proxyTypePenalty
+        - flagPenalty
+        - asUsagePenalty
+        + trustBonus;
+
+referenceScore = Math.max(0, Math.min(10000, referenceScore));
+
+int baseScore = referenceScore;
+
+--------------------------------------------------------
+四、示例：66.93.67.154
+--------------------------------------------------------
+
+假设查询结果为：
+- fraud_score = 3
+- usage_type = DCH
+- proxy.proxy_type = DCH
+- proxy.is_data_center = true
+- proxy.is_vpn = false
+- proxy.is_tor = false
+- proxy.is_public_proxy = false
+- proxy.is_residential_proxy = false
+- as_info.as_usage_type = DCH
+- address_type = Unicast
+
+计算：
+- fraud_penalty = 3 * 46 = 138
+- usage_type_penalty = 1510
+- proxy_type_penalty = 1340
+- flag_penalty = 400
+- as_usage_penalty = 600
+- trust_bonus = 100 + 150 = 250
+
+最终：
+reference_score = 10000 - 138 - 1510 - 1340 - 400 - 600 + 250
+                = 6262
+
+base_score = 6262
+
+--------------------------------------------------------
+五、风险等级建议（按 10000 分制）
+--------------------------------------------------------
+
+- 8500 ~ 10000 -> L1（高信誉）
+- 7500 ~ 8499  -> L2（较高信誉）
+- 6000 ~ 7499  -> L3（中等信誉）
+- 4800 ~ 5999  -> L4（较低风险）
+- 3000 ~ 4799  -> L5（中风险）
+- 0 ~ 2999     -> L6（高风险）
+
+说明：
+- 第一版建议：base_score = reference_score
+- 后续再叠加行为分，形成 current_score

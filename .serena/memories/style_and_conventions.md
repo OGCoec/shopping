@@ -1,0 +1,1 @@
+代码风格以清晰、显式、易维护为主。Java 代码使用 Spring 常见分层：controller、service、mapper、security、config。用户要求新增代码注释默认使用简体中文，并保留已有 Swagger 注解。变更时应保持接口行为不变，不新增测试。配置集中在 application.yaml；MyBatis XML 与 Mapper 接口配套使用。

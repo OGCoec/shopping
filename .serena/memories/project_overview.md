@@ -1,0 +1,1 @@
+Shopping 是一个基于 Spring Boot 的多模块电商/购物系统项目，包含 shopping-common、shopping-model、shopping-mapper、shopping-service、shopping-web 等模块。主要技术栈为 Java、Spring Boot、Spring Security OAuth2、MyBatis、PostgreSQL、Redis、Elasticsearch，以及前端静态资源（HTML/CSS/JavaScript）。项目根目录包含 pom.xml，多模块通过 Maven 聚合构建。

@@ -1,0 +1,82 @@
+随机弹窗校验实现方案（后端主导，前端仅展示）
+
+目标
+- 登录前触发人机校验。
+- 校验类型由后端随机决定（前端不可选择、不可切换）。
+- 支持：Cloudflare Turnstile、hCaptcha、滑动验证码（base64 图）。
+
+核心原则
+1) 随机逻辑在后端，不在前端。
+2) 最终验签/验票在后端，不信任前端结果。
+3) challenge 一次一用、短时有效、绑定会话（可绑定 IP/UA）。
+
+流程（推荐）
+1. 用户点击“立即登录”。
+2. 前端调用 POST /auth/challenge/start。
+3. 后端随机选 challengeType（turnstile | hcaptcha | slider）。
+4. 后端生成 challengeId、nonce、expiredAt，并保存服务端状态。
+5. 后端返回给前端：
+   - challengeType
+   - challengeId
+   - 渲染参数（siteKey 或 slider 图片 base64 + puzzle 元数据）
+   - expiredAt
+6. 前端按 challengeType 渲染对应弹窗（只渲染，不允许切换类型）。
+7. 用户完成后，前端提交 POST /auth/challenge/verify：
+   - challengeId
+   - challengeType
+   - proof（turnstile/hcaptcha token 或 slider 轨迹/答案）
+8. 后端验证：
+   - turnstile/hcaptcha：服务端 secret 调官方 verify 接口。
+   - slider：服务端校验轨迹/答案/时间窗/签名。
+9. 验证通过后，后端签发一次性 challengePassToken（短期）。
+10. 前端提交登录 POST /auth/login：账号密码 + challengePassToken。
+11. 后端校验 token（未过期、未使用、绑定一致）后才放行登录。
+
+接口建议
+A) POST /auth/challenge/start
+- Request: { scene: "login" }
+- Response:
+  {
+    "challengeType": "turnstile|hcaptcha|slider",
+    "challengeId": "...",
+    "expiredAt": 1710000000000,
+    "config": {
+      "siteKey": "...",          // turnstile/hcaptcha
+      "imageBase64": "...",      // slider
+      "sliderMeta": { "...": "..." }
+    }
+  }
+
+B) POST /auth/challenge/verify
+- Request:
+  {
+    "challengeId": "...",
+    "challengeType": "...",
+    "proof": {
+      "token": "...",            // turnstile/hcaptcha
+      "track": [ ... ],            // slider
+      "answer": "..."            // slider
+    }
+  }
+- Response:
+  {
+    "passed": true,
+    "challengePassToken": "...",
+    "expiresInSec": 120
+  }
+
+C) POST /auth/login
+- Request: { email: "...", password: "...", challengePassToken: "..." }
+- Response: 正常登录结果
+
+安全要点
+- challengeId/nonce 一次性使用（使用后立即失效）。
+- 有效期建议 2~5 分钟。
+- 失败次数限流（账号/IP/设备维度）。
+- 验证与登录都记录风控日志（成功率、失败原因、来源）。
+- 不在前端保存任何 secret。
+
+为什么必须后端参与
+- 前端可被篡改，随机逻辑放前端会被绕过。
+- 第三方验证码 secret 只能放后端。
+- 登录放行必须以后端验签结果为准。

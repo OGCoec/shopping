@@ -1,0 +1,94 @@
+{
+  "groups": [
+    {
+      "name": "captcha",
+      "type": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.secondary",
+      "type": "cloud.tianai.captcha.spring.autoconfiguration.SecondaryVerificationProperties",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "captcha.default-resource-prefix",
+      "type": "java.lang.String",
+      "description": "默认资源的位置.",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.expire",
+      "type": "java.util.Map<java.lang.String,java.lang.Long>",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.font-path",
+      "type": "java.util.List<java.lang.String>",
+      "description": "字体包路径.",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.init-default-resource",
+      "type": "java.lang.Boolean",
+      "description": "是否初始化默认资源.",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "captcha.local-cache-enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.local-cache-expire-time",
+      "type": "java.lang.Long",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.local-cache-ignored-cache-fields",
+      "type": "java.util.Set<java.lang.String>",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.local-cache-period",
+      "type": "java.lang.Integer",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.local-cache-size",
+      "type": "java.lang.Integer",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.local-cache-wait-time",
+      "type": "java.lang.Integer",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.prefix",
+      "type": "java.lang.String",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SpringImageCaptchaProperties"
+    },
+    {
+      "name": "captcha.secondary.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SecondaryVerificationProperties",
+      "defaultValue": false
+    },
+    {
+      "name": "captcha.secondary.expire",
+      "type": "java.lang.Long",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SecondaryVerificationProperties",
+      "defaultValue": 120000
+    },
+    {
+      "name": "captcha.secondary.key-prefix",
+      "type": "java.lang.String",
+      "sourceType": "cloud.tianai.captcha.spring.autoconfiguration.SecondaryVerificationProperties",
+      "defaultValue": "captcha:secondary"
+    }
+  ],
+  "hints": []
+}

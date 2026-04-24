@@ -1,0 +1,19 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "terminal.integrated.env.windows": {
+        "JAVA_TOOL_OPTIONS": "-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Dstdin.encoding=UTF-8"
+    },
+    "terminal.integrated.profiles.windows": {
+        "PowerShell (UTF-8)": {
+            "source": "PowerShell",
+            "args": [
+                "-NoExit",
+                "-Command",
+                "chcp 65001 > $null; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8"
+            ]
+        }
+    },
+    "terminal.integrated.defaultProfile.windows": "PowerShell (UTF-8)",
+    "java.debug.settings.onBuildFailureProceed": true
+}
