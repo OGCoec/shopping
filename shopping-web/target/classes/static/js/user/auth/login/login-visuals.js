@@ -87,6 +87,8 @@
   const FRAME_INTERVAL = 1000 / TARGET_FPS;
   const PARTICLE_INTERACTION_DISTANCE = 120;
   const PARTICLE_INTERACTION_DISTANCE_SQ = PARTICLE_INTERACTION_DISTANCE * PARTICLE_INTERACTION_DISTANCE;
+  const RESIZE_DEBOUNCE_MS = 200;
+  const RESIZE_REINIT_THRESHOLD_PX = 500;
   const HUE_SPEED_MIN = 0.2;
   const HUE_SPEED_MAX = 1.2;
   const shakeIds = ["purple-eyes", "black-eyes", "orange-eyes", "yellow-eyes", "yellow-mouth"];
@@ -109,6 +111,7 @@
     yellowMouthTop: "88px",
     yellowMouthTransform: "rotate(-6deg)"
   };
+  let resizeDebounceTimer = null;
 
   function bindPointerTracking() {
     if (pointerTrackingBound || typeof document === "undefined") {
@@ -225,10 +228,62 @@
   function resizeParticles() {
     ensureParticleCanvas();
     if (!pCanvas) {
-      return;
+      return null;
     }
+    const previousWidth = pWidth || window.innerWidth;
+    const previousHeight = pHeight || window.innerHeight;
     pWidth = pCanvas.width = window.innerWidth;
     pHeight = pCanvas.height = window.innerHeight;
+    return {
+      previousWidth,
+      previousHeight,
+      nextWidth: pWidth,
+      nextHeight: pHeight
+    };
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function scaleParticles(previousWidth, previousHeight, nextWidth, nextHeight) {
+    if (!particles.length || previousWidth <= 0 || previousHeight <= 0) {
+      return;
+    }
+
+    const scaleX = nextWidth / previousWidth;
+    const scaleY = nextHeight / previousHeight;
+
+    particles.forEach((particle) => {
+      particle.x = clamp(particle.x * scaleX, 0, nextWidth);
+      particle.baseX = clamp(particle.baseX * scaleX, 0, nextWidth);
+      particle.y = clamp(particle.y * scaleY, 0, nextHeight);
+      particle.baseY = clamp(particle.baseY * scaleY, 0, nextHeight);
+    });
+  }
+
+  function resizeParticlesNow() {
+    const previousParticleCount = particles.length;
+    numParticles = getAdaptiveParticleCount();
+    const size = resizeParticles();
+    if (!size) {
+      return;
+    }
+
+    const { previousWidth, previousHeight, nextWidth, nextHeight } = size;
+    const widthDelta = Math.abs(nextWidth - previousWidth);
+    const heightDelta = Math.abs(nextHeight - previousHeight);
+    const shouldRebuild =
+      previousParticleCount !== numParticles ||
+      widthDelta > RESIZE_REINIT_THRESHOLD_PX ||
+      heightDelta > RESIZE_REINIT_THRESHOLD_PX;
+
+    if (shouldRebuild) {
+      initParticles();
+      return;
+    }
+
+    scaleParticles(previousWidth, previousHeight, nextWidth, nextHeight);
   }
 
   class DonutParticle {
@@ -617,9 +672,13 @@
   }
 
   function handleVisualResize() {
-    numParticles = getAdaptiveParticleCount();
-    resizeParticles();
-    initParticles();
+    if (resizeDebounceTimer !== null) {
+      clearTimeout(resizeDebounceTimer);
+    }
+    resizeDebounceTimer = setTimeout(() => {
+      resizeDebounceTimer = null;
+      resizeParticlesNow();
+    }, RESIZE_DEBOUNCE_MS);
   }
 
   return {

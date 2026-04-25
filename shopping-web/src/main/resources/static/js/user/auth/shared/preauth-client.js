@@ -9,6 +9,9 @@
   const HEADER_DEVICE_FINGERPRINT = "X-Device-Fingerprint";
   const HEADER_CSRF_TOKEN = "X-XSRF-TOKEN";
   const COOKIE_CSRF_TOKEN = "XSRF-TOKEN";
+  const WAF_REQUIRED_ERROR_CODE = "PREAUTH_IP_CHANGED_WAF_REQUIRED";
+  const WAF_PENDING_REQUEST_KEY = "shopping.preauth.waf.pending-request";
+  const WAF_REPLAY_EVENT_NAME = "shopping:preauth:waf-request-replayed";
 
   const PREAUTH_BOOTSTRAP_URL = "/shopping/auth/preauth/bootstrap";
 
@@ -58,6 +61,172 @@
       cloned.credentials = "same-origin";
     }
     return cloned;
+  }
+
+  function isBrowserRuntime() {
+    return typeof window !== "undefined" && typeof sessionStorage !== "undefined";
+  }
+
+  function toSerializableHeaders(headers) {
+    const serialized = {};
+    try {
+      const normalized = new Headers(headers || {});
+      normalized.forEach((value, key) => {
+        serialized[key] = value;
+      });
+    } catch (_) {
+      return {};
+    }
+    return serialized;
+  }
+
+  function toSerializableBody(body) {
+    if (body == null) {
+      return null;
+    }
+    if (typeof body === "string") {
+      return body;
+    }
+    if (body instanceof URLSearchParams) {
+      return body.toString();
+    }
+    return null;
+  }
+
+  function sanitizeReplayOptions(sourceOptions = {}) {
+    const replay = {};
+    const method = sourceOptions.method ? String(sourceOptions.method) : "GET";
+    replay.method = method;
+    replay.credentials = sourceOptions.credentials || "same-origin";
+    replay.headers = sourceOptions.headers || {};
+    replay.body = sourceOptions.body == null ? null : sourceOptions.body;
+    return replay;
+  }
+
+  function persistWafPendingRequest(url, options = {}) {
+    if (!isBrowserRuntime()) {
+      return;
+    }
+    const serializedBody = toSerializableBody(options.body);
+    if (options.body != null && serializedBody == null) {
+      return;
+    }
+    const payload = {
+      url: String(url || ""),
+      options: {
+        method: options.method || "GET",
+        credentials: options.credentials || "same-origin",
+        headers: toSerializableHeaders(options.headers),
+        body: serializedBody
+      },
+      savedAt: Date.now()
+    };
+    sessionStorage.setItem(WAF_PENDING_REQUEST_KEY, JSON.stringify(payload));
+  }
+
+  function consumeWafPendingRequest() {
+    if (!isBrowserRuntime()) {
+      return null;
+    }
+    const raw = sessionStorage.getItem(WAF_PENDING_REQUEST_KEY);
+    if (!raw) {
+      return null;
+    }
+    sessionStorage.removeItem(WAF_PENDING_REQUEST_KEY);
+    try {
+      return JSON.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function buildDefaultWafVerifyUrl() {
+    if (!isBrowserRuntime()) {
+      return "/shopping/auth/waf/verify";
+    }
+    const currentPath = `${window.location.pathname || "/"}${window.location.search || ""}`;
+    return `/shopping/auth/waf/verify?return=${encodeURIComponent(currentPath)}`;
+  }
+
+  function buildWafReplayEventDetail(url, response, payload, errorMessage = "") {
+    return {
+      url,
+      ok: Boolean(response?.ok),
+      status: Number(response?.status || 0),
+      payload: payload || null,
+      error: errorMessage || ""
+    };
+  }
+
+  function emitWafReplayEvent(detail) {
+    if (!isBrowserRuntime() || typeof window.dispatchEvent !== "function") {
+      return;
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(WAF_REPLAY_EVENT_NAME, { detail }));
+    } catch (_) {
+    }
+  }
+
+  function stripWafVerifiedQueryFlag() {
+    if (!isBrowserRuntime() || !window.history || typeof window.history.replaceState !== "function") {
+      return;
+    }
+    try {
+      const current = new URL(window.location.href);
+      if (!current.searchParams.has("waf_verified")) {
+        return;
+      }
+      current.searchParams.delete("waf_verified");
+      const nextPath = `${current.pathname}${current.search}${current.hash}`;
+      window.history.replaceState(null, "", nextPath);
+    } catch (_) {
+    }
+  }
+
+  function shouldReplayPendingRequestAfterWaf() {
+    if (!isBrowserRuntime()) {
+      return false;
+    }
+    try {
+      const current = new URL(window.location.href);
+      return current.searchParams.get("waf_verified") === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function replayPendingRequestAfterWaf() {
+    if (!shouldReplayPendingRequestAfterWaf()) {
+      return;
+    }
+    const pending = consumeWafPendingRequest();
+    stripWafVerifiedQueryFlag();
+    if (!pending || !pending.url) {
+      return;
+    }
+    try {
+      const replayOptions = sanitizeReplayOptions(pending.options || {});
+      const response = await fetchWithPreAuth(pending.url, replayOptions);
+      const payload = await parseJsonSafely(response.clone());
+      emitWafReplayEvent(buildWafReplayEventDetail(pending.url, response, payload));
+    } catch (error) {
+      emitWafReplayEvent(buildWafReplayEventDetail(
+        pending.url,
+        null,
+        null,
+        error && error.message ? String(error.message) : "replay_failed"
+      ));
+    }
+  }
+
+  function redirectToWafVerify(verifyUrl, url, options) {
+    if (!isBrowserRuntime()) {
+      return;
+    }
+    persistWafPendingRequest(url, options || {});
+    const finalUrl = (verifyUrl && String(verifyUrl).trim()) || buildDefaultWafVerifyUrl();
+    window.location.assign(finalUrl);
   }
 
   function readCookieValue(name) {
@@ -141,8 +310,23 @@
     const requestOptions = cloneOptions(options);
     requestOptions.headers.set(HEADER_DEVICE_FINGERPRINT, buildDeviceFingerprint());
     applyCsrfHeader(requestOptions.headers);
+    if (!bootstrapped) {
+      try {
+        await bootstrapPreAuthToken(false);
+      } catch (_) {
+      }
+      applyCsrfHeader(requestOptions.headers);
+    }
 
     let response = await getNativeFetch()(url, requestOptions);
+    if (response.status === 409) {
+      const wafPayload = await parseJsonSafely(response.clone());
+      const errorCode = wafPayload && wafPayload.error ? String(wafPayload.error) : "";
+      if (errorCode === WAF_REQUIRED_ERROR_CODE) {
+        redirectToWafVerify(wafPayload?.verifyUrl, url, options);
+      }
+      return response;
+    }
     if (response.status !== 401) {
       return response;
     }
@@ -168,9 +352,15 @@
     // no-op, token is now carried by HttpOnly cookie
   }
 
+  if (isBrowserRuntime()) {
+    replayPendingRequestAfterWaf().catch(() => {
+    });
+  }
+
   return {
     HEADER_PREAUTH_TOKEN,
     HEADER_DEVICE_FINGERPRINT,
+    WAF_REPLAY_EVENT_NAME,
     buildDeviceFingerprint,
     bootstrapPreAuthToken,
     fetchWithPreAuth,

@@ -65,10 +65,34 @@ let registerTurnstileApi = null;
 let registerHCaptchaApi = null;
 let registerHutoolCaptchaApi = null;
 
+const REGISTER_ERROR_FALLBACK_MESSAGE = "注册请求失败，请稍后重试";
+
+function isMojibakeLikeMessage(text) {
+  if (!text) {
+    return false;
+  }
+  if (text.includes("�")) {
+    return true;
+  }
+  const suspiciousMatches = text.match(/[鍙锛鏄璇鐨鎴濡鏉娉缁閿锟]/g);
+  return (suspiciousMatches?.length || 0) >= 2;
+}
+
+function normalizeRegisterErrorMessage(message) {
+  const normalized = typeof message === "string" ? message.trim() : "";
+  if (!normalized) {
+    return REGISTER_ERROR_FALLBACK_MESSAGE;
+  }
+  if (isMojibakeLikeMessage(normalized)) {
+    return REGISTER_ERROR_FALLBACK_MESSAGE;
+  }
+  return normalized;
+}
+
 function showRegisterError(message, triggerAnimation = true) {
   const registerErrorMessage = document.getElementById("register-error-msg");
   if (!registerErrorMessage) return;
-  registerErrorMessage.textContent = message;
+  registerErrorMessage.textContent = normalizeRegisterErrorMessage(message);
   registerErrorMessage.style.display = "block";
   if (triggerAnimation) {
     triggerLoginError();
@@ -108,6 +132,17 @@ function openRegisterOtpAfterEmailSent(deliveryPayload = null) {
 
   showRegisterError("Email code sent, but OTP step is unavailable.", false);
   return false;
+}
+
+async function resendRegisterEmailCodeFromOtp() {
+  if (!registerFormApi || typeof registerFormApi.resendRegisterEmailCode !== "function") {
+    return {
+      success: false,
+      message: "注册能力尚未就绪，请稍后重试。",
+      submitCooldownMs: 0
+    };
+  }
+  return registerFormApi.resendRegisterEmailCode();
 }
 
 registerFormApi = createRegisterForm({
@@ -190,6 +225,10 @@ registerHCaptchaApi = createRegisterHCaptcha({
     return registerFormApi.getPendingRegisterPayload();
   }
 });
+
+if (typeof window !== "undefined") {
+  window.resendRegisterEmailCode = resendRegisterEmailCodeFromOtp;
+}
 
 function showRegisterCaptchaError(message) {
   return registerHutoolCaptchaApi.showRegisterCaptchaError(message);
@@ -371,7 +410,7 @@ function initializeRegisterFragment() {
           return;
         }
         const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-        applyButtonText(`鐠囬鐡戝?${remainingSeconds}s`);
+        applyButtonText(`请稍后重试 ${remainingSeconds}s`);
         setRegisterSubmitLocked(true);
       };
 
@@ -397,7 +436,7 @@ function initializeRegisterFragment() {
           applyButtonText(defaultButtonText);
         }
       } catch (_) {
-        showRegisterError("濞夈劌鍞界拠閿嬬湴婢惰精瑙﹂敍宀冾嚞缁嬪秴鎮楅柌宥堢槸");
+        showRegisterError("注册请求失败，请稍后重试");
       } finally {
         registerSubmitButton.dataset.submitting = "false";
         if (!isSubmitCoolingDown()) {
@@ -471,6 +510,3 @@ if (typeof module !== "undefined" && module.exports) {
     renderHCaptcha
   };
 }
-
-
-

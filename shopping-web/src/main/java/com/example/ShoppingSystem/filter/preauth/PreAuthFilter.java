@@ -10,6 +10,8 @@ import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -17,7 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Pre-auth gate for anonymous register APIs.
+ * Pre-auth gate for protected requests.
  */
 public class PreAuthFilter extends OncePerRequestFilter {
 
@@ -38,6 +40,7 @@ public class PreAuthFilter extends OncePerRequestFilter {
     private static final Set<String> PUBLIC_ANY_METHOD_PATHS = Set.of(
             "/shopping/auth/preauth/bootstrap",
             "/shopping/auth/preauth/phone-country",
+            "/shopping/auth/waf/verify",
             "/favicon.ico"
     );
 
@@ -116,16 +119,25 @@ public class PreAuthFilter extends OncePerRequestFilter {
                 request
         );
         if (!outcome.valid()) {
-            refreshExpiredCookie(response, request);
             switch (outcome.error()) {
-                case EXPIRED ->
+                case EXPIRED -> {
+                        refreshExpiredCookie(response, request);
                         writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED, "PREAUTH_EXPIRED", "预登录令牌不存在或已过期", null);
-                case FINGERPRINT_MISMATCH ->
+                }
+                case FINGERPRINT_MISMATCH -> {
+                        refreshExpiredCookie(response, request);
                         writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED, "PREAUTH_FINGERPRINT_MISMATCH", "设备指纹不匹配", null);
-                case USER_AGENT_MISMATCH ->
+                }
+                case USER_AGENT_MISMATCH -> {
+                        refreshExpiredCookie(response, request);
                         writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED, "PREAUTH_UA_MISMATCH", "设备环境已变化，请重新初始化", null);
-                default ->
+                }
+                case IP_CHANGED_WAF_REQUIRED ->
+                        writeWafVerificationRequired(response, request);
+                default -> {
+                        refreshExpiredCookie(response, request);
                         writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED, "PREAUTH_INVALID", "预登录状态无效", null);
+                }
             }
             return;
         }
@@ -160,6 +172,16 @@ public class PreAuthFilter extends OncePerRequestFilter {
                                 String errorCode,
                                 String message,
                                 PreAuthBindingService.PreAuthBinding binding) throws IOException {
+        writeJsonError(response, request, status, errorCode, message, binding, null);
+    }
+
+    private void writeJsonError(HttpServletResponse response,
+                                HttpServletRequest request,
+                                int status,
+                                String errorCode,
+                                String message,
+                                PreAuthBindingService.PreAuthBinding binding,
+                                String verifyUrl) throws IOException {
         if (response.isCommitted()) {
             return;
         }
@@ -177,6 +199,83 @@ public class PreAuthFilter extends OncePerRequestFilter {
         if (binding != null) {
             body.put("riskLevel", binding.riskLevel());
         }
+        if (verifyUrl != null && !verifyUrl.isBlank()) {
+            body.put("verifyUrl", verifyUrl);
+        }
         objectMapper.writeValue(response.getWriter(), body);
+    }
+
+    private void writeWafVerificationRequired(HttpServletResponse response,
+                                              HttpServletRequest request) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+
+        response.addHeader("Set-Cookie", preAuthBindingService.buildWafRequiredCookie(request).toString());
+        boolean htmlNavigation = isHtmlNavigationRequest(request);
+        String verifyUrl = htmlNavigation
+                ? buildWafVerifyUrlFromCurrentRequest(request)
+                : buildWafVerifyUrlFromReferer(request);
+        if (htmlNavigation) {
+            response.setStatus(HttpServletResponse.SC_FOUND);
+            response.setHeader("Location", verifyUrl);
+            return;
+        }
+        writeJsonError(
+                response,
+                request,
+                HttpServletResponse.SC_CONFLICT,
+                "PREAUTH_IP_CHANGED_WAF_REQUIRED",
+                "检测到网络环境变化，请先完成安全验证后重试",
+                null,
+                verifyUrl);
+    }
+
+    private String buildWafVerifyUrlFromCurrentRequest(HttpServletRequest request) {
+        String returnPath = request.getRequestURI();
+        String query = request.getQueryString();
+        if (query != null && !query.isBlank()) {
+            returnPath += "?" + query;
+        }
+        return buildWafVerifyUrl(returnPath);
+    }
+
+    private String buildWafVerifyUrlFromReferer(HttpServletRequest request) {
+        String referer = request.getHeader("Referer");
+        if (referer == null || referer.isBlank()) {
+            return null;
+        }
+        try {
+            URI refererUri = URI.create(referer.trim());
+            String path = refererUri.getPath();
+            if (path == null || path.isBlank() || !path.startsWith("/") || path.startsWith("//")) {
+                return null;
+            }
+            if (path.startsWith("/shopping/auth/waf/verify")) {
+                return null;
+            }
+            String query = refererUri.getQuery();
+            String returnPath = (query == null || query.isBlank()) ? path : path + "?" + query;
+            return buildWafVerifyUrl(returnPath);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String buildWafVerifyUrl(String returnPath) {
+        if (returnPath == null || returnPath.isBlank()) {
+            return "/shopping/auth/waf/verify";
+        }
+        return "/shopping/auth/waf/verify?return="
+                + URLEncoder.encode(returnPath, StandardCharsets.UTF_8);
+    }
+
+    private boolean isHtmlNavigationRequest(HttpServletRequest request) {
+        String method = request.getMethod();
+        if (!isGetLikeMethod(method)) {
+            return false;
+        }
+        String accept = request.getHeader("Accept");
+        return accept != null && accept.contains("text/html");
     }
 }

@@ -83,6 +83,8 @@
     let startTime = 0;
     let clickCoords = [];
     let tianaiRequestSeq = 0;
+    const WORD_CLICK_REQUIRED_POINTS = 4;
+    let wordClickAutoSubmitting = false;
 
     function normalizeTianaiSubType(subType, fallback = "SLIDER") {
       const normalized = (subType || "").trim().toUpperCase();
@@ -141,6 +143,7 @@
       document.getElementById("register-tianai-slider-area").style.display = "none";
       document.getElementById("register-tianai-click-area").style.display = "none";
       updateTianaiActionButtons(false);
+      wordClickAutoSubmitting = false;
 
       const tpl = document.getElementById("register-tianai-slider-tpl");
       const btn = document.getElementById("register-tianai-track-btn");
@@ -202,7 +205,7 @@
 
         if (currentTianaiSubType === "WORD_IMAGE_CLICK") {
           document.getElementById("register-tianai-click-area").style.display = "block";
-          updateTianaiActionButtons(true);
+          updateTianaiActionButtons(false);
           document.getElementById("register-tianai-click-bg").src = payload.backgroundImage || "";
           const clickTpl = document.getElementById("register-tianai-click-tpl");
           if (clickTpl) clickTpl.src = payload.templateImage || "";
@@ -354,12 +357,14 @@
       clickCoords = [];
       trackList = [];
       startTime = Date.now();
+      wordClickAutoSubmitting = false;
 
       const newBox = box.cloneNode(true);
       box.parentNode.replaceChild(newBox, box);
 
       newBox.addEventListener("click", (event) => {
-        if (!tianaiActive) return;
+        if (!tianaiActive || wordClickAutoSubmitting) return;
+        if (clickCoords.length >= WORD_CLICK_REQUIRED_POINTS) return;
 
         const rect = newBox.getBoundingClientRect();
         const x = event.clientX - rect.left;
@@ -388,6 +393,21 @@
         document.getElementById("register-tianai-click-markers").appendChild(marker);
 
         clickCoords.push({ x, y });
+        if (clickCoords.length === WORD_CLICK_REQUIRED_POINTS) {
+          wordClickAutoSubmitting = true;
+          setTimeout(() => {
+            continueRegisterWithTianai()
+              .catch(() => {
+                showTianaiError("验证失败，请重试");
+                triggerCaptchaFailureAnimation?.();
+              })
+              .finally(() => {
+                if (tianaiActive && currentTianaiSubType === "WORD_IMAGE_CLICK") {
+                  wordClickAutoSubmitting = false;
+                }
+              });
+          }, 120);
+        }
       });
     }
 
@@ -398,6 +418,10 @@
       }
 
       if (currentTianaiSubType === "WORD_IMAGE_CLICK") {
+        if (clickCoords.length < WORD_CLICK_REQUIRED_POINTS) {
+          showTianaiError(`请依次点击 ${WORD_CLICK_REQUIRED_POINTS} 个文字后自动验证`);
+          return;
+        }
         const bg = document.getElementById("register-tianai-click-bg");
         const bgDisplaySize = getElementDisplaySize(bg, 278, 200);
         tianaiTrackData = JSON.stringify(buildTianaiWordClickPayload({
@@ -423,6 +447,7 @@
           : (payload.message || "验证失败，请重试");
         showTianaiError(errorMessage);
         triggerCaptchaFailureAnimation?.();
+        wordClickAutoSubmitting = false;
         if (!canRetryCurrentTianai) {
           return;
         }

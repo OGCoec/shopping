@@ -33,13 +33,13 @@ reference_score = clamp(
 ----------------------------------------
 如果第三方 API 返回 fraud_score（范围假设为 0~100）：
 
-fraud_penalty = fraud_score * 46
+fraud_penalty = fraud_score * 80
 
 举例：
 - fraud_score = 0   -> 扣 0 分
-- fraud_score = 10  -> 扣 460 分
-- fraud_score = 50  -> 扣 2300 分
-- fraud_score = 100 -> 扣 4600 分
+- fraud_score = 10  -> 扣 800 分
+- fraud_score = 50  -> 扣 4000 分
+- fraud_score = 100 -> 扣 8000 分
 
 ----------------------------------------
 2）用途类型惩罚 usage_type_penalty
@@ -122,10 +122,11 @@ flag_penalty =
 建议加分规则：
 
 trust_bonus =
-    (address_type == "Unicast" ? 100 : 0)
+    (address_type == "UNICAST" ? 100 : 0)
   + (fraud_score <= 5 ? 150 : 0)
   + ((usage_type == "RESIDENTIAL" 或 usage_type == "MOBILE")
-      且所有 proxy 布尔值都为 false ? 300 : 0)
+      且所有 proxy 布尔值都为 false（vpn/tor/data_center/public_proxy/web_proxy/residential_proxy/cpn/epn）
+      ? 300 : 0)
 
 说明：
 - 加分一定要比扣分保守。
@@ -135,7 +136,7 @@ trust_bonus =
 三、Java 伪代码
 --------------------------------------------------------
 
-int fraudPenalty = fraudScore * 46;
+int fraudPenalty = fraudScore * 80;
 
 int usageTypePenalty = switch (usageType) {
     case "RESIDENTIAL" -> 0;
@@ -180,10 +181,11 @@ int asUsagePenalty = switch (asUsageType) {
 };
 
 int trustBonus = 0;
-if ("Unicast".equals(addressType)) trustBonus += 100;
+if ("UNICAST".equals(addressType)) trustBonus += 100;
 if (fraudScore <= 5) trustBonus += 150;
 if (("RESIDENTIAL".equals(usageType) || "MOBILE".equals(usageType))
-        && !isVpn && !isTor && !isDataCenter && !isPublicProxy && !isWebProxy) {
+        && !isVpn && !isTor && !isDataCenter && !isPublicProxy && !isWebProxy
+        && !isResidentialProxy && !isConsumerPrivacyNetwork && !isEnterprisePrivateNetwork) {
     trustBonus += 300;
 }
 
@@ -213,10 +215,10 @@ int baseScore = referenceScore;
 - proxy.is_public_proxy = false
 - proxy.is_residential_proxy = false
 - as_info.as_usage_type = DCH
-- address_type = Unicast
+- address_type = UNICAST
 
 计算：
-- fraud_penalty = 3 * 46 = 138
+- fraud_penalty = 3 * 80 = 240
 - usage_type_penalty = 1510
 - proxy_type_penalty = 1340
 - flag_penalty = 400
@@ -224,10 +226,10 @@ int baseScore = referenceScore;
 - trust_bonus = 100 + 150 = 250
 
 最终：
-reference_score = 10000 - 138 - 1510 - 1340 - 400 - 600 + 250
-                = 6262
+reference_score = 10000 - 240 - 1510 - 1340 - 400 - 600 + 250
+                = 7000
 
-base_score = 6262
+base_score = 7000
 
 --------------------------------------------------------
 五、风险等级建议（按 10000 分制）

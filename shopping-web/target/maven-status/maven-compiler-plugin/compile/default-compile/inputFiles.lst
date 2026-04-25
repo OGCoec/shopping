@@ -4,6 +4,7 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\SchedulingErrorHandler.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\SecurityConfig.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\SnowflakeConfig.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\SpaCsrfTokenRequestHandler.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\auth\dto\PreAuthBootstrapResponse.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\auth\dto\PreAuthPhoneCountryResponse.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\auth\PreAuthBootstrapController.java

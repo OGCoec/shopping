@@ -33,6 +33,7 @@ public class SecurityConfig {
             "/shopping/user/forgot-password",
             "/shopping/auth/preauth/bootstrap",
             "/shopping/auth/preauth/phone-country",
+            "/shopping/auth/waf/verify",
             "/css/**",
             "/js/**",
             "/images/**",
@@ -83,6 +84,7 @@ public class SecurityConfig {
                         .failureHandler(failureHandler))
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .ignoringRequestMatchers(
                                 "/shopping/auth/preauth/**",
                                 "/shopping/user/forgot-password",

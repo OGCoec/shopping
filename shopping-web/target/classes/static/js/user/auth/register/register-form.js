@@ -13,6 +13,14 @@
     ? preAuthClientApi.fetchWithPreAuth
     : fetch;
 
+  async function parseJsonSafely(response) {
+    try {
+      return await response.json();
+    } catch (_) {
+      return {};
+    }
+  }
+
   function checkRegisterPasswordStrength(password) {
     if (!password || password.length <= 6) return 0;
 
@@ -243,7 +251,7 @@
         body: JSON.stringify(pendingRegisterPayload)
       });
 
-      const payload = await response.json();
+      const payload = await parseJsonSafely(response);
       if (!response.ok) {
         showRegisterError?.(payload.message || "注册请求失败");
         return { submitCooldownMs: 0 };
@@ -263,7 +271,7 @@
       pendingRegisterPayload.challengeSubType = "";
 
       const deliveryResponse = await requestRegisterEmailCodeDelivery("", "");
-      const deliveryPayload = await deliveryResponse.json();
+      const deliveryPayload = await parseJsonSafely(deliveryResponse);
       if (!deliveryResponse.ok || !deliveryPayload.success) {
         const challengeResult = await handleChallengeRequirement(deliveryPayload);
         if (challengeResult.handled) {
@@ -279,12 +287,53 @@
       return { submitCooldownMs: 0 };
     }
 
+    async function resendRegisterEmailCode() {
+      if (!pendingRegisterPayload) {
+        return {
+          success: false,
+          message: "注册上下文已失效，请返回注册表单重新提交。",
+          submitCooldownMs: 0
+        };
+      }
+
+      const deliveryResponse = await requestRegisterEmailCodeDelivery("", "");
+      const deliveryPayload = await parseJsonSafely(deliveryResponse);
+      if (!deliveryResponse.ok || !deliveryPayload.success) {
+        const challengeResult = await handleChallengeRequirement(deliveryPayload);
+        if (challengeResult.handled) {
+          const timeoutMessage = challengeResult.submitCooldownMs > 0
+            ? buildOperationTimeoutMessage(deliveryPayload).message
+            : "";
+          return {
+            success: false,
+            message: timeoutMessage || deliveryPayload.message || "请先完成安全验证。",
+            submitCooldownMs: challengeResult.submitCooldownMs
+          };
+        }
+        return {
+          success: false,
+          message: deliveryPayload.message || "重新发送失败，请稍后重试。",
+          submitCooldownMs: 0
+        };
+      }
+
+      pendingRegisterPayload.riskLevel = deliveryPayload.riskLevel || pendingRegisterPayload.riskLevel || "";
+      pendingRegisterPayload.requirePhoneBinding = Boolean(deliveryPayload.requirePhoneBinding);
+      openRegisterOtpAfterEmailSent?.(deliveryPayload);
+      return {
+        success: true,
+        message: "邮箱验证码已重新发送",
+        submitCooldownMs: 0
+      };
+    }
+
     return {
       checkRegisterPasswordStrength,
       getRegisterPasswordStrengthWidth,
       updateRegisterPasswordStrengthDisplay,
       buildRegisterDeviceFingerprint,
       submitRegisterEmailCode,
+      resendRegisterEmailCode,
       requestRegisterEmailCodeDelivery,
       getPendingRegisterPayload() {
         return pendingRegisterPayload;

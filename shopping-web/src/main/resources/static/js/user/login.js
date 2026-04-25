@@ -170,14 +170,102 @@ if (backToPasswordBtn) {
 }
 
 if (otpResendBtn) {
-  otpResendBtn.addEventListener("click", () => {
+  let registerResendCooldownUntil = 0;
+  let registerResendCooldownTimer = null;
+
+  const clearRegisterResendCooldownTimer = () => {
+    if (!registerResendCooldownTimer) {
+      return;
+    }
+    clearInterval(registerResendCooldownTimer);
+    registerResendCooldownTimer = null;
+  };
+
+  const applyOtpResendButtonState = (text, disabled) => {
+    otpResendBtn.textContent = text;
+    otpResendBtn.disabled = disabled;
+    otpResendBtn.setAttribute("aria-disabled", disabled ? "true" : "false");
+  };
+
+  const refreshRegisterResendCooldown = () => {
+    const remainingMs = Math.max(0, registerResendCooldownUntil - Date.now());
+    if (remainingMs <= 0) {
+      clearRegisterResendCooldownTimer();
+      registerResendCooldownUntil = 0;
+      otpApi.syncOtpViewCopy();
+      applyOtpResendButtonState(otpResendBtn.textContent || "重新发送电子邮件", false);
+      return;
+    }
+    const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+    applyOtpResendButtonState(`${remainingSeconds}s 后可重发`, true);
+  };
+
+  const startRegisterResendCooldown = (cooldownMs) => {
+    const safeCooldownMs = Math.max(0, Math.round(Number(cooldownMs) || 0));
+    if (safeCooldownMs <= 0) {
+      return;
+    }
+    registerResendCooldownUntil = Date.now() + safeCooldownMs;
+    clearRegisterResendCooldownTimer();
+    refreshRegisterResendCooldown();
+    registerResendCooldownTimer = setInterval(refreshRegisterResendCooldown, 200);
+  };
+
+  otpResendBtn.addEventListener("click", async () => {
     const otpErrorMessage = document.getElementById("otp-error-msg");
     if (!otpErrorMessage) return;
 
-    otpErrorMessage.textContent = otpApi.getCurrentOtpScenario() === "register"
-      ? "如需重新发送，请返回注册表单重新提交。"
-      : otpApi.getOtpResendMessage();
-    otpErrorMessage.style.display = "block";
+    const isRegisterScenario = otpApi.getCurrentOtpScenario() === "register";
+    if (!isRegisterScenario) {
+      otpErrorMessage.textContent = otpApi.getOtpResendMessage();
+      otpErrorMessage.style.display = "block";
+      return;
+    }
+
+    if (otpResendBtn.dataset.submitting === "true") {
+      return;
+    }
+    if (Date.now() < registerResendCooldownUntil) {
+      refreshRegisterResendCooldown();
+      return;
+    }
+
+    otpResendBtn.dataset.submitting = "true";
+    applyOtpResendButtonState("发送中...", true);
+    try {
+      if (typeof window.resendRegisterEmailCode !== "function") {
+        otpErrorMessage.textContent = "重发功能暂未就绪，请返回注册表单重新提交。";
+        otpErrorMessage.style.display = "block";
+        triggerLoginError();
+        return;
+      }
+
+      const resendResult = await window.resendRegisterEmailCode();
+      const submitCooldownMs = Math.max(0, Math.round(Number(resendResult?.submitCooldownMs) || 0));
+
+      otpErrorMessage.textContent = resendResult?.message || (resendResult?.success
+        ? "邮箱验证码已重新发送"
+        : "重新发送失败，请稍后重试。");
+      otpErrorMessage.style.display = "block";
+      if (!resendResult?.success) {
+        triggerLoginError();
+      }
+      if (submitCooldownMs > 0) {
+        startRegisterResendCooldown(submitCooldownMs);
+      }
+    } catch (_) {
+      otpErrorMessage.textContent = "重新发送失败，请稍后重试。";
+      otpErrorMessage.style.display = "block";
+      triggerLoginError();
+    } finally {
+      otpResendBtn.dataset.submitting = "false";
+      if (Date.now() >= registerResendCooldownUntil) {
+        clearRegisterResendCooldownTimer();
+        registerResendCooldownUntil = 0;
+        otpApi.syncOtpViewCopy();
+        applyOtpResendButtonState(otpResendBtn.textContent || "重新发送电子邮件", false);
+      }
+    }
   });
 }
 
