@@ -17,4 +17,6 @@ if errorlevel 1 (
 
 echo.
 echo Done.
+echo Exiting in 2 seconds...
+ping 127.0.0.1 -n 3 >nul
 exit /b 0

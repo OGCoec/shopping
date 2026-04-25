@@ -7,6 +7,8 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   const HEADER_PREAUTH_TOKEN = "X-Pre-Auth-Token"; // legacy, no longer used by default
   const HEADER_DEVICE_FINGERPRINT = "X-Device-Fingerprint";
+  const HEADER_CSRF_TOKEN = "X-XSRF-TOKEN";
+  const COOKIE_CSRF_TOKEN = "XSRF-TOKEN";
 
   const PREAUTH_BOOTSTRAP_URL = "/shopping/auth/preauth/bootstrap";
 
@@ -58,6 +60,34 @@
     return cloned;
   }
 
+  function readCookieValue(name) {
+    if (typeof document === "undefined" || !document.cookie) {
+      return "";
+    }
+    const target = `${name}=`;
+    const entries = document.cookie.split(";");
+    for (let index = 0; index < entries.length; index += 1) {
+      const item = entries[index].trim();
+      if (item.startsWith(target)) {
+        return decodeURIComponent(item.substring(target.length));
+      }
+    }
+    return "";
+  }
+
+  function applyCsrfHeader(headers) {
+    if (!headers || typeof headers.set !== "function") {
+      return;
+    }
+    if (headers.has(HEADER_CSRF_TOKEN)) {
+      return;
+    }
+    const csrfToken = readCookieValue(COOKIE_CSRF_TOKEN);
+    if (csrfToken) {
+      headers.set(HEADER_CSRF_TOKEN, csrfToken);
+    }
+  }
+
   async function bootstrapPreAuthToken(force = false) {
     if (bootstrapTask) {
       return bootstrapTask;
@@ -75,6 +105,7 @@
         "Content-Type": "application/json",
         [HEADER_DEVICE_FINGERPRINT]: buildDeviceFingerprint()
       });
+      applyCsrfHeader(requestHeaders);
 
       const response = await getNativeFetch()(PREAUTH_BOOTSTRAP_URL, {
         method: "POST",
@@ -109,6 +140,7 @@
   async function fetchWithPreAuth(url, options = {}) {
     const requestOptions = cloneOptions(options);
     requestOptions.headers.set(HEADER_DEVICE_FINGERPRINT, buildDeviceFingerprint());
+    applyCsrfHeader(requestOptions.headers);
 
     let response = await getNativeFetch()(url, requestOptions);
     if (response.status !== 401) {
@@ -123,6 +155,7 @@
     await bootstrapPreAuthToken(true);
     const retryOptions = cloneOptions(options);
     retryOptions.headers.set(HEADER_DEVICE_FINGERPRINT, buildDeviceFingerprint());
+    applyCsrfHeader(retryOptions.headers);
     return getNativeFetch()(url, retryOptions);
   }
 

@@ -85,7 +85,6 @@ public class SecurityConfig {
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .ignoringRequestMatchers(
                                 "/shopping/auth/preauth/**",
-                                "/shopping/user/register/**",
                                 "/shopping/user/forgot-password",
                                 "/shopping/user/forgot-password/**"
                         ))
