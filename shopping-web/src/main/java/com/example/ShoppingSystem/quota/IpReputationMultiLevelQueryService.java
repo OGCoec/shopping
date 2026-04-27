@@ -17,9 +17,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * IP 风险多级查询链：本地缓存 -> Redis -> DB -> API。
- * <p>
- * 约束：本地缓存与 Redis 仅缓存 score + country；DB 保留详情用于审计与回写。
+ * Multi-level IP reputation lookup pipeline: local cache -> Redis -> DB -> upstream APIs.
+ * Returns the first usable score or evidence and warms lower layers asynchronously when possible.
  */
 @Service
 public class IpReputationMultiLevelQueryService {
@@ -50,7 +49,7 @@ public class IpReputationMultiLevelQueryService {
     @Value("${register.ip-risk-multi-level.enabled:true}")
     private boolean enabled;
 
-    @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:}")
+    @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:v2:}")
     private String redisKeyPrefix;
 
     @Value("${register.ip-risk-multi-level.db-expire-hours:24}")
@@ -104,7 +103,7 @@ public class IpReputationMultiLevelQueryService {
         if (dbHit != null) {
             localCacheStore.putRisk(ip, dbHit.score(), dbHit.country());
             if (dbHit.payload() != null) {
-                // DB 命中后通过统一回写编排补热 Redis，避免主流程直接阻塞在写操作。
+                // Warm Redis asynchronously on DB hit.
                 writebackOrchestrator.orchestrate(SOURCE_DB, ip, dbHit.payload());
             }
             IpReputationEvidence evidence = dbHit.evidence() != null
@@ -145,18 +144,22 @@ public class IpReputationMultiLevelQueryService {
                 if (country == null) {
                     country = normalizeCountryCode(readTextNode(root, "countryCode"));
                 }
-                return new RiskCacheHit(clamp(score, SCORE_MIN, SCORE_MAX), country);
+                return new RiskCacheHit(
+                        clamp(score, SCORE_MIN, SCORE_MAX),
+                        country);
             }
 
             Integer score = toInt(trimmed);
             if (score == null) {
-                // 历史格式或脏值直接清理，避免后续重复解析失败。
+                // Drop malformed legacy cache content to avoid repeated parse failures.
                 stringRedisTemplate.delete(redisKey(ip));
                 return null;
             }
-            return new RiskCacheHit(clamp(score, SCORE_MIN, SCORE_MAX), null);
+            return new RiskCacheHit(
+                    clamp(score, SCORE_MIN, SCORE_MAX),
+                    null);
         } catch (Exception e) {
-            log.debug("IP风险Redis读取失败：ip={}，reason={}", ip, e.getMessage());
+            log.debug("IP risk Redis cache read failed, ip={}, reason={}", ip, e.getMessage());
             return null;
         }
     }
@@ -189,19 +192,21 @@ public class IpReputationMultiLevelQueryService {
             }
 
             try {
-                IpRiskCachedPayload payload = objectMapper.readValue(rawJson, IpRiskCachedPayload.class)
-                        .withCurrentScore(score);
+                JsonNode rawNode = objectMapper.readTree(rawJson);
+                IpRiskCachedPayload payload = objectMapper.treeToValue(rawNode, IpRiskCachedPayload.class);
                 if (payload.country() == null && country != null) {
                     payload = payload.withCountry(country);
                 }
-                return new DbHit(score, toEvidence(payload), payload, payload.country());
+                int recalculatedScore = calculateScore(normalize(payload));
+                payload = payload.withCurrentScore(recalculatedScore);
+                return new DbHit(recalculatedScore, toEvidence(payload), payload, payload.country());
             } catch (Exception parseException) {
-                log.debug("IP风险DB详情解析失败：ip={}，reason={}", ip, parseException.getMessage());
+                log.debug("IP risk DB payload parse failed, ip={}, reason={}", ip, parseException.getMessage());
                 IpRiskCachedPayload payload = buildDbMinimalPayload(score, country, expiresAtEpochMillis, now);
                 return new DbHit(score, null, payload, country);
             }
         } catch (Exception e) {
-            log.debug("IP风险DB读取失败：ip={}，reason={}", ip, e.getMessage());
+            log.debug("IP risk DB lookup failed, ip={}, reason={}", ip, e.getMessage());
             return null;
         }
     }
@@ -215,15 +220,19 @@ public class IpReputationMultiLevelQueryService {
         if (shouldFallbackToIping(ip2LocationResult)) {
             IpingApiHttpService.IpingQueryResult ipingResult = ipingApiHttpService.queryByIp(ip);
             if (ipingResult.success() && ipingResult.riskFields() != null) {
-                log.info("IP风控已从IP2Location降级到IPING：ip={}，ip2Reason={}，ipingReason={}",
+                log.info("IP reputation fallback succeeded, ip={}, primaryProvider={}, primaryReason={}, fallbackProvider={}, fallbackReason={}",
                         ip,
+                        PROVIDER_IP2LOCATION,
                         ip2LocationResult.reason(),
+                        PROVIDER_IPING,
                         ipingResult.reason());
                 return toCachedPayload(ipingResult.riskFields(), now, PROVIDER_IPING);
             }
-            log.warn("IP风控降级到IPING失败：ip={}，ip2Reason={}，ipingReason={}",
+            log.warn("IP reputation fallback failed, ip={}, primaryProvider={}, primaryReason={}, fallbackProvider={}, fallbackReason={}",
                     ip,
+                    PROVIDER_IP2LOCATION,
                     ip2LocationResult != null ? ip2LocationResult.reason() : "null_result",
+                    PROVIDER_IPING,
                     ipingResult.reason());
         }
         return null;
@@ -376,6 +385,40 @@ public class IpReputationMultiLevelQueryService {
                 parseDecimal(fields.latitude()),
                 parseDecimal(fields.longitude()),
                 isProxy,
+                isTor,
+                isPublicProxy,
+                isWebProxy,
+                isVpn,
+                isDataCenter,
+                isResidentialProxy,
+                isConsumerPrivacyNetwork,
+                isEnterprisePrivateNetwork
+        );
+    }
+
+    private NormalizedRisk normalize(IpRiskCachedPayload payload) {
+        String proxyType = normalizeToken(payload.proxyType());
+        boolean isTor = payload.proxyIsTor() || "TOR".equals(proxyType);
+        boolean isPublicProxy = payload.proxyIsPublicProxy() || "PUB".equals(proxyType);
+        boolean isWebProxy = payload.proxyIsWebProxy() || "WEB".equals(proxyType);
+        boolean isVpn = payload.proxyIsVpn() || "VPN".equals(proxyType);
+        boolean isDataCenter = payload.proxyIsDataCenter() || "DCH".equals(proxyType);
+        boolean isResidentialProxy = payload.proxyIsResidentialProxy() || "RES".equals(proxyType);
+        boolean isConsumerPrivacyNetwork = payload.proxyIsConsumerPrivacyNetwork() || "CPN".equals(proxyType);
+        boolean isEnterprisePrivateNetwork = payload.proxyIsEnterprisePrivateNetwork() || "EPN".equals(proxyType);
+        int fraudScore = clamp(payload.fraudScore(), 0, 100);
+        return new NormalizedRisk(
+                fraudScore,
+                normalizeToken(payload.usageType()),
+                proxyType,
+                normalizeToken(payload.asUsageType()),
+                normalizeToken(payload.addressType()),
+                normalizeToken(payload.asn()),
+                normalizeNullableText(payload.providerName()),
+                normalizeCountryCode(payload.country()),
+                payload.latitude(),
+                payload.longitude(),
+                payload.isProxy(),
                 isTor,
                 isPublicProxy,
                 isWebProxy,
@@ -635,4 +678,8 @@ public class IpReputationMultiLevelQueryService {
                                   boolean isEnterprisePrivateNetwork) {
     }
 }
+
+
+
+
 

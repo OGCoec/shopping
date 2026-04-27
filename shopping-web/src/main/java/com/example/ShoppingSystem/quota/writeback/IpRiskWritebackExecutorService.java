@@ -21,11 +21,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 按动作执行 IP 风险数据回写。
- * <p>
- * 规则：
- * 1) DB 允许落详细字段；
- * 2) 本地缓存与 Redis 仅写入 score + country 最小可用信息，降低缓存体积。
+ * Executes IP risk writeback actions.
  */
 @Service
 public class IpRiskWritebackExecutorService {
@@ -38,7 +34,7 @@ public class IpRiskWritebackExecutorService {
     private final IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService;
     private final IpRiskLocalCacheStore localCacheStore;
 
-    @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:}")
+    @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:v2:}")
     private String redisKeyPrefix;
 
     @Value("${register.ip-risk-multi-level.redis-ttl-minutes:60}")
@@ -140,9 +136,9 @@ public class IpRiskWritebackExecutorService {
                 );
             }
         } catch (JsonProcessingException e) {
-            log.warn("IP风险异步回写DB失败：ip={}，原因=raw_json_serialize_error", ip);
+            log.warn("IP risk writeback DB failed due to payload serialization, ip={}", ip);
         } catch (Exception e) {
-            log.warn("IP风险异步回写DB失败：ip={}，原因={}", ip, e.getMessage());
+            log.warn("IP risk writeback DB failed, ip={}, reason={}", ip, e.getMessage());
         }
     }
 
@@ -152,10 +148,12 @@ public class IpRiskWritebackExecutorService {
             int jitter = Math.max(0, redisTtlJitterMinutes);
             int extra = jitter == 0 ? 0 : ThreadLocalRandom.current().nextInt(jitter + 1);
             String cacheValue = objectMapper.writeValueAsString(
-                    new RedisRiskCacheValue(score, normalizeCountryCode(country)));
+                    new RedisRiskCacheValue(
+                            score,
+                            normalizeCountryCode(country)));
             stringRedisTemplate.opsForValue().set(redisKey(ip), cacheValue, ttl + extra, TimeUnit.MINUTES);
         } catch (Exception e) {
-            log.warn("IP风险异步回写Redis失败：ip={}，原因={}", ip, e.getMessage());
+            log.warn("IP risk writeback Redis failed, ip={}, reason={}", ip, e.getMessage());
         }
     }
 
@@ -163,7 +161,7 @@ public class IpRiskWritebackExecutorService {
         try {
             ipL6CountingBloomDecisionService.syncMembershipByScore(ip, score);
         } catch (Exception e) {
-            log.warn("IP风险异步同步布隆失败：ip={}，score={}，原因={}", ip, score, e.getMessage());
+            log.warn("IP risk bloom sync failed, ip={}, score={}, reason={}", ip, score, e.getMessage());
         }
     }
 
@@ -198,4 +196,3 @@ public class IpRiskWritebackExecutorService {
         return "UNKNOWN";
     }
 }
-

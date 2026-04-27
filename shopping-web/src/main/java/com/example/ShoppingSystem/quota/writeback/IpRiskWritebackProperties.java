@@ -45,7 +45,7 @@ public class IpRiskWritebackProperties {
 
     public IpRiskWritebackProperties() {
         sourceActions.put("API", "UPSERT_DB,WRITE_REDIS_CACHE,SYNC_BLOOM");
-        sourceActions.put("DB", "WRITE_REDIS_CACHE");
+        sourceActions.put("DB", "UPSERT_DB,WRITE_REDIS_CACHE");
         sourceActions.put("REDIS", "");
         sourceActions.put("CAFFEINE", "");
         sourceActions.put("NONE", "");

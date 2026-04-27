@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS ipv4_reputation_profile (
     -- 初始分：根据第三方 API 返回结果换算得到，可作为系统首次入库分
     base_score INT NOT NULL DEFAULT 0,
 
-    -- 当前分：在 base_score 基础上叠加你系统内的行为变化
+    -- 当前分：当前行为分，基于第三方风险字段换算得到
     current_score INT NOT NULL DEFAULT 0,
 
     -- 第三方数据来源，例如 ipapi.is / abuseipdb / ipinfo
@@ -107,7 +107,7 @@ COMMENT ON COLUMN ipv4_reputation_profile.is_tor IS '是否 Tor';
 COMMENT ON COLUMN ipv4_reputation_profile.provider_score IS '第三方供应商原始分数（如果有）';
 COMMENT ON COLUMN ipv4_reputation_profile.reference_score IS '参考分数：纯粹基于第三方 API 结果，不考虑行为分';
 COMMENT ON COLUMN ipv4_reputation_profile.base_score IS '首次出现时根据第三方情报换算得到的初始分，可作为系统首次入库分';
-COMMENT ON COLUMN ipv4_reputation_profile.current_score IS '当前分，后续可根据系统内实际行为调整';
+COMMENT ON COLUMN ipv4_reputation_profile.current_score IS '当前行为分，基于第三方风险字段换算得到';
 COMMENT ON COLUMN ipv4_reputation_profile.source_provider IS '第三方数据来源';
 COMMENT ON COLUMN ipv4_reputation_profile.raw_json IS '第三方 API 原始返回 JSON';
 COMMENT ON COLUMN ipv4_reputation_profile.first_seen_at IS '首次出现时间';

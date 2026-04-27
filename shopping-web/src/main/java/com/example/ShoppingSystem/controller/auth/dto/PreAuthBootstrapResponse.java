@@ -9,5 +9,6 @@ public record PreAuthBootstrapResponse(boolean success,
                                        long expiresAtEpochMillis,
                                        String riskLevel,
                                        boolean challengeRequired,
-                                       boolean blocked) {
+                                       boolean blocked,
+                                       RegisterPasswordCryptoKeyResponse passwordCrypto) {
 }

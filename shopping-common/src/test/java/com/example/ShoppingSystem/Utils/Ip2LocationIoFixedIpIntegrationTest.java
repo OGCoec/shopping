@@ -22,7 +22,7 @@ class Ip2LocationIoFixedIpIntegrationTest {
     }
 
     private static final String TEST_IP = "66.93.67.154";
-    private static final String API_KEY = "4A3230AC087F11A1D757DD5C636FCC59";
+    private static final String API_KEY = "";
 
     @Test
     void shouldQueryIp2LocationIoForFixedIp() throws Exception {

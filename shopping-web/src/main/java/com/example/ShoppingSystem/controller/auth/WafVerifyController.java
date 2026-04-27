@@ -3,6 +3,8 @@ package com.example.ShoppingSystem.controller.auth;
 import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,12 +16,13 @@ import java.io.IOException;
  * WAF 验证回调控制器。
  * 使用场景：
  * 当预登录上下文检测到“同 token 的来源 IP 发生变化”时，会要求先完成 Cloudflare WAF 人机验证。
- * 验证完成后会回调本控制器，由本控制器完成“放行标记写入 + 回跳”。
+ * 验证完成后会回调本控制器，由本控制器完成“刷新 binding 当前 IP + 回跳”。
  */
 @Controller
 @RequestMapping("/shopping/auth/waf")
 public class WafVerifyController {
 
+    private static final Logger log = LoggerFactory.getLogger(WafVerifyController.class);
     private static final String DEFAULT_RETURN_PATH = "/";
     private final PreAuthBindingService preAuthBindingService;
 
@@ -34,7 +37,7 @@ public class WafVerifyController {
      * WAF 验证完成后的回调入口。
      * 关键动作：
      * 1) 读取当前请求携带的 preauth token。
-     * 2) 将“token + 当前 IP”写入短期已验证标记（仅允许这次 IP 漂移放行）。
+     * 2) 把 binding 的 currentIp 同步成当前真实 IP，并刷新相关风险信息。
      * 3) 清理 WAF_REQUIRED cookie，避免后续请求重复触发挑战。
      * 4) 回跳到 return 页面，并追加 waf_verified=1，供前端重放中断请求。
      */
@@ -43,9 +46,17 @@ public class WafVerifyController {
                        HttpServletRequest request,
                        HttpServletResponse response) throws IOException {
         String token = preAuthBindingService.resolveIncomingToken(request);
+        log.info("WAF verify callback entered, uri={}, returnPath={}, tokenPresent={}, xForwardedFor={}, xRealIp={}, remoteAddr={}, userAgent={}",
+                request.getRequestURI(),
+                returnPath,
+                token != null && !token.isBlank(),
+                request.getHeader("X-Forwarded-For"),
+                request.getHeader("X-Real-IP"),
+                request.getRemoteAddr(),
+                request.getHeader("User-Agent"));
         if (token != null && !token.isBlank()) {
             // 通过 WAF 后立即同步绑定到当前 IP，并刷新 score/riskLevel。
-            preAuthBindingService.markWafVerifiedAndRefreshBindingForCurrentIp(token, request);
+            preAuthBindingService.refreshBindingForCurrentIpAfterWaf(token, request);
         }
         // 验证流程结束后立即清理挑战标记 cookie。
         response.addHeader("Set-Cookie", preAuthBindingService.buildClearWafRequiredCookie(request).toString());

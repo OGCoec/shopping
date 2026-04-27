@@ -1,6 +1,9 @@
 package com.example.ShoppingSystem.quota;
 
 import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys;
+import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys.AccountType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -8,8 +11,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -17,18 +20,17 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * IP2Location.io 月额度服务。
- * 使用 Lua 脚本保证 quota key 与总额度 count 的更新原子一致。
+ * IP2Location.io quota service backed by Redis.
  */
 @Service
 public class Ip2LocationQuotaService {
 
-    private static final DateTimeFormatter QUOTA_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH:mm");
-
+    private static final Logger log = LoggerFactory.getLogger(Ip2LocationQuotaService.class);
     private static final DefaultRedisScript<List> UPSERT_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<List> DECR_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<List> COMPENSATE_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<List> REBUILD_SCRIPT = new DefaultRedisScript<>();
+    private static final DefaultRedisScript<Long> ROUND_ROBIN_NEXT_SCRIPT = new DefaultRedisScript<>();
 
     static {
         UPSERT_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_upsert.lua")));
@@ -42,6 +44,9 @@ public class Ip2LocationQuotaService {
 
         REBUILD_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_rebuild.lua")));
         REBUILD_SCRIPT.setResultType(List.class);
+
+        ROUND_ROBIN_NEXT_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_round_robin_next.lua")));
+        ROUND_ROBIN_NEXT_SCRIPT.setResultType(Long.class);
     }
 
     private final StringRedisTemplate quotaRedisTemplate;
@@ -50,22 +55,35 @@ public class Ip2LocationQuotaService {
         this.quotaRedisTemplate = quotaRedisTemplate;
     }
 
-    /**
-     * 初始化或更新某个 API Key 的额度键，并原子维护总额度 count。
-     */
     public List initializeMonthlyQuota(String apiKey, long remainingQuota) {
-        LocalDateTime now = LocalDateTime.now();
-        String quotaKey = buildQuotaKey(apiKey, now);
-        return quotaRedisTemplate.execute(
-                UPSERT_SCRIPT,
-                Arrays.asList(quotaKey, Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
-                String.valueOf(remainingQuota)
-        );
+        return initializeMonthlyQuota(apiKey, remainingQuota, AccountType.STARTER);
     }
 
-    /**
-     * 对指定 key 扣减 1 次额度，并原子扣减总额度 count。
-     */
+    public List initializeMonthlyQuota(String apiKey, AccountType accountType) {
+        AccountType safeAccountType = safeAccountType(accountType);
+        return initializeMonthlyQuota(apiKey, safeAccountType.defaultMonthlyQuota(), safeAccountType);
+    }
+
+    public List initializeMonthlyQuota(String apiKey, long remainingQuota, AccountType accountType) {
+        LocalDateTime now = LocalDateTime.now();
+        AccountType safeAccountType = safeAccountType(accountType);
+        String quotaKey = buildQuotaKey(apiKey, now, safeAccountType);
+        long safeRemainingQuota = Math.max(0L, remainingQuota);
+        List result = quotaRedisTemplate.execute(
+                UPSERT_SCRIPT,
+                Arrays.asList(quotaKey, Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
+                String.valueOf(safeRemainingQuota)
+        );
+        applyQuotaKeyLifecycle(quotaKey, safeAccountType);
+        log.info("Initialized IP2Location quota key, quotaKey={}, accountType={}, remainingQuota={}, defaultMonthlyQuota={}, ttl={}",
+                quotaKey,
+                safeAccountType,
+                safeRemainingQuota,
+                resolveQuotaAmount(safeAccountType),
+                formatTtl(resolveQuotaTtl(safeAccountType)));
+        return result;
+    }
+
     public List decrementQuota(String quotaKey) {
         return quotaRedisTemplate.execute(
                 DECR_SCRIPT,
@@ -73,9 +91,6 @@ public class Ip2LocationQuotaService {
         );
     }
 
-    /**
-     * 外部 API 调用失败时补偿 1 次额度，并原子补偿总额度 count。
-     */
     public List compensateQuota(String quotaKey) {
         return quotaRedisTemplate.execute(
                 COMPENSATE_SCRIPT,
@@ -83,13 +98,6 @@ public class Ip2LocationQuotaService {
         );
     }
 
-    /**
-     * 仅做 Redis 额度侧的调用许可判定，不触发任何外部 HTTP 请求。
-     * 规则：
-     * 1) ip2location:quota:count <= 0 时禁止调用；
-     * 2) ip2location:quota:count >= 1 时按轮询选择 quota key；
-     * 3) 当前 key 不可扣减时自动跳过，尝试下一个 key。
-     */
     public QuotaAcquireResult acquireQuotaForCall() {
         long totalQuota = getTotalQuotaCount();
         if (totalQuota <= 0) {
@@ -113,70 +121,23 @@ public class Ip2LocationQuotaService {
             }
         }
 
-        // count 与各 key 可能出现漂移，兜底重建后再返回禁止调用。
         rebuildQuotaCount();
         return QuotaAcquireResult.denied(getTotalQuotaCount(), "quota_exhausted_after_round_robin");
     }
 
-    /**
-     * 返回当前 Redis 里的总额度 count。无法解析时按 0 处理。
-     */
     public long getTotalQuotaCount() {
         String raw = quotaRedisTemplate.opsForValue().get(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY);
         return parseLong(raw, 0L);
     }
 
     /**
-     * 每 30 分钟扫描一次额度键，满 1 个月后自动创建新的额度键并删除旧键。
-     * 完成后调用 Lua 脚本原子重算总额度 count。
+     * Compatibility entry point. The old monthly-reset behavior is intentionally removed.
+     * We now only rebuild the aggregate count to correct drift after key expiration.
      */
     public void refreshMonthlyQuota() {
-        Set<String> keys = getQuotaKeys();
-        if (keys.isEmpty()) {
-            rebuildQuotaCount();
-            return;
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        for (String key : keys) {
-            String[] parts = key.split(":", 4);
-            if (parts.length < 4) {
-                continue;
-            }
-
-            LocalDateTime storedDateTime;
-            try {
-                storedDateTime = LocalDateTime.parse(parts[2], QUOTA_TIME_FORMATTER);
-            } catch (Exception ignored) {
-                continue;
-            }
-
-            String apiKey = parts[3];
-            if (now.isBefore(storedDateTime.plusMonths(1))) {
-                continue;
-            }
-
-            // 创建新月份额度 key
-            String newQuotaKey = buildQuotaKey(apiKey, now);
-            quotaRedisTemplate.execute(
-                    UPSERT_SCRIPT,
-                    Arrays.asList(newQuotaKey, Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
-                    String.valueOf(Ip2LocationQuotaRedisKeys.MONTHLY_QUOTA)
-            );
-
-            // 旧 key 无 TTL，必须手动删除
-            if (!newQuotaKey.equals(key)) {
-                quotaRedisTemplate.delete(key);
-            }
-        }
-
-        // 原子重建 count，兜底修正中间过程的任何漂移
         rebuildQuotaCount();
     }
 
-    /**
-     * 从所有额度 key 重建总额度 count，作为兜底修正。
-     */
     public List rebuildQuotaCount() {
         return quotaRedisTemplate.execute(
                 REBUILD_SCRIPT,
@@ -186,7 +147,19 @@ public class Ip2LocationQuotaService {
     }
 
     public String buildQuotaKey(String apiKey, LocalDateTime dateTime) {
-        return Ip2LocationQuotaRedisKeys.QUOTA_PREFIX + dateTime.format(QUOTA_TIME_FORMATTER) + ":" + apiKey;
+        return buildQuotaKey(apiKey, dateTime, AccountType.STARTER);
+    }
+
+    public String buildQuotaKey(String apiKey, LocalDateTime dateTime, AccountType accountType) {
+        return Ip2LocationQuotaRedisKeys.buildQuotaKey(accountType, dateTime, apiKey);
+    }
+
+    public long resolveQuotaAmount(AccountType accountType) {
+        return safeAccountType(accountType).defaultMonthlyQuota();
+    }
+
+    public Duration resolveQuotaTtl(AccountType accountType) {
+        return safeAccountType(accountType).lifecycleTtl();
     }
 
     private List<String> getOrderedQuotaKeys() {
@@ -200,9 +173,13 @@ public class Ip2LocationQuotaService {
     }
 
     private int nextRoundRobinStartIndex(int size) {
-        Long cursor = quotaRedisTemplate.opsForValue().increment(Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY);
-        long cursorValue = cursor == null ? 0L : cursor;
-        return (int) Math.floorMod(cursorValue, size);
+        Long startIndex = quotaRedisTemplate.execute(
+                ROUND_ROBIN_NEXT_SCRIPT,
+                Collections.singletonList(Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY),
+                String.valueOf(size)
+        );
+        long safeStartIndex = startIndex == null ? 0L : startIndex;
+        return (int) Math.floorMod(safeStartIndex, size);
     }
 
     private boolean isDecrementSuccess(List result) {
@@ -247,6 +224,23 @@ public class Ip2LocationQuotaService {
         }
         keys.remove(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY);
         return keys;
+    }
+
+    private void applyQuotaKeyLifecycle(String quotaKey, AccountType accountType) {
+        Duration ttl = resolveQuotaTtl(accountType);
+        if (ttl == null || ttl.isZero() || ttl.isNegative()) {
+            quotaRedisTemplate.persist(quotaKey);
+            return;
+        }
+        quotaRedisTemplate.expire(quotaKey, ttl);
+    }
+
+    private AccountType safeAccountType(AccountType accountType) {
+        return accountType == null ? AccountType.STARTER : accountType;
+    }
+
+    private String formatTtl(Duration ttl) {
+        return ttl == null ? "PERSIST" : ttl.toString();
     }
 
     public record QuotaAcquireResult(boolean allowCall, String quotaKey, long totalQuotaCount, String reason) {

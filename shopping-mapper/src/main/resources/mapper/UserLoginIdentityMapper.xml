@@ -67,4 +67,12 @@
         )
     </insert>
 
+    <insert id="insertEmailIdentity" parameterType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        INSERT INTO user_login_identity (
+            <include refid="baseIdentityColumns"/>
+        ) VALUES (
+            <include refid="baseIdentityValues"/>
+        )
+    </insert>
+
 </mapper>

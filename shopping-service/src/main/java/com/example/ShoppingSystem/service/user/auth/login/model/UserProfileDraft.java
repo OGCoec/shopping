@@ -17,6 +17,7 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class UserProfileDraft {
 
+    private String username;
     private String firstName;
     private String lastName;
 

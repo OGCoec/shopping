@@ -33,6 +33,7 @@ public class SecurityConfig {
             "/shopping/user/forgot-password",
             "/shopping/auth/preauth/bootstrap",
             "/shopping/auth/preauth/phone-country",
+            "/shopping/auth/preauth/phone-validate",
             "/shopping/auth/waf/verify",
             "/css/**",
             "/js/**",

@@ -48,6 +48,7 @@ const loginCountryPickerApi = globalThis.ShoppingLoginCountryPicker;
 const preAuthClientApi = globalThis.ShoppingPreAuthClient;
 const loginShellModule = globalThis.ShoppingLoginShell;
 const loginOtpModule = globalThis.ShoppingLoginOtp;
+const PHONE_VALIDATE_PATH = "/shopping/auth/preauth/phone-validate";
 
 if (!loginVisualsApi || !loginCountryPickerApi || !loginShellModule || !loginOtpModule) {
   throw new Error("login dependencies failed to load");
@@ -328,10 +329,66 @@ function goToPasswordStep(identifierType, identifierText) {
   passwordInput.focus();
 }
 
+function resolvePhoneValidationMessage(payload) {
+  const reasonCode = payload?.reasonCode || "";
+  switch (reasonCode) {
+    case "PHONE_VOIP_NOT_ALLOWED":
+      return "Virtual or VoIP phone numbers are not allowed";
+    case "PHONE_FIXED_LINE_NOT_ALLOWED":
+      return "Landline phone numbers are not allowed";
+    case "PHONE_TYPE_NOT_ALLOWED":
+      return "Only mobile phone numbers are allowed";
+    case "PHONE_INVALID_DIAL_CODE":
+      return "Please choose a valid country or region";
+    case "PHONE_INVALID":
+      return "Please enter a valid mobile phone number";
+    default:
+      return payload?.message || "Phone number validation failed";
+  }
+}
+
+async function validatePhoneNumberPolicy(dialCode, rawPhone) {
+  const requestOptions = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      dialCode,
+      phoneNumber: rawPhone
+    })
+  };
+
+  const response = preAuthClientApi?.fetchWithPreAuth
+    ? await preAuthClientApi.fetchWithPreAuth(PHONE_VALIDATE_PATH, requestOptions)
+    : await fetch(PHONE_VALIDATE_PATH, { ...requestOptions, credentials: "same-origin" });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_) {
+    payload = null;
+  }
+
+  if (!response.ok || !payload?.success) {
+    return {
+      success: false,
+      message: resolvePhoneValidationMessage(payload),
+      normalizedE164: payload?.normalizedE164 || ""
+    };
+  }
+
+  return {
+    success: true,
+    message: payload.message || "ok",
+    normalizedE164: payload.normalizedE164 || ""
+  };
+}
+
 // ============ FORM VALIDATION ============
 const loginForm = document.getElementById("login-form");
 if (loginForm) {
-  loginForm.addEventListener("submit", (event) => {
+  loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const authView = shellApi.getAuthView();
@@ -348,6 +405,12 @@ if (loginForm) {
 
       if (!/^\d{6,15}$/.test(rawPhone)) {
         showRegisterPhoneRequiredValidationError("请输入有效的手机号码");
+        return;
+      }
+
+      const registerPhoneValidationResult = await validatePhoneNumberPolicy(dialCode, rawPhone);
+      if (!registerPhoneValidationResult.success) {
+        showRegisterPhoneRequiredValidationError(registerPhoneValidationResult.message);
         return;
       }
 
@@ -374,8 +437,14 @@ if (loginForm) {
         return;
       }
 
+      const phoneValidationResult = await validatePhoneNumberPolicy(dialCode, rawPhone);
+      if (!phoneValidationResult.success) {
+        showPhoneValidationError(phoneValidationResult.message, phoneNumberInput, phoneNumberLabel);
+        return;
+      }
+
       lastIdentifierView = "phone";
-      goToPasswordStep("phone", `${dialCode} ${rawPhone}`);
+      goToPasswordStep("phone", phoneValidationResult.normalizedE164 || `${dialCode} ${rawPhone}`);
       return;
     }
 
@@ -416,22 +485,56 @@ if (loginForm) {
         return;
       }
 
-      if (otpApi.getCurrentOtpScenario() === "register" && otpApi.shouldRequirePhoneBinding()) {
-        if (registerPhoneRequiredInput) {
-          registerPhoneRequiredInput.value = "";
+      if (otpApi.getCurrentOtpScenario() === "register") {
+        if (typeof window.verifyRegisterEmailCode !== "function") {
+          if (otpErrorMessage) {
+            otpErrorMessage.textContent = "注册验证功能暂不可用，请稍后重试。";
+            otpErrorMessage.style.display = "block";
+          }
+          triggerLoginError();
+          return;
         }
-        resetRegisterPhoneRequiredValidationState();
-        shellApi.setAuthView("register-phone-required");
-        if (registerPhoneRequiredInput) {
-          registerPhoneRequiredInput.focus();
+
+        try {
+          const verifyResult = await window.verifyRegisterEmailCode(rawOtp);
+          if (!verifyResult?.success) {
+            if (otpErrorMessage) {
+              otpErrorMessage.textContent = verifyResult?.message || "验证码校验失败，请重试。";
+              otpErrorMessage.style.display = "block";
+            }
+            triggerLoginError();
+            return;
+          }
+
+          if (verifyResult?.requirePhoneBinding) {
+            if (registerPhoneRequiredInput) {
+              registerPhoneRequiredInput.value = "";
+            }
+            resetRegisterPhoneRequiredValidationState();
+            shellApi.setAuthView("register-phone-required");
+            if (registerPhoneRequiredInput) {
+              registerPhoneRequiredInput.focus();
+            }
+            return;
+          }
+
+          if (otpErrorMessage) {
+            otpErrorMessage.textContent = verifyResult?.message || "注册成功，账号已创建。";
+            otpErrorMessage.style.display = "block";
+          }
+          return;
+        } catch (_) {
+          if (otpErrorMessage) {
+            otpErrorMessage.textContent = "注册验证失败，请稍后重试。";
+            otpErrorMessage.style.display = "block";
+          }
+          triggerLoginError();
+          return;
         }
-        return;
       }
 
       if (otpErrorMessage) {
-        otpErrorMessage.textContent = otpApi.getCurrentOtpScenario() === "register"
-          ? "邮箱验证码输入已接入前端页面，后端创建账户流程待继续接入。"
-          : "验证码校验通过（演示）";
+        otpErrorMessage.textContent = "验证码校验通过（演示）";
         otpErrorMessage.style.display = "block";
       }
       return;

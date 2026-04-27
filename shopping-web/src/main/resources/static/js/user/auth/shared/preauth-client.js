@@ -25,6 +25,7 @@
 
   let bootstrapTask = null;
   let bootstrapped = false;
+  let lastBootstrapPayload = null;
 
   function getNativeFetch() {
     if (typeof fetch !== "function") {
@@ -263,10 +264,13 @@
     }
 
     if (!force && bootstrapped) {
-      return {
-        success: true,
-        fromCache: true
-      };
+      if (lastBootstrapPayload && typeof lastBootstrapPayload === "object") {
+        return {
+          ...lastBootstrapPayload,
+          fromCache: true
+        };
+      }
+      return { success: true, fromCache: true };
     }
 
     bootstrapTask = (async () => {
@@ -282,12 +286,24 @@
         body: "{}",
         credentials: "same-origin"
       });
+      if (response.status === 409) {
+        const payload = await parseJsonSafely(response) || {};
+        const errorCode = payload && payload.error ? String(payload.error) : "";
+        if (errorCode === WAF_REQUIRED_ERROR_CODE) {
+          if (isBrowserRuntime()) {
+            const verifyUrl = payload && payload.verifyUrl ? String(payload.verifyUrl).trim() : "";
+            window.location.assign(verifyUrl || buildDefaultWafVerifyUrl());
+          }
+          return payload;
+        }
+      }
       if (!response.ok) {
         throw new Error(`preauth bootstrap failed: ${response.status}`);
       }
 
       const payload = await parseJsonSafely(response) || {};
       bootstrapped = true;
+      lastBootstrapPayload = payload;
       return payload;
     })();
 
@@ -296,6 +312,36 @@
     } finally {
       bootstrapTask = null;
     }
+  }
+
+  function resolvePasswordCryptoKey(payload) {
+    const cryptoPayload = payload && typeof payload === "object" ? payload.passwordCrypto : null;
+    if (!cryptoPayload || typeof cryptoPayload !== "object") {
+      return null;
+    }
+    const kid = cryptoPayload.kid ? String(cryptoPayload.kid).trim() : "";
+    const publicKeyJwk = cryptoPayload.publicKeyJwk;
+    if (!kid || !publicKeyJwk || typeof publicKeyJwk !== "object") {
+      return null;
+    }
+    return {
+      kid,
+      alg: cryptoPayload.alg ? String(cryptoPayload.alg) : "",
+      publicKeyJwk,
+      expiresAtEpochMillis: Number(cryptoPayload.expiresAtEpochMillis || 0)
+    };
+  }
+
+  async function fetchRegisterPasswordCryptoKey(forceRefresh = true) {
+    const payload = await bootstrapPreAuthToken(Boolean(forceRefresh));
+    const key = resolvePasswordCryptoKey(payload);
+    if (key) {
+      return key;
+    }
+    if (!forceRefresh) {
+      return fetchRegisterPasswordCryptoKey(true);
+    }
+    throw new Error("register password crypto key unavailable");
   }
 
   function shouldRetryAfterRefresh(responseStatus, payload) {
@@ -363,6 +409,7 @@
     WAF_REPLAY_EVENT_NAME,
     buildDeviceFingerprint,
     bootstrapPreAuthToken,
+    fetchRegisterPasswordCryptoKey,
     fetchWithPreAuth,
     readStoredToken,
     writeStoredToken

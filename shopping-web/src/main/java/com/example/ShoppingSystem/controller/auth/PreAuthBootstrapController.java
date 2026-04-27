@@ -2,78 +2,100 @@ package com.example.ShoppingSystem.controller.auth;
 
 import com.example.ShoppingSystem.controller.auth.dto.PreAuthBootstrapResponse;
 import com.example.ShoppingSystem.controller.auth.dto.PreAuthPhoneCountryResponse;
+import com.example.ShoppingSystem.controller.auth.dto.PreAuthPhoneValidationRequest;
+import com.example.ShoppingSystem.controller.auth.dto.PreAuthPhoneValidationResponse;
+import com.example.ShoppingSystem.controller.auth.dto.RegisterPasswordCryptoKeyResponse;
 import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
 import com.example.ShoppingSystem.filter.preauth.PreAuthHeaders;
+import com.example.ShoppingSystem.filter.preauth.model.PreAuthBootstrapOutcome;
+import com.example.ShoppingSystem.filter.preauth.model.PreAuthSnapshot;
+import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationError;
+import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
 import com.example.ShoppingSystem.quota.IpCountryQueryService;
+import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
- * 预登录（PreAuth）引导控制器。
- * 主要职责：
- * 1) 为匿名用户初始化/续期预登录上下文（token、风险等级、挑战需求）。
- * 2) 为前端提供基于客户端 IP 的国家信息，便于默认手机号区号展示。
- */
+ * 妫板嫮娅ヨぐ鏇礄PreAuth閿涘绱╃€靛吋甯堕崚璺烘珤閵? */
 @RestController
 @RequestMapping("/shopping/auth/preauth")
 public class PreAuthBootstrapController {
 
     private final PreAuthBindingService preAuthBindingService;
     private final IpCountryQueryService ipCountryQueryService;
+    private final RegisterPasswordCryptoService registerPasswordCryptoService;
+    private final PhoneNumberValidationService phoneNumberValidationService;
 
-    /**
-     * 构造函数：注入预登录绑定服务与 IP 国家查询服务。
-     */
     public PreAuthBootstrapController(PreAuthBindingService preAuthBindingService,
-                                      IpCountryQueryService ipCountryQueryService) {
+                                      IpCountryQueryService ipCountryQueryService,
+                                      RegisterPasswordCryptoService registerPasswordCryptoService,
+                                      PhoneNumberValidationService phoneNumberValidationService) {
         this.preAuthBindingService = preAuthBindingService;
         this.ipCountryQueryService = ipCountryQueryService;
+        this.registerPasswordCryptoService = registerPasswordCryptoService;
+        this.phoneNumberValidationService = phoneNumberValidationService;
     }
 
     /**
-     * 预登录引导接口。
-     * 行为说明：
-     * 1) 尝试从请求中读取已有预登录 token（cookie 优先，header 兜底）。
-     * 2) 调用服务层进行“新建或续期”。
-     * 3) 若预登录功能启用，则回写 HttpOnly token cookie。
-     * 4) 返回前端所需的风险上下文信息。
-     */
+     * 妫板嫮娅ヨぐ鏇炵穿鐎靛吋甯撮崣锝冣偓?     * 瑜版挻顥呭ù瀣煂閸?token 閹稿洨姹?UA 娑撯偓閼风繝绲?IP 閸欐ê瀵叉稉鏃€婀€瑰本鍨?WAF 妤犲矁鐦夐弮璁圭礉鏉╂柨娲?409 + verifyUrl閵?     */
     @PostMapping("/bootstrap")
-    public PreAuthBootstrapResponse bootstrap(
+    public ResponseEntity<?> bootstrap(
             @RequestHeader(value = PreAuthHeaders.HEADER_DEVICE_FINGERPRINT, required = false) String fingerprint,
             HttpServletRequest request,
             HttpServletResponse response) {
-        // 读取入站 token（如果有），用于“同设备续期”而不是每次新建。
         String incomingToken = preAuthBindingService.resolveIncomingToken(request);
-        // 统一在服务层完成指纹/IP/UA 绑定与风险快照生成。
-        PreAuthBindingService.PreAuthSnapshot snapshot = preAuthBindingService.bootstrap(incomingToken, fingerprint, request);
+        PreAuthBootstrapOutcome outcome = preAuthBindingService.bootstrap(incomingToken, fingerprint, request);
+
+        if (!outcome.allowed()) {
+            if (outcome.error() == PreAuthValidationError.IP_CHANGED_WAF_REQUIRED) {
+                response.addHeader("Set-Cookie", preAuthBindingService.buildWafRequiredCookie(request).toString());
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(buildWafRequiredBody(request));
+            }
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(buildBootstrapErrorBody(request, "PREAUTH_INVALID", "PREAUTH_INVALID", HttpServletResponse.SC_UNAUTHORIZED));
+        }
+
+        PreAuthSnapshot snapshot = outcome.snapshot();
         if (preAuthBindingService.isEnabled()) {
-            // 仅在功能开启时写 cookie，关闭模式下返回的是只读快照信息。
             response.addHeader("Set-Cookie", preAuthBindingService.buildTokenCookie(snapshot.token(), request).toString());
         }
-        return new PreAuthBootstrapResponse(
+
+        RegisterPasswordCryptoService.PasswordCryptoKey passwordCryptoKey = registerPasswordCryptoService.issuePasswordCryptoKey();
+        return ResponseEntity.ok(new PreAuthBootstrapResponse(
                 true,
                 "ok",
                 null,
                 snapshot.expiresAtEpochMillis(),
                 snapshot.riskLevel(),
                 snapshot.challengeRequired(),
-                snapshot.blocked()
-        );
+                snapshot.blocked(),
+                new RegisterPasswordCryptoKeyResponse(
+                        passwordCryptoKey.kid(),
+                        passwordCryptoKey.alg(),
+                        passwordCryptoKey.publicKeyJwk(),
+                        passwordCryptoKey.expiresAtEpochMillis())
+        ));
     }
 
-    /**
-     * 获取手机号国家（区号）建议值。
-     * 前端注册页可据此自动选择国家代码，提升输入体验。
-     */
     @GetMapping("/phone-country")
     public PreAuthPhoneCountryResponse resolvePhoneCountry(HttpServletRequest request) {
-        // 提取真实客户端 IP，尽量避免代理层地址干扰。
         String clientIp = resolveClientIp(request);
         IpCountryQueryService.CountryQueryResult result = ipCountryQueryService.queryCountry(clientIp);
         if (result.success()) {
@@ -82,17 +104,83 @@ public class PreAuthBootstrapController {
         return new PreAuthPhoneCountryResponse(false, result.reason(), null, result.source());
     }
 
-    /**
-     * 解析客户端 IP。
-     * 优先级：
-     * 1) X-Forwarded-For 的首个地址（最靠近客户端）
-     * 2) X-Real-IP
-     * 3) 容器提供的 remoteAddr
-     */
+    @PostMapping("/phone-validate")
+    public PreAuthPhoneValidationResponse validatePhoneNumber(@RequestBody PreAuthPhoneValidationRequest request) {
+        PhoneNumberValidationService.ValidationResult result =
+                phoneNumberValidationService.validateMobileLikeNumber(request.dialCode(), request.phoneNumber());
+        if (result.allowed()) {
+            return new PreAuthPhoneValidationResponse(
+                    true,
+                    "ok",
+                    result.reasonCode(),
+                    result.phoneType(),
+                    result.normalizedE164());
+        }
+        return new PreAuthPhoneValidationResponse(
+                false,
+                resolvePhoneValidationMessage(result.reasonCode()),
+                result.reasonCode(),
+                result.phoneType(),
+                result.normalizedE164());
+    }
+
+    private Map<String, Object> buildWafRequiredBody(HttpServletRequest request) {
+        Map<String, Object> body = buildBootstrapErrorBody(
+                request,
+                "PREAUTH_IP_CHANGED_WAF_REQUIRED",
+                "Network changed, please complete WAF verification before retry",
+                HttpServletResponse.SC_CONFLICT);
+        body.put("verifyUrl", buildBootstrapWafVerifyUrl(request));
+        return body;
+    }
+
+    private Map<String, Object> buildBootstrapErrorBody(HttpServletRequest request,
+                                                        String errorCode,
+                                                        String message,
+                                                        int status) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", false);
+        body.put("status", status);
+        body.put("error", errorCode);
+        body.put("message", message);
+        body.put("path", request.getRequestURI());
+        body.put("timestamp", OffsetDateTime.now().toString());
+        return body;
+    }
+
+    private String buildBootstrapWafVerifyUrl(HttpServletRequest request) {
+        String returnPath = buildReturnPathFromReferer(request);
+        if (returnPath == null || returnPath.isBlank()) {
+            returnPath = "/shopping/user/login";
+        }
+        return "/shopping/auth/waf/verify?return="
+                + URLEncoder.encode(returnPath, StandardCharsets.UTF_8);
+    }
+
+    private String buildReturnPathFromReferer(HttpServletRequest request) {
+        String referer = request.getHeader("Referer");
+        if (referer == null || referer.isBlank()) {
+            return null;
+        }
+        try {
+            URI refererUri = URI.create(referer.trim());
+            String path = refererUri.getPath();
+            if (path == null || path.isBlank() || !path.startsWith("/") || path.startsWith("//")) {
+                return null;
+            }
+            if (path.startsWith("/shopping/auth/waf/verify")) {
+                return null;
+            }
+            String query = refererUri.getQuery();
+            return (query == null || query.isBlank()) ? path : path + "?" + query;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private String resolveClientIp(HttpServletRequest request) {
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
-            // 规范格式通常是 "client, proxy1, proxy2"，第一个才是原始客户端。
             return forwardedFor.split(",")[0].trim();
         }
         String realIp = request.getHeader("X-Real-IP");
@@ -100,5 +188,19 @@ public class PreAuthBootstrapController {
             return realIp.trim();
         }
         return request.getRemoteAddr();
+    }
+
+    private String resolvePhoneValidationMessage(String reasonCode) {
+        if (reasonCode == null) {
+            return "phone validation failed";
+        }
+        return switch (reasonCode) {
+            case PhoneNumberValidationService.REASON_VOIP_NOT_ALLOWED -> "voip phone number is not allowed";
+            case PhoneNumberValidationService.REASON_FIXED_LINE_NOT_ALLOWED -> "fixed-line phone number is not allowed";
+            case PhoneNumberValidationService.REASON_TYPE_NOT_ALLOWED -> "only mobile phone numbers are allowed";
+            case PhoneNumberValidationService.REASON_INVALID_DIAL_CODE -> "invalid dial code";
+            case PhoneNumberValidationService.REASON_INVALID_PHONE -> "invalid phone number";
+            default -> "phone validation failed";
+        };
     }
 }

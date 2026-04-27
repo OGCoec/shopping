@@ -93,4 +93,6 @@ public interface UserLoginIdentityMapper {
     int insertGoogleIdentity(UserLoginIdentity entity);
 
     int insertMicrosoftIdentity(UserLoginIdentity entity);
+
+    int insertEmailIdentity(UserLoginIdentity entity);
 }

@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Shared local Caffeine cache for IP reputation lightweight data.
  * <p>
- * 仅缓存 score + country，避免本地缓存膨胀。
+ * Stores score + country snapshot with bounded TTL.
  */
 @Service
 public class IpRiskLocalCacheStore {

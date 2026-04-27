@@ -3,10 +3,15 @@ package com.example.ShoppingSystem.controller.login.user;
 import com.example.ShoppingSystem.controller.login.user.dto.RegisterCaptchaResponse;
 import com.example.ShoppingSystem.controller.login.user.dto.RegisterSendEmailCodeRequest;
 import com.example.ShoppingSystem.controller.login.user.dto.RegisterSendEmailCodeResponse;
+import com.example.ShoppingSystem.controller.login.user.dto.RegisterVerifyEmailCodeRequest;
+import com.example.ShoppingSystem.controller.login.user.dto.RegisterVerifyEmailCodeResponse;
 import com.example.ShoppingSystem.controller.login.user.dto.TianaiRotateCaptchaResponse;
 import com.example.ShoppingSystem.controller.login.user.dto.TianaiRotateCheckRequest;
 import com.example.ShoppingSystem.controller.login.user.dto.TianaiSimpleCheckResponse;
+import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
+import com.example.ShoppingSystem.service.user.auth.register.RegisterCompletionService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterPrecheckService;
+import com.example.ShoppingSystem.service.user.auth.register.model.RegisterCompletionResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
 import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
 import com.example.ShoppingSystem.service.captcha.hutool.model.HutoolCaptchaResult;
@@ -34,15 +39,21 @@ public class RegisterController {
     private static final String TIANAI_SUBTYPE_WORD_IMAGE_CLICK = "WORD_IMAGE_CLICK";
 
     private final RegisterPrecheckService registerPrecheckService;
+    private final RegisterCompletionService registerCompletionService;
     private final HutoolCaptchaService hutoolCaptchaService;
     private final TianaiCaptchaService tianaiCaptchaService;
+    private final RegisterPasswordCryptoService registerPasswordCryptoService;
 
     public RegisterController(RegisterPrecheckService registerPrecheckService,
+                              RegisterCompletionService registerCompletionService,
                               HutoolCaptchaService hutoolCaptchaService,
-                              TianaiCaptchaService tianaiCaptchaService) {
+                              TianaiCaptchaService tianaiCaptchaService,
+                              RegisterPasswordCryptoService registerPasswordCryptoService) {
         this.registerPrecheckService = registerPrecheckService;
+        this.registerCompletionService = registerCompletionService;
         this.hutoolCaptchaService = hutoolCaptchaService;
         this.tianaiCaptchaService = tianaiCaptchaService;
+        this.registerPasswordCryptoService = registerPasswordCryptoService;
     }
 
     @Operation(summary = "获取注册图形验证码")
@@ -110,11 +121,20 @@ public class RegisterController {
     @PostMapping("/email-code-type")
     public RegisterSendEmailCodeResponse resolveRegisterEmailCodeChallenge(@RequestBody RegisterSendEmailCodeRequest request,
                                                                            HttpServletRequest httpServletRequest) {
+        RegisterPasswordCryptoService.DecryptOutcome decryptOutcome = registerPasswordCryptoService.decryptPasswordCipher(
+                request.getKid(),
+                request.getPasswordCipher(),
+                request.getNonce(),
+                request.getTimestamp(),
+                httpServletRequest);
+        if (!decryptOutcome.success()) {
+            return buildCryptoFailedResponse(decryptOutcome.message());
+        }
         String clientIp = resolveClientIp(httpServletRequest);
         RegisterPrecheckResult result = registerPrecheckService.resolveRegisterEmailCodeChallenge(
                 request.getEmail(),
                 request.getUsername(),
-                request.getPassword(),
+                decryptOutcome.rawPassword(),
                 request.getDeviceFingerprint(),
                 clientIp
         );
@@ -125,17 +145,54 @@ public class RegisterController {
     @PostMapping("/email-code")
     public RegisterSendEmailCodeResponse sendRegisterEmailCode(@RequestBody RegisterSendEmailCodeRequest request,
                                                                HttpServletRequest httpServletRequest) {
+        RegisterPasswordCryptoService.DecryptOutcome decryptOutcome = registerPasswordCryptoService.decryptPasswordCipher(
+                request.getKid(),
+                request.getPasswordCipher(),
+                request.getNonce(),
+                request.getTimestamp(),
+                httpServletRequest);
+        if (!decryptOutcome.success()) {
+            return buildCryptoFailedResponse(decryptOutcome.message());
+        }
         String clientIp = resolveClientIp(httpServletRequest);
         RegisterPrecheckResult result = registerPrecheckService.sendRegisterEmailCodeAfterCaptcha(
                 request.getEmail(),
                 request.getUsername(),
-                request.getPassword(),
+                decryptOutcome.rawPassword(),
                 request.getDeviceFingerprint(),
                 clientIp,
                 request.getCaptchaUuid(),
                 request.getCaptchaCode()
         );
         return toResponse(result);
+    }
+
+    @Operation(summary = "校验注册邮箱验证码并完成注册")
+    @PostMapping("/email-code/verify")
+    public RegisterVerifyEmailCodeResponse verifyRegisterEmailCode(@RequestBody RegisterVerifyEmailCodeRequest request,
+                                                                   HttpServletRequest httpServletRequest) {
+        String clientIp = resolveClientIp(httpServletRequest);
+        RegisterCompletionResult result = registerCompletionService.verifyEmailCodeAndRegister(
+                request.getEmail(),
+                request.getEmailCode(),
+                request.getDeviceFingerprint(),
+                clientIp
+        );
+        return RegisterVerifyEmailCodeResponse.builder()
+                .success(result.isSuccess())
+                .message(result.getMessage())
+                .userId(result.getUserId())
+                .requirePhoneBinding(result.isRequirePhoneBinding())
+                .build();
+    }
+
+    private RegisterSendEmailCodeResponse buildCryptoFailedResponse(String message) {
+        return RegisterSendEmailCodeResponse.builder()
+                .success(false)
+                .message(message)
+                .emailCodeSent(false)
+                .requirePhoneBinding(false)
+                .build();
     }
 
     private RegisterSendEmailCodeResponse toResponse(RegisterPrecheckResult result) {

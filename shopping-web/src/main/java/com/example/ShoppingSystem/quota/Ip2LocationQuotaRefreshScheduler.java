@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.TimeUnit;
 
 /**
- * IP2Location.io 月额度刷新定时任务。
+ * Periodically rebuilds the aggregate IP2Location quota count.
  */
 @Component
 public class Ip2LocationQuotaRefreshScheduler {
@@ -24,11 +24,8 @@ public class Ip2LocationQuotaRefreshScheduler {
         this.redissonClient = redissonClient;
     }
 
-    /**
-     * 每 30 分钟扫描 Redis 第 3 分区中以额度前缀开头的键，跨月时自动刷新为 50000。
-     */
     @Scheduled(cron = "0 0/30 * * * ?")
-    public void refreshQuotaEveryThirtyMinutes() {
+    public void rebuildQuotaCountEveryThirtyMinutes() {
         RLock lock = redissonClient.getLock(REFRESH_LOCK_KEY);
         boolean locked = false;
         try {
@@ -36,7 +33,7 @@ public class Ip2LocationQuotaRefreshScheduler {
             if (!locked) {
                 return;
             }
-            ip2LocationQuotaService.refreshMonthlyQuota();
+            ip2LocationQuotaService.rebuildQuotaCount();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {

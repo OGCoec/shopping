@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.quota;
 
+import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys;
+import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys.AccountType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -19,7 +21,7 @@ import java.time.Duration;
 import java.util.Locale;
 
 /**
- * IP2Location.io HTTP 调用服务（带 Redis 配额门禁）。
+ * Queries IP2Location with Redis-backed quota enforcement.
  */
 @Service
 public class Ip2LocationQuotaHttpService {
@@ -50,13 +52,8 @@ public class Ip2LocationQuotaHttpService {
     }
 
     /**
-     * 按 IP 查询 IP2Location。
-     * <p>
-     * 控制台日志会打印：
-     * 1) quota 拦截状态；
-     * 2) 原始 payload；
-     * 3) riskFields 提取结果；
-     * 4) 失败原因与是否回补配额。
+     * Queries IP2Location by IP.
+     * Logs quota denials, raw payloads, extracted risk fields, and transport failures.
      */
     public Ip2LocationQueryResult queryByIp(String ip) {
         if (isBlank(ip)) {
@@ -70,7 +67,7 @@ public class Ip2LocationQuotaHttpService {
 
         Ip2LocationQuotaService.QuotaAcquireResult acquireResult = quotaService.acquireQuotaForCall();
         if (!acquireResult.allowCall()) {
-            log.info("IP2Location查询被配额拦截：ip={}，reason={}，totalQuotaCount={}",
+            log.info("IP2Location query blocked by quota, ip={}, reason={}, totalQuotaCount={}",
                     ip,
                     acquireResult.reason(),
                     acquireResult.totalQuotaCount());
@@ -78,10 +75,16 @@ public class Ip2LocationQuotaHttpService {
         }
 
         String quotaKey = acquireResult.quotaKey();
+        AccountType accountType = extractAccountType(quotaKey);
+        String ttl = formatTtl(accountType);
         String apiKey = extractApiKey(quotaKey);
         if (isBlank(apiKey)) {
             safeCompensate(quotaKey);
-            log.warn("IP2Location查询失败：quotaKey无效，ip={}，quotaKey={}", ip, quotaKey);
+            log.warn("IP2Location query failed because the quota key is invalid, ip={}, quotaKey={}, accountType={}, ttl={}",
+                    ip,
+                    quotaKey,
+                    accountType,
+                    ttl);
             return Ip2LocationQueryResult.failed(
                     "invalid_quota_key",
                     quotaKey,
@@ -96,9 +99,11 @@ public class Ip2LocationQuotaHttpService {
             int statusCode = response.statusCode();
             if (statusCode < 200 || statusCode >= 300) {
                 safeCompensate(quotaKey);
-                log.warn("IP2Location查询HTTP失败：ip={}，quotaKey={}，status={}，responseBody={}",
+                log.warn("IP2Location query returned non-2xx, ip={}, quotaKey={}, accountType={}, ttl={}, status={}, responseBody={}",
                         ip,
                         quotaKey,
+                        accountType,
+                        ttl,
                         statusCode,
                         response.body());
                 return Ip2LocationQueryResult.failed(
@@ -112,12 +117,14 @@ public class Ip2LocationQuotaHttpService {
             JsonNode payload = objectMapper.readTree(response.body());
             RiskRelevantFields riskFields = extractRiskFields(payload);
 
-            log.info("IP2Location查询成功：ip={}，quotaKey={}，httpStatus={}，riskFields={}",
+            log.info("IP2Location query succeeded, ip={}, quotaKey={}, accountType={}, ttl={}, httpStatus={}, riskFields={}",
                     ip,
                     quotaKey,
+                    accountType,
+                    ttl,
                     statusCode,
                     formatRiskFields(riskFields));
-            log.info("IP2Location原始响应：ip={}，payload={}", ip, payload.toString());
+            log.info("IP2Location raw response, ip={}, payload={}", ip, payload.toString());
 
             return Ip2LocationQueryResult.succeeded(
                     quotaKey,
@@ -130,7 +137,12 @@ public class Ip2LocationQuotaHttpService {
                 Thread.currentThread().interrupt();
             }
             safeCompensate(quotaKey);
-            log.warn("IP2Location查询异常：ip={}，quotaKey={}，reason={}", ip, quotaKey, e.getMessage());
+            log.warn("IP2Location query exception, ip={}, quotaKey={}, accountType={}, ttl={}, reason={}",
+                    ip,
+                    quotaKey,
+                    accountType,
+                    ttl,
+                    e.getMessage());
             return Ip2LocationQueryResult.failed(
                     "http_error",
                     quotaKey,
@@ -205,14 +217,16 @@ public class Ip2LocationQuotaHttpService {
     }
 
     private String extractApiKey(String quotaKey) {
-        if (isBlank(quotaKey)) {
-            return null;
-        }
-        int index = quotaKey.lastIndexOf(':');
-        if (index < 0 || index == quotaKey.length() - 1) {
-            return null;
-        }
-        return quotaKey.substring(index + 1).trim();
+        return Ip2LocationQuotaRedisKeys.extractApiKey(quotaKey);
+    }
+
+    private AccountType extractAccountType(String quotaKey) {
+        return Ip2LocationQuotaRedisKeys.extractAccountType(quotaKey);
+    }
+
+    private String formatTtl(AccountType accountType) {
+        Duration ttl = quotaService.resolveQuotaTtl(accountType);
+        return ttl == null ? "PERSIST" : ttl.toString();
     }
 
     private void safeCompensate(String quotaKey) {

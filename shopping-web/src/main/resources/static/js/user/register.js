@@ -20,6 +20,9 @@ const registerHCaptchaModule = typeof module !== "undefined" && module.exports
 const registerHutoolCaptchaModule = typeof module !== "undefined" && module.exports
   ? require("./auth/register/register-hutool-captcha.js")
   : globalThis.ShoppingRegisterHutoolCaptcha;
+const preAuthClientModule = typeof module !== "undefined" && module.exports
+  ? require("./auth/shared/preauth-client.js")
+  : globalThis.ShoppingPreAuthClient;
 
 if (
   !registerTianaiTrackApi
@@ -29,6 +32,7 @@ if (
   || !registerTurnstileModule
   || !registerHCaptchaModule
   || !registerHutoolCaptchaModule
+  || !preAuthClientModule
 ) {
   throw new Error("register dependencies failed to load");
 }
@@ -54,6 +58,10 @@ const {
 const { createRegisterTurnstile } = registerTurnstileModule;
 const { createRegisterHCaptcha } = registerHCaptchaModule;
 const { createRegisterHutoolCaptcha } = registerHutoolCaptchaModule;
+const WAF_REPLAY_EVENT_NAME = typeof preAuthClientModule.WAF_REPLAY_EVENT_NAME === "string"
+  ? preAuthClientModule.WAF_REPLAY_EVENT_NAME
+  : "shopping:preauth:waf-request-replayed";
+const REGISTER_EMAIL_CODE_TYPE_PATH = "/shopping/user/register/email-code-type";
 
 const CAPTCHA_SUCCESS_FEEDBACK_MIN_MS = 1200;
 const HCAPTCHA_AUTO_RETRY_DELAY_MS = 180;
@@ -145,6 +153,73 @@ async function resendRegisterEmailCodeFromOtp() {
   return registerFormApi.resendRegisterEmailCode();
 }
 
+async function verifyRegisterEmailCodeFromOtp(emailCode) {
+  if (!registerFormApi || typeof registerFormApi.verifyRegisterEmailCode !== "function") {
+    return {
+      success: false,
+      message: "Register verification is unavailable, please retry later.",
+      requirePhoneBinding: false
+    };
+  }
+  return registerFormApi.verifyRegisterEmailCode(emailCode);
+}
+
+let registerWafReplayHandling = false;
+
+function isRegisterEmailCodeTypeReplay(detail = {}) {
+  const replayUrl = detail?.url ? String(detail.url).trim() : "";
+  if (!replayUrl) {
+    return false;
+  }
+  if (replayUrl.startsWith(REGISTER_EMAIL_CODE_TYPE_PATH)) {
+    return true;
+  }
+  if (typeof window === "undefined") {
+    return replayUrl.includes(REGISTER_EMAIL_CODE_TYPE_PATH);
+  }
+  try {
+    const parsed = new URL(replayUrl, window.location.origin);
+    return parsed.pathname === REGISTER_EMAIL_CODE_TYPE_PATH;
+  } catch (_) {
+    return replayUrl.includes(REGISTER_EMAIL_CODE_TYPE_PATH);
+  }
+}
+
+async function handleRegisterWafReplay(detail = {}) {
+  if (!isRegisterEmailCodeTypeReplay(detail)) {
+    return;
+  }
+  if (!registerFormApi || typeof registerFormApi.continueRegisterAfterWafReplay !== "function") {
+    return;
+  }
+  if (registerWafReplayHandling) {
+    return;
+  }
+  registerWafReplayHandling = true;
+  try {
+    await registerFormApi.continueRegisterAfterWafReplay(detail);
+  } catch (_) {
+    showRegisterError("Register request failed, please retry.");
+  } finally {
+    registerWafReplayHandling = false;
+  }
+}
+
+function bindRegisterWafReplayHandler() {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function") {
+    return;
+  }
+  if (window.__shoppingRegisterWafReplayBound === true) {
+    return;
+  }
+  window.__shoppingRegisterWafReplayBound = true;
+  window.addEventListener(WAF_REPLAY_EVENT_NAME, (event) => {
+    handleRegisterWafReplay(event?.detail || {}).catch(() => {
+      showRegisterError("Register request failed, please retry.");
+    });
+  });
+}
+
 registerFormApi = createRegisterForm({
   showRegisterError,
   clearRegisterError,
@@ -168,6 +243,7 @@ registerFormApi = createRegisterForm({
     return registerTianaiApi.openTianaiModal();
   }
 });
+bindRegisterWafReplayHandler();
 
 registerTianaiApi = createRegisterTianai({
   getElementDisplaySize,
@@ -228,6 +304,7 @@ registerHCaptchaApi = createRegisterHCaptcha({
 
 if (typeof window !== "undefined") {
   window.resendRegisterEmailCode = resendRegisterEmailCodeFromOtp;
+  window.verifyRegisterEmailCode = verifyRegisterEmailCodeFromOtp;
 }
 
 function showRegisterCaptchaError(message) {

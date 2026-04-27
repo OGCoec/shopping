@@ -36,6 +36,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         }
 
         return builder
+                .username(draft.getUsername())
                 .firstName(draft.getFirstName())
                 .lastName(draft.getLastName())
                 .gender(draft.getGender())

@@ -171,6 +171,15 @@ register:
     cookie-http-only: true
     cookie-secure: false
     cookie-same-site: "Lax"
+  password-crypto:
+    enabled: true
+    redis-key-prefix: "register:crypto:keypair:"
+    nonce-key-prefix: "register:crypto:nonce:"
+    key-ttl-seconds: 1800
+    nonce-ttl-seconds: 600
+    timestamp-window-seconds: 600
+    rsa-key-size: 2048
+    kek: "${REGISTER_PASSWORD_CRYPTO_KEK:}"
   operation-timeout:
     wait-min-seconds: 5
     wait-max-seconds: 10
@@ -187,7 +196,7 @@ register:
     member-key-prefix: "register:ip:l6:member:"
   ip-risk-multi-level:
     enabled: true
-    redis-key-prefix: "register:ip:risk:"
+    redis-key-prefix: "register:ip:risk:v2:"
     redis-ttl-minutes: 60
     redis-ttl-jitter-minutes: 120
     db-expire-hours: 24
@@ -212,7 +221,7 @@ register:
     idempotency-ttl-minutes: 90
     source-actions:
       API: "UPSERT_DB,WRITE_REDIS_CACHE,SYNC_BLOOM"
-      DB: "WRITE_REDIS_CACHE"
+      DB: "UPSERT_DB,WRITE_REDIS_CACHE"
       REDIS: ""
       CAFFEINE: ""
       NONE: ""
