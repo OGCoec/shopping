@@ -16,8 +16,14 @@
 
 <div class="form-group" style="margin-bottom: 8px;">
   <label for="register-password">设置密码</label>
-  <div class="input-wrapper">
-    <input type="password" id="register-password" placeholder="至少 6 位密码" autocomplete="new-password" />
+  <div class="input-wrapper register-password-input-wrap">
+    <input type="password" id="register-password" class="register-password-input" placeholder="至少 6 位密码" autocomplete="new-password" />
+    <button
+      type="button"
+      id="register-password-toggle"
+      class="toggle-password register-password-toggle"
+      aria-label="Show password"
+      title="Show password"></button>
   </div>
 </div>
 
@@ -31,8 +37,14 @@
 
 <div class="form-group">
   <label for="register-confirm">确认密码</label>
-  <div class="input-wrapper">
-    <input type="password" id="register-confirm" placeholder="请再次输入密码" autocomplete="new-password" />
+  <div class="input-wrapper register-password-input-wrap">
+    <input type="password" id="register-confirm" class="register-password-input" placeholder="请再次输入密码" autocomplete="new-password" />
+    <button
+      type="button"
+      id="register-confirm-toggle"
+      class="toggle-password register-password-toggle"
+      aria-label="Show confirm password"
+      title="Show confirm password"></button>
   </div>
 </div>
 

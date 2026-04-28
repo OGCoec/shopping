@@ -415,7 +415,71 @@ function continueRegisterWithCaptcha() {
   return registerHutoolCaptchaApi.continueRegisterWithCaptcha();
 }
 
+const REGISTER_PASSWORD_HIDDEN_ICON = `
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M2 12s3.6-7 10-7c2.1 0 4 .55 5.62 1.47"></path>
+    <path d="M22 12s-3.6 7-10 7c-2.1 0-4-.55-5.62-1.47"></path>
+    <path d="M3 3l18 18"></path>
+    <path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-.88"></path>
+  </svg>
+`;
+
+const REGISTER_PASSWORD_VISIBLE_ICON = `
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path>
+    <circle cx="12" cy="12" r="3"></circle>
+  </svg>
+`;
+
+function updateRegisterPasswordToggle(button, input, showLabel, hideLabel) {
+  const visible = input?.type === "text";
+  button.innerHTML = visible ? REGISTER_PASSWORD_VISIBLE_ICON : REGISTER_PASSWORD_HIDDEN_ICON;
+  button.classList.toggle("is-visible", visible);
+  button.setAttribute("aria-label", visible ? hideLabel : showLabel);
+  button.setAttribute("title", visible ? hideLabel : showLabel);
+}
+
+function bindRegisterPasswordToggle(buttonId, inputId, showLabel, hideLabel) {
+  const button = document.getElementById(buttonId);
+  const input = document.getElementById(inputId);
+  if (!button || !input) {
+    return;
+  }
+
+  updateRegisterPasswordToggle(button, input, showLabel, hideLabel);
+
+  if (button.dataset.bound === "true") {
+    return;
+  }
+
+  button.dataset.bound = "true";
+  button.addEventListener("click", () => {
+    input.type = input.type === "password" ? "text" : "password";
+    updateRegisterPasswordToggle(button, input, showLabel, hideLabel);
+    input.focus({ preventScroll: true });
+    try {
+      const caretPosition = typeof input.value === "string" ? input.value.length : 0;
+      input.setSelectionRange(caretPosition, caretPosition);
+    } catch (_) {
+      // Ignore caret restore failures on browsers that do not support it.
+    }
+  });
+}
+
 function initializeRegisterFragment() {
+  bindRegisterPasswordToggle(
+    "register-password-toggle",
+    "register-password",
+    "Show password",
+    "Hide password"
+  );
+  bindRegisterPasswordToggle(
+    "register-confirm-toggle",
+    "register-confirm",
+    "Show confirm password",
+    "Hide confirm password"
+  );
+
   const registerPasswordInput = document.getElementById("register-password");
   if (registerPasswordInput && registerPasswordInput.dataset.strengthBound !== "true") {
     registerPasswordInput.dataset.strengthBound = "true";

@@ -245,6 +245,39 @@ body {
   color: #333;
 }
 
+.toggle-password:focus-visible {
+  outline: 2px solid rgba(91, 33, 182, 0.24);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.register-password-input {
+  padding-right: 44px;
+}
+
+.register-password-toggle {
+  right: 2px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.register-password-toggle:hover,
+.register-password-toggle:focus-visible,
+.register-password-toggle.is-visible {
+  color: #5b21b6;
+}
+
+.register-password-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  pointer-events: none;
+}
+
 /* Remember & Forgot */
 .form-options {
   display: flex;

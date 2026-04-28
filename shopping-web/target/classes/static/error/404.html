@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>页面迷航</title>
+    <link rel="stylesheet" href="/error/404.css" />
+  </head>
+  <body>
+    <main class="error-page" aria-label="404 页面迷航">
+      <div id="particles-background" aria-hidden="true"></div>
+
+      <section class="error-content">
+        <div class="error-badge">
+          <span class="badge-dot"></span>
+          <span>404 / Signal Lost</span>
+        </div>
+
+        <div class="headline-wrap">
+          <span class="headline-kicker">Page Not Found</span>
+          <h1 class="error-title">迷失在星环之外</h1>
+        </div>
+
+        <p class="error-message">
+          这个地址没有抵达任何页面。链接可能已经失效，或者路径被写错了。
+        </p>
+
+        <div class="error-actions" aria-label="404 页面操作">
+          <button class="spring-button primary-action" type="button" data-action="back">
+            <span class="button-glow"></span>
+            <span class="button-label">返回上一页</span>
+          </button>
+          <button class="spring-button secondary-action" type="button" data-action="login">
+            <span class="button-glow"></span>
+            <span class="button-label">回到登录入口</span>
+          </button>
+        </div>
+
+        <p class="error-path">
+          <span>当前路径</span>
+          <strong id="pathValue">/</strong>
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="/error/particles-404.js"></script>
+    <script src="/error/404-actions.js" defer></script>
+  </body>
+</html>

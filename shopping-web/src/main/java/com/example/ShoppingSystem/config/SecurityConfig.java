@@ -7,8 +7,10 @@ import com.example.ShoppingSystem.security.OAuth2LoginFailureHandler;
 import com.example.ShoppingSystem.security.OAuth2LoginSuccessHandler;
 import com.example.ShoppingSystem.security.RedisStateAuthorizationRequestRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -24,9 +26,29 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private static final String[] APP_SECURITY_PATHS = {
+            "/",
+            "/index.html",
+            "/favicon.ico",
+            "/shopping/**",
+            "/oauth2/**",
+            "/login/oauth2/code/**",
+            "/css/**",
+            "/js/**",
+            "/images/**",
+            "/fragments/**",
+            "/webjars/**",
+            "/v3/api-docs",
+            "/v3/api-docs/**",
+            "/swagger-ui.html",
+            "/swagger-ui/**",
+            "/doc.html"
+    };
+
     private static final String[] PUBLIC_PATHS = {
             "/",
             "/index.html",
+            "/favicon.ico",
             "/shopping/user/login",
             "/shopping/user/register",
             "/shopping/user/register/**",
@@ -45,7 +67,6 @@ public class SecurityConfig {
             "/swagger-ui.html",
             "/swagger-ui/**",
             "/doc.html",
-            "/error",
             "/oauth2/github/login",
             "/oauth2/google/login",
             "/oauth2/microsoft/login",
@@ -61,16 +82,40 @@ public class SecurityConfig {
     };
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   OAuth2LoginSuccessHandler successHandler,
-                                                   OAuth2LoginFailureHandler failureHandler,
-                                                   RedisStateAuthorizationRequestRepository redisStateAuthorizationRequestRepository,
-                                                   OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver,
-                                                   PreAuthFilter preAuthFilter) throws Exception {
+    @Order(1)
+    public SecurityFilterChain legacyPageSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
+                .securityMatcher(LEGACY_PAGE_PATHS)
+                .authorizeHttpRequests(auth -> auth.anyRequest().denyAll())
+                .csrf(csrf -> csrf.disable())
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .build();
+    }
+
+    @Bean
+    @Order(2)
+    public SecurityFilterChain errorSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher("/error", "/error/**")
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .csrf(csrf -> csrf.disable())
+                .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .build();
+    }
+
+    @Bean
+    @Order(3)
+    public SecurityFilterChain appSecurityFilterChain(HttpSecurity http,
+                                                      OAuth2LoginSuccessHandler successHandler,
+                                                      OAuth2LoginFailureHandler failureHandler,
+                                                      RedisStateAuthorizationRequestRepository redisStateAuthorizationRequestRepository,
+                                                      OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver,
+                                                      PreAuthFilter preAuthFilter) throws Exception {
+        return http
+                .securityMatcher(APP_SECURITY_PATHS)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(LEGACY_PAGE_PATHS)
-                        .denyAll()
                         .requestMatchers(PUBLIC_PATHS)
                         .permitAll()
                         .anyRequest()
@@ -117,5 +162,12 @@ public class SecurityConfig {
     public PreAuthFilter preAuthFilter(PreAuthBindingService preAuthBindingService,
                                        ObjectMapper objectMapper) {
         return new PreAuthFilter(preAuthBindingService, objectMapper);
+    }
+
+    @Bean
+    public FilterRegistrationBean<PreAuthFilter> preAuthFilterRegistration(PreAuthFilter preAuthFilter) {
+        FilterRegistrationBean<PreAuthFilter> registration = new FilterRegistrationBean<>(preAuthFilter);
+        registration.setEnabled(false);
+        return registration;
     }
 }
