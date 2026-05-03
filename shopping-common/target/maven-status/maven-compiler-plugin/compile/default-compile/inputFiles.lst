@@ -6,6 +6,7 @@ C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\Shoppin
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\GithubRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\GoogleRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\Ip2LocationQuotaRedisKeys.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\LoginRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\MicrosoftRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\RegisterRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisfilter\CountingBloomFilter.java
@@ -21,3 +22,7 @@ C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\Shoppin
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\redis\RedisData.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\SendSmsVerifyCode.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\SnowflakeIdWorker.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\totp\OtpAuthUriUtils.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\totp\TotpCodeGenerator.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\totp\TotpCodeVerifier.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\totp\TotpSecretGenerator.java

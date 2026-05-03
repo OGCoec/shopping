@@ -186,6 +186,7 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
                 .googleId(null)
                 .microsoftId(null)
                 .tokenVersion(IdUtil.fastSimpleUUID().substring(0, 24))
+                .totpEnabled(Boolean.FALSE)
                 .status("ACTIVE")
                 .lastLoginAt(now)
                 .createdAt(now)
@@ -294,7 +295,7 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
         if (email == null) {
             return "";
         }
-        return email.trim().toLowerCase();
+        return email.trim();
     }
 
     private String normalizeEmailCode(String emailCode) {

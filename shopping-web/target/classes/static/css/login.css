@@ -21,6 +21,7 @@
 body {
   font-family:
     "Inter",
+    "Noto Sans SC Variable",
     -apple-system,
     BlinkMacSystemFont,
     "PingFang SC",
@@ -146,6 +147,10 @@ body {
   width: 100%;
   max-width: 400px;
   margin: 0 auto;
+}
+
+body.auth-route-pending .form-container {
+  visibility: hidden;
 }
 
 /* Sparkle icon */
@@ -691,6 +696,19 @@ input.phone-pill-field {
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
 }
 
+.sms-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.sms-code-send-btn {
+  height: 46px;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
 .switch-link {
   display: inline-block;
   margin-top: 16px;
@@ -930,7 +948,8 @@ input.otp-code-input {
 }
 
 .form-container.password-step-active,
-.form-container.otp-step-active {
+.form-container.otp-step-active,
+.form-container.terminal-step-active {
   max-width: 400px;
   background: transparent;
   border: none;
@@ -941,7 +960,9 @@ input.otp-code-input {
 .form-container.password-step-active .sparkle-icon,
 .form-container.password-step-active .form-header,
 .form-container.otp-step-active .sparkle-icon,
-.form-container.otp-step-active .form-header {
+.form-container.otp-step-active .form-header,
+.form-container.terminal-step-active .sparkle-icon,
+.form-container.terminal-step-active .form-header {
   display: none;
 }
 
@@ -973,6 +994,97 @@ input.otp-code-input {
 .form-container.otp-step-active .error-msg {
   margin-top: 10px;
   margin-bottom: 0;
+}
+
+.auth-terminal-view {
+  text-align: center;
+  color: #1a1a2e;
+}
+
+.auth-terminal-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 24px;
+  color: #1a1a2e;
+}
+
+.auth-terminal-mark svg {
+  width: 54px;
+  height: 54px;
+}
+
+.auth-terminal-title {
+  margin: 0 0 14px;
+  font-size: 34px;
+  line-height: 1.18;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.auth-terminal-copy {
+  max-width: 320px;
+  margin: 0 auto 34px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgba(26, 26, 46, 0.72);
+}
+
+.auth-terminal-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #111827;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset;
+  font-size: 15px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.auth-terminal-button:hover,
+.auth-terminal-button:focus-visible {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.12);
+}
+
+.auth-terminal-secondary {
+  display: inline-block;
+  margin-top: 22px;
+  color: #1a1a2e;
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.auth-terminal-secondary:hover,
+.auth-terminal-secondary:focus-visible,
+.auth-terminal-links a:hover,
+.auth-terminal-links a:focus-visible {
+  text-decoration: underline;
+}
+
+.auth-terminal-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 34px;
+  font-size: 13px;
+  color: rgba(26, 26, 46, 0.72);
+}
+
+.auth-terminal-links a {
+  color: inherit;
+  text-decoration: none;
 }
 
 .btn-github {

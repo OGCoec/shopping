@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS user_login_identity (
 
     -- 额外控制字段
     token_version VARCHAR(24) NOT NULL,
+    totp_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    totp_secret_encrypted VARCHAR(512),
+    totp_confirmed_at TIMESTAMPTZ,
+    totp_enabled_at TIMESTAMPTZ,
+    totp_last_used_step BIGINT,
 
     -- 状态与时间
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
@@ -41,6 +46,12 @@ CREATE TABLE IF NOT EXISTS user_login_identity (
         CHECK (
             (email IS NULL AND email_password_hash IS NULL)
             OR (email IS NOT NULL)
+        ),
+
+    CONSTRAINT ck_user_login_identity_totp_secret_pair
+        CHECK (
+            (totp_enabled = FALSE)
+            OR (totp_secret_encrypted IS NOT NULL AND totp_confirmed_at IS NOT NULL)
         ),
 
     CONSTRAINT ck_user_login_identity_id_eq_user_id
@@ -72,6 +83,11 @@ COMMENT ON COLUMN user_login_identity.github_id IS 'GitHub 平台用户唯一标
 COMMENT ON COLUMN user_login_identity.google_id IS 'Google 平台用户唯一标识';
 COMMENT ON COLUMN user_login_identity.microsoft_id IS 'Microsoft 平台用户唯一标识';
 COMMENT ON COLUMN user_login_identity.token_version IS '令牌版本号字符串，用于令牌整体失效控制';
+COMMENT ON COLUMN user_login_identity.totp_enabled IS '是否启用 TOTP 身份验证器';
+COMMENT ON COLUMN user_login_identity.totp_secret_encrypted IS 'TOTP Base32 secret 加密后的存储值';
+COMMENT ON COLUMN user_login_identity.totp_confirmed_at IS 'TOTP 绑定验证码确认成功时间';
+COMMENT ON COLUMN user_login_identity.totp_enabled_at IS 'TOTP 正式启用时间';
+COMMENT ON COLUMN user_login_identity.totp_last_used_step IS 'TOTP 上一次验证成功的时间步，用于防止同一验证码重复使用';
 COMMENT ON COLUMN user_login_identity.status IS '账号状态：ACTIVE / DISABLED / LOCKED';
 COMMENT ON COLUMN user_login_identity.last_login_at IS '最近一次登录时间';
 COMMENT ON COLUMN user_login_identity.created_at IS '创建时间';

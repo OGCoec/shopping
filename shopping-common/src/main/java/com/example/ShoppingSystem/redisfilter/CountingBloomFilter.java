@@ -46,10 +46,16 @@ public class CountingBloomFilter {
     private static class FilterMeta {
         final int capacity;
         final int hashCount;
+        final int counterBytes;
 
         FilterMeta(int capacity, int hashCount) {
+            this(capacity, hashCount, 1);
+        }
+
+        FilterMeta(int capacity, int hashCount, int counterBytes) {
             this.capacity = capacity;
             this.hashCount = hashCount;
+            this.counterBytes = counterBytes;
         }
     }
 
@@ -80,6 +86,10 @@ public class CountingBloomFilter {
      * @return true: 初始化成功或已存在
      */
     public Boolean init(String key, int capacity, int hashCount) {
+        return init(key, capacity, hashCount, 1);
+    }
+
+    public Boolean init(String key, int capacity, int hashCount, int counterBytes) {
         if (capacity < 1) {
             throw new IllegalArgumentException(
                     "[计数布隆过滤器] capacity 必须 >= 1，当前值: " + capacity);
@@ -92,16 +102,23 @@ public class CountingBloomFilter {
             throw new IllegalArgumentException(
                     "[计数布隆过滤器] hashCount 必须在 [4, 25] 范围内，当前值: " + hashCount);
         }
+        if (counterBytes != 1 && counterBytes != 2) {
+            throw new IllegalArgumentException("[计数布隆过滤器] counterBytes 只支持 1 或 2，当前值: " + counterBytes);
+        }
         String metaKey = key + ":meta";
 
         // ===== 配置变更检测：防止修改参数后与已有数据不匹配导致 false-negative =====
         Object oldCapStr = stringRedisTemplate.opsForHash().get(metaKey, "capacity");
         Object oldHashStr = stringRedisTemplate.opsForHash().get(metaKey, "hashCount");
+        Object oldCounterBytesStr = stringRedisTemplate.opsForHash().get(metaKey, "counterBytes");
 
         if (oldCapStr != null && oldHashStr != null) {
             int oldCapacity = Integer.parseInt(oldCapStr.toString());
             int oldHashCount = Integer.parseInt(oldHashStr.toString());
-            boolean configChanged = (oldCapacity != capacity) || (oldHashCount != hashCount);
+            int oldCounterBytes = oldCounterBytesStr == null ? 1 : Integer.parseInt(oldCounterBytesStr.toString());
+            boolean configChanged = (oldCapacity != capacity)
+                    || (oldHashCount != hashCount)
+                    || (oldCounterBytes != counterBytes);
             if (configChanged) {
                 log.warn("[计数布隆过滤器] 检测到配置变更（key={}），" +
                         "旧: capacity={}, hashCount={} → 新: capacity={}, hashCount={}，" +
@@ -125,9 +142,10 @@ public class CountingBloomFilter {
         // 保存元数据到 Redis（覆盖写，无论是否已存在）
         stringRedisTemplate.opsForHash().put(metaKey, "capacity", String.valueOf(capacity));
         stringRedisTemplate.opsForHash().put(metaKey, "hashCount", String.valueOf(hashCount));
+        stringRedisTemplate.opsForHash().put(metaKey, "counterBytes", String.valueOf(counterBytes));
 
         // 更新本地元数据缓存
-        metaCache.put(key, new FilterMeta(capacity, hashCount));
+        metaCache.put(key, new FilterMeta(capacity, hashCount, counterBytes));
 
         // 预分配 String 空间（key 不存在时才分配，避免清除已有数据）
         String luaInit = "if redis.call('EXISTS', KEYS[1]) == 0 then " +
@@ -140,7 +158,7 @@ public class CountingBloomFilter {
         Long result = stringRedisTemplate.execute(
                 script,
                 Collections.singletonList(key),
-                String.valueOf(capacity));
+                String.valueOf(capacity * counterBytes));
         return result != null; // 无论返回 1（新建）还是 0（已存在），初始化都算成功完成
     }
 
@@ -152,10 +170,14 @@ public class CountingBloomFilter {
      * @param hashCount 哈希函数个数 k
      */
     public void reinit(String key, int capacity, int hashCount) {
+        reinit(key, capacity, hashCount, 1);
+    }
+
+    public void reinit(String key, int capacity, int hashCount, int counterBytes) {
         stringRedisTemplate.delete(key);
         stringRedisTemplate.delete(key + ":meta");
         metaCache.invalidate(key);
-        init(key, capacity, hashCount);
+        init(key, capacity, hashCount, counterBytes);
     }
 
     // ========================== 元数据加载 ==========================
@@ -168,11 +190,13 @@ public class CountingBloomFilter {
             String metaKey = key + ":meta";
             Object capStr = stringRedisTemplate.opsForHash().get(metaKey, "capacity");
             Object hashStr = stringRedisTemplate.opsForHash().get(metaKey, "hashCount");
+            Object counterBytesStr = stringRedisTemplate.opsForHash().get(metaKey, "counterBytes");
 
             if (capStr == null || hashStr == null) {
                 throw new IllegalStateException("计数布隆过滤器 [" + key + "] 尚未初始化，找不到元数据配置！请先调用 init() 方法。");
             }
-            return new FilterMeta(Integer.parseInt(capStr.toString()), Integer.parseInt(hashStr.toString()));
+            int counterBytes = counterBytesStr == null ? 1 : Integer.parseInt(counterBytesStr.toString());
+            return new FilterMeta(Integer.parseInt(capStr.toString()), Integer.parseInt(hashStr.toString()), counterBytes);
         });
     }
 
@@ -213,6 +237,34 @@ public class CountingBloomFilter {
             "    local val = (cur == '' or #cur == 0) and 0 or string.byte(cur) " +
             "    if val < 255 then " +
             "      redis.call('SETRANGE', KEYS[1], offset, string.char(val + 1)) " +
+            "    end " +
+            "  end " +
+            "  count = count + 1 " +
+            "end " +
+            "return count";
+
+    private static final String LUA_ADD_2BYTE = "for i=1,#ARGV do " +
+            "  local offset = tonumber(ARGV[i]) " +
+            "  local cur = redis.call('GETRANGE', KEYS[1], offset, offset + 1) " +
+            "  local val = (#cur < 2) and 0 or (string.byte(cur, 1) * 256 + string.byte(cur, 2)) " +
+            "  if val < 65535 then " +
+            "    val = val + 1 " +
+            "    redis.call('SETRANGE', KEYS[1], offset, string.char(math.floor(val / 256), val % 256)) " +
+            "  end " +
+            "end " +
+            "return 1";
+
+    private static final String LUA_ADD_ALL_2BYTE = "local k = tonumber(ARGV[1]) " +
+            "local total = #ARGV - 1 " +
+            "local count = 0 " +
+            "for i = 0, total / k - 1 do " +
+            "  for j = 1, k do " +
+            "    local offset = tonumber(ARGV[1 + i * k + j]) " +
+            "    local cur = redis.call('GETRANGE', KEYS[1], offset, offset + 1) " +
+            "    local val = (#cur < 2) and 0 or (string.byte(cur, 1) * 256 + string.byte(cur, 2)) " +
+            "    if val < 65535 then " +
+            "      val = val + 1 " +
+            "      redis.call('SETRANGE', KEYS[1], offset, string.char(math.floor(val / 256), val % 256)) " +
             "    end " +
             "  end " +
             "  count = count + 1 " +
@@ -267,6 +319,37 @@ public class CountingBloomFilter {
             "end " +
             "return total / k";
 
+    private static final String LUA_DELETE_2BYTE = "local offsets = {} " +
+            "local vals = {} " +
+            "for i=1,#ARGV do " +
+            "  offsets[i] = tonumber(ARGV[i]) " +
+            "  local cur = redis.call('GETRANGE', KEYS[1], offsets[i], offsets[i] + 1) " +
+            "  vals[i] = (#cur < 2) and 0 or (string.byte(cur, 1) * 256 + string.byte(cur, 2)) " +
+            "  if vals[i] == 0 then return 0 end " +
+            "end " +
+            "for i=1,#ARGV do " +
+            "  local val = vals[i] - 1 " +
+            "  redis.call('SETRANGE', KEYS[1], offsets[i], string.char(math.floor(val / 256), val % 256)) " +
+            "end " +
+            "return 1";
+
+    private static final String LUA_DELETE_ALL_2BYTE = "local k = tonumber(ARGV[1]) " +
+            "local total = #ARGV - 1 " +
+            "local offsets = {} " +
+            "local vals = {} " +
+            "for i = 2, #ARGV do " +
+            "  local offset = tonumber(ARGV[i]) " +
+            "  offsets[i-1] = offset " +
+            "  local cur = redis.call('GETRANGE', KEYS[1], offset, offset + 1) " +
+            "  vals[i-1] = (#cur < 2) and 0 or (string.byte(cur, 1) * 256 + string.byte(cur, 2)) " +
+            "  if vals[i-1] == 0 then return 0 end " +
+            "end " +
+            "for i = 1, total do " +
+            "  local val = vals[i] - 1 " +
+            "  redis.call('SETRANGE', KEYS[1], offsets[i], string.char(math.floor(val / 256), val % 256)) " +
+            "end " +
+            "return total / k";
+
     /**
      * EXISTS 脚本：所有 k 个 counter ≥ 1 则返回 1（可能存在），否则返回 0（一定不存在）
      * KEYS[1] = 过滤器 key
@@ -297,6 +380,26 @@ public class CountingBloomFilter {
             "    local offset = tonumber(ARGV[1 + i * k + j]) " +
             "    local cur = redis.call('GETRANGE', KEYS[1], offset, offset) " +
             "    local val = (cur == '' or #cur == 0) and 0 or string.byte(cur) " +
+            "    if val == 0 then return 0 end " +
+            "  end " +
+            "end " +
+            "return 1";
+
+    private static final String LUA_EXISTS_2BYTE = "for i=1,#ARGV do " +
+            "  local offset = tonumber(ARGV[i]) " +
+            "  local cur = redis.call('GETRANGE', KEYS[1], offset, offset + 1) " +
+            "  local val = (#cur < 2) and 0 or (string.byte(cur, 1) * 256 + string.byte(cur, 2)) " +
+            "  if val == 0 then return 0 end " +
+            "end " +
+            "return 1";
+
+    private static final String LUA_EXISTS_ALL_2BYTE = "local k = tonumber(ARGV[1]) " +
+            "local total = #ARGV - 1 " +
+            "for i = 0, total / k - 1 do " +
+            "  for j = 1, k do " +
+            "    local offset = tonumber(ARGV[1 + i * k + j]) " +
+            "    local cur = redis.call('GETRANGE', KEYS[1], offset, offset + 1) " +
+            "    local val = (#cur < 2) and 0 or (string.byte(cur, 1) * 256 + string.byte(cur, 2)) " +
             "    if val == 0 then return 0 end " +
             "  end " +
             "end " +
@@ -345,9 +448,11 @@ public class CountingBloomFilter {
     public Boolean add(String key, String item) {
         FilterMeta meta = getMeta(key);
         long[] buckets = getBuckets(item, meta.capacity, meta.hashCount);
-        String[] args = toStringArray(buckets);
+        String[] args = toStringArray(buckets, meta.counterBytes);
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(LUA_ADD, Long.class);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(
+                meta.counterBytes == 2 ? LUA_ADD_2BYTE : LUA_ADD,
+                Long.class);
         Long result = stringRedisTemplate.execute(script, Collections.singletonList(key), (Object[]) args);
         return result != null && result == 1L;
     }
@@ -390,11 +495,13 @@ public class CountingBloomFilter {
         for (String item : items) {
             long[] buckets = getBuckets(item, meta.capacity, meta.hashCount);
             for (long b : buckets) {
-                args[idx++] = String.valueOf(b);
+                args[idx++] = String.valueOf(b * meta.counterBytes);
             }
         }
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(LUA_ADD_ALL, Long.class);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(
+                meta.counterBytes == 2 ? LUA_ADD_ALL_2BYTE : LUA_ADD_ALL,
+                Long.class);
         Long result = stringRedisTemplate.execute(script, Collections.singletonList(key), (Object[]) args);
         return result != null ? result : 0;
     }
@@ -435,9 +542,11 @@ public class CountingBloomFilter {
     public Boolean delete(String key, String item) {
         FilterMeta meta = getMeta(key);
         long[] buckets = getBuckets(item, meta.capacity, meta.hashCount);
-        String[] args = toStringArray(buckets);
+        String[] args = toStringArray(buckets, meta.counterBytes);
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(LUA_DELETE, Long.class);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(
+                meta.counterBytes == 2 ? LUA_DELETE_2BYTE : LUA_DELETE,
+                Long.class);
         Long result = stringRedisTemplate.execute(script, Collections.singletonList(key), (Object[]) args);
         return result != null && result == 1L;
     }
@@ -479,11 +588,13 @@ public class CountingBloomFilter {
         for (String item : items) {
             long[] buckets = getBuckets(item, meta.capacity, meta.hashCount);
             for (long b : buckets) {
-                args[idx++] = String.valueOf(b);
+                args[idx++] = String.valueOf(b * meta.counterBytes);
             }
         }
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(LUA_DELETE_ALL, Long.class);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(
+                meta.counterBytes == 2 ? LUA_DELETE_ALL_2BYTE : LUA_DELETE_ALL,
+                Long.class);
         Long result = stringRedisTemplate.execute(script, Collections.singletonList(key), (Object[]) args);
         return result != null ? result : 0;
     }
@@ -520,9 +631,11 @@ public class CountingBloomFilter {
     public Boolean exists(String key, String item) {
         FilterMeta meta = getMeta(key);
         long[] buckets = getBuckets(item, meta.capacity, meta.hashCount);
-        String[] args = toStringArray(buckets);
+        String[] args = toStringArray(buckets, meta.counterBytes);
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(LUA_EXISTS, Long.class);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(
+                meta.counterBytes == 2 ? LUA_EXISTS_2BYTE : LUA_EXISTS,
+                Long.class);
         Long result = stringRedisTemplate.execute(script, Collections.singletonList(key), (Object[]) args);
         return result != null && result == 1L;
     }
@@ -565,11 +678,13 @@ public class CountingBloomFilter {
         for (String item : items) {
             long[] buckets = getBuckets(item, meta.capacity, meta.hashCount);
             for (long b : buckets) {
-                args[idx++] = String.valueOf(b);
+                args[idx++] = String.valueOf(b * meta.counterBytes);
             }
         }
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>(LUA_EXISTS_ALL, Long.class);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(
+                meta.counterBytes == 2 ? LUA_EXISTS_ALL_2BYTE : LUA_EXISTS_ALL,
+                Long.class);
         Long result = stringRedisTemplate.execute(script, Collections.singletonList(key), (Object[]) args);
         return result != null && result == 1L;
     }
@@ -628,9 +743,13 @@ public class CountingBloomFilter {
      * long[] → String[]（作为 Lua 脚本 ARGV 参数）
      */
     private String[] toStringArray(long[] buckets) {
+        return toStringArray(buckets, 1);
+    }
+
+    private String[] toStringArray(long[] buckets, int counterBytes) {
         String[] args = new String[buckets.length];
         for (int i = 0; i < buckets.length; i++) {
-            args[i] = String.valueOf(buckets[i]);
+            args[i] = String.valueOf(buckets[i] * counterBytes);
         }
         return args;
     }

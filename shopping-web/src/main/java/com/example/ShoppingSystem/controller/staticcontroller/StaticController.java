@@ -24,12 +24,52 @@ public class StaticController {
         return htmlPage("login.html");
     }
 
+    @GetMapping("/shopping/user/log-in")
+    public ResponseEntity<Resource> logInPage() {
+        return htmlPage("login.html");
+    }
+
+    @GetMapping("/shopping/user/log-in/password")
+    public ResponseEntity<Resource> logInPasswordPage() {
+        return htmlPage("login.html");
+    }
+
     /**
      * 注册页面路由。
      * 统一返回 SPA 容器页 login.html，由前端路由决定右侧显示内容。
      */
     @GetMapping("/shopping/user/register")
     public ResponseEntity<Resource> registerPage() {
+        return htmlPage("login.html");
+    }
+
+    @GetMapping("/shopping/user/create-account")
+    public ResponseEntity<Resource> createAccountPage() {
+        return htmlPage("login.html");
+    }
+
+    @GetMapping("/shopping/user/create-account/password")
+    public ResponseEntity<Resource> createAccountPasswordPage() {
+        return htmlPage("login.html");
+    }
+
+    @GetMapping("/shopping/user/email-verification")
+    public ResponseEntity<Resource> emailVerificationPage() {
+        return htmlPage("login.html");
+    }
+
+    @GetMapping("/shopping/user/totp-verification")
+    public ResponseEntity<Resource> totpVerificationPage() {
+        return htmlPage("login.html");
+    }
+
+    @GetMapping("/shopping/user/add-phone")
+    public ResponseEntity<Resource> addPhonePage() {
+        return htmlPage("login.html");
+    }
+
+    @GetMapping("/shopping/user/session-ended")
+    public ResponseEntity<Resource> sessionEndedPage() {
         return htmlPage("login.html");
     }
 

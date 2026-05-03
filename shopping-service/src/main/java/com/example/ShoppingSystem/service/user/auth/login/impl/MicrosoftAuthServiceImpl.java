@@ -78,6 +78,7 @@ public class MicrosoftAuthServiceImpl implements MicrosoftAuthService {
                 .googleId(null)
                 .microsoftId(microsoftId)
                 .tokenVersion(IdUtil.fastSimpleUUID().substring(0, 24))
+                .totpEnabled(Boolean.FALSE)
                 .status("ACTIVE")
                 .lastLoginAt(now)
                 .createdAt(now)

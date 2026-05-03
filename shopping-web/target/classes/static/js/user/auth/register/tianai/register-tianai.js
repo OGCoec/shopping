@@ -42,14 +42,16 @@
     };
   }
 
-  function buildConcatLayerMarkup(renderData) {
+  function buildConcatLayerMarkup(renderData, options = {}) {
     const totalHeight = Math.max(renderData.topHeight + renderData.bottomHeight, 1);
     const topPercent = (renderData.topHeight / totalHeight) * 100;
     const bottomPercent = 100 - topPercent;
+    const topId = options.topId || "ti-concat-top";
+    const bottomId = options.bottomId || "ti-concat-bottom";
 
     return `
-      <div id="ti-concat-top" style="position:absolute; top:0; left:0; width:100%; height:${topPercent}%; background-image:url(${renderData.topImage}); background-size:100% 100%; background-repeat:repeat-x; background-position:0px 0px;"></div>
-      <div id="ti-concat-bottom" style="position:absolute; top:${topPercent}%; left:0; width:100%; height:${bottomPercent}%; background-image:url(${renderData.bottomImage}); background-size:100% 100%; background-repeat:repeat-x; background-position:0px 0px;"></div>
+      <div id="${topId}" style="position:absolute; top:0; left:0; width:100%; height:${topPercent}%; background-image:url(${renderData.topImage}); background-size:100% 100%; background-repeat:repeat-x; background-position:0px 0px;"></div>
+      <div id="${bottomId}" style="position:absolute; top:${topPercent}%; left:0; width:100%; height:${bottomPercent}%; background-image:url(${renderData.bottomImage}); background-size:100% 100%; background-repeat:repeat-x; background-position:0px 0px;"></div>
     `;
   }
 
@@ -68,12 +70,21 @@
 
   function createRegisterTianai(options) {
     const {
+      idPrefix,
+      captchaPathMap,
       getElementDisplaySize,
       triggerCaptchaFailureAnimation,
       requestRegisterEmailCodeDelivery,
       openRegisterOtpAfterEmailSent,
       getPendingRegisterPayload
     } = options || {};
+    const domIdPrefix = (typeof idPrefix === "string" && idPrefix.trim()) || "register";
+    const urlMap = captchaPathMap || {
+      SLIDER: "/shopping/user/register/tianai/slider",
+      ROTATE: "/shopping/user/register/tianai/rotate",
+      CONCAT: "/shopping/user/register/tianai/concat",
+      WORD_IMAGE_CLICK: "/shopping/user/register/tianai/word-click"
+    };
 
     let currentTianaiCaptchaId = "";
     let currentTianaiSubType = "";
@@ -85,6 +96,37 @@
     let tianaiRequestSeq = 0;
     const WORD_CLICK_REQUIRED_POINTS = 4;
     let wordClickAutoSubmitting = false;
+
+    function getDomId(suffix) {
+      return `${domIdPrefix}-${suffix}`;
+    }
+
+    async function resolveDeliveryResult(deliveryResult) {
+      if (deliveryResult && typeof deliveryResult.json === "function") {
+        const payload = await deliveryResult.json();
+        return {
+          ok: Boolean(deliveryResult.ok),
+          payload: payload || {}
+        };
+      }
+      const payload = deliveryResult && typeof deliveryResult === "object" ? deliveryResult : {};
+      return {
+        ok: Boolean(payload.success),
+        payload
+      };
+    }
+
+    function getConcatContainerId() {
+      return getDomId("tianai-concat-container");
+    }
+
+    function getConcatTopId() {
+      return getDomId("tianai-concat-top");
+    }
+
+    function getConcatBottomId() {
+      return getDomId("tianai-concat-bottom");
+    }
 
     function normalizeTianaiSubType(subType, fallback = "SLIDER") {
       const normalized = (subType || "").trim().toUpperCase();
@@ -100,10 +142,10 @@
     }
 
     function updateTianaiActionButtons(showWordClickActions) {
-      const actionsNode = document.getElementById("register-tianai-actions");
-      const cancelNode = document.getElementById("register-tianai-cancel");
-      const refreshNode = document.getElementById("register-tianai-refresh");
-      const confirmNode = document.getElementById("register-tianai-confirm");
+      const actionsNode = document.getElementById(getDomId("tianai-actions"));
+      const cancelNode = document.getElementById(getDomId("tianai-cancel"));
+      const refreshNode = document.getElementById(getDomId("tianai-refresh"));
+      const confirmNode = document.getElementById(getDomId("tianai-confirm"));
       const displayValue = showWordClickActions ? "flex" : "none";
       if (actionsNode) actionsNode.style.display = displayValue;
       if (cancelNode) cancelNode.style.display = showWordClickActions ? "block" : "none";
@@ -112,42 +154,42 @@
     }
 
     function showTianaiError(message) {
-      const errorNode = document.getElementById("register-tianai-error-msg");
+      const errorNode = document.getElementById(getDomId("tianai-error-msg"));
       if (!errorNode) return;
       errorNode.textContent = message;
       errorNode.style.display = "block";
     }
 
     function clearTianaiError() {
-      const errorNode = document.getElementById("register-tianai-error-msg");
+      const errorNode = document.getElementById(getDomId("tianai-error-msg"));
       if (!errorNode) return;
       errorNode.textContent = "";
       errorNode.style.display = "none";
     }
 
     function closeTianaiModal() {
-      const modal = document.getElementById("register-tianai-modal");
+      const modal = document.getElementById(getDomId("tianai-modal"));
       if (modal) modal.style.display = "none";
       clearTianaiError();
       tianaiActive = false;
     }
 
     function openTianaiModal() {
-      const modal = document.getElementById("register-tianai-modal");
+      const modal = document.getElementById(getDomId("tianai-modal"));
       if (modal) modal.style.display = "flex";
       tianaiActive = true;
     }
 
     function resetTianaiUI() {
       clearTianaiError();
-      document.getElementById("register-tianai-slider-area").style.display = "none";
-      document.getElementById("register-tianai-click-area").style.display = "none";
+      document.getElementById(getDomId("tianai-slider-area")).style.display = "none";
+      document.getElementById(getDomId("tianai-click-area")).style.display = "none";
       updateTianaiActionButtons(false);
       wordClickAutoSubmitting = false;
 
-      const tpl = document.getElementById("register-tianai-slider-tpl");
-      const btn = document.getElementById("register-tianai-track-btn");
-      const prog = document.getElementById("register-tianai-track-progress");
+      const tpl = document.getElementById(getDomId("tianai-slider-tpl"));
+      const btn = document.getElementById(getDomId("tianai-track-btn"));
+      const prog = document.getElementById(getDomId("tianai-track-progress"));
       if (tpl) tpl.style.left = "0px";
       if (btn) btn.style.left = "0px";
       if (prog) prog.style.width = "20px";
@@ -158,10 +200,10 @@
         tpl.style.transform = "none";
       }
 
-      const markers = document.getElementById("register-tianai-click-markers");
+      const markers = document.getElementById(getDomId("tianai-click-markers"));
       if (markers) markers.innerHTML = "";
 
-      const concatContainer = document.getElementById("ti-concat-container");
+      const concatContainer = document.getElementById(getConcatContainerId());
       if (concatContainer) {
         concatContainer.style.display = "none";
         concatContainer.innerHTML = "";
@@ -174,12 +216,6 @@
       resetTianaiUI();
       const requestSeq = ++tianaiRequestSeq;
 
-      const urlMap = {
-        SLIDER: "/shopping/user/register/tianai/slider",
-        ROTATE: "/shopping/user/register/tianai/rotate",
-        CONCAT: "/shopping/user/register/tianai/concat",
-        WORD_IMAGE_CLICK: "/shopping/user/register/tianai/word-click"
-      };
       const pendingRegisterPayload = getPendingRegisterPayload?.() || null;
       const params = new URLSearchParams();
       if (currentTianaiCaptchaId) {
@@ -204,30 +240,30 @@
         currentTianaiCaptchaId = payload.captchaId || "";
 
         if (currentTianaiSubType === "WORD_IMAGE_CLICK") {
-          document.getElementById("register-tianai-click-area").style.display = "block";
+          document.getElementById(getDomId("tianai-click-area")).style.display = "block";
           updateTianaiActionButtons(false);
-          document.getElementById("register-tianai-click-bg").src = payload.backgroundImage || "";
-          const clickTpl = document.getElementById("register-tianai-click-tpl");
+          document.getElementById(getDomId("tianai-click-bg")).src = payload.backgroundImage || "";
+          const clickTpl = document.getElementById(getDomId("tianai-click-tpl"));
           if (clickTpl) clickTpl.src = payload.templateImage || "";
           setupClickTracking();
           return;
         }
 
-        document.getElementById("register-tianai-slider-area").style.display = "block";
-        document.getElementById("register-tianai-slider-bg").src = payload.backgroundImage || "";
+        document.getElementById(getDomId("tianai-slider-area")).style.display = "block";
+        document.getElementById(getDomId("tianai-slider-bg")).src = payload.backgroundImage || "";
 
-        const tpl = document.getElementById("register-tianai-slider-tpl");
+        const tpl = document.getElementById(getDomId("tianai-slider-tpl"));
         tpl.src = payload.templateImage || "";
 
-        const bgImgNode = document.getElementById("register-tianai-slider-bg");
-        let concatContainer = document.getElementById("ti-concat-container");
+        const bgImgNode = document.getElementById(getDomId("tianai-slider-bg"));
+        let concatContainer = document.getElementById(getConcatContainerId());
         if (currentTianaiSubType === "CONCAT") {
           const renderData = getConcatRenderData(payload);
           resetCaptchaImageVisibility(bgImgNode, tpl, true);
 
           if (!concatContainer) {
             concatContainer = document.createElement("div");
-            concatContainer.id = "ti-concat-container";
+            concatContainer.id = getConcatContainerId();
             concatContainer.style.position = "absolute";
             concatContainer.style.top = "0";
             concatContainer.style.left = "0";
@@ -237,7 +273,10 @@
           }
           concatContainer.style.display = "block";
           concatContainer.dataset.movingLayer = renderData.movingLayer;
-          concatContainer.innerHTML = buildConcatLayerMarkup(renderData);
+          concatContainer.innerHTML = buildConcatLayerMarkup(renderData, {
+            topId: getConcatTopId(),
+            bottomId: getConcatBottomId()
+          });
         } else {
           resetCaptchaImageVisibility(bgImgNode, tpl, false);
           if (concatContainer) concatContainer.style.display = "none";
@@ -264,10 +303,10 @@
     }
 
     function setupSliderTracking() {
-      const btn = document.getElementById("register-tianai-track-btn");
-      const prog = document.getElementById("register-tianai-track-progress");
-      const tpl = document.getElementById("register-tianai-slider-tpl");
-      const bg = document.getElementById("register-tianai-slider-bg");
+      const btn = document.getElementById(getDomId("tianai-track-btn"));
+      const prog = document.getElementById(getDomId("tianai-track-progress"));
+      const tpl = document.getElementById(getDomId("tianai-slider-tpl"));
+      const bg = document.getElementById(getDomId("tianai-slider-bg"));
 
       let isDragging = false;
       let startX = 0;
@@ -302,12 +341,12 @@
         }
 
         if (currentTianaiSubType === "CONCAT") {
-          const concatContainer = document.getElementById("ti-concat-container");
+          const concatContainer = document.getElementById(getConcatContainerId());
           const movingLayer = concatContainer && concatContainer.dataset.movingLayer === "BOTTOM"
             ? "BOTTOM"
             : "TOP";
-          const movingSlice = document.getElementById(movingLayer === "BOTTOM" ? "ti-concat-bottom" : "ti-concat-top");
-          const fixedSlice = document.getElementById(movingLayer === "BOTTOM" ? "ti-concat-top" : "ti-concat-bottom");
+          const movingSlice = document.getElementById(movingLayer === "BOTTOM" ? getConcatBottomId() : getConcatTopId());
+          const fixedSlice = document.getElementById(movingLayer === "BOTTOM" ? getConcatTopId() : getConcatBottomId());
           if (fixedSlice) fixedSlice.style.backgroundPosition = "0px 0px";
           if (movingSlice) movingSlice.style.backgroundPosition = `${diffX}px 0px`;
           return;
@@ -352,7 +391,7 @@
     }
 
     function setupClickTracking() {
-      const box = document.getElementById("register-tianai-click-box");
+      const box = document.getElementById(getDomId("tianai-click-box"));
 
       clickCoords = [];
       trackList = [];
@@ -390,7 +429,7 @@
         marker.style.lineHeight = "20px";
         marker.style.fontSize = "12px";
         marker.innerText = clickCoords.length + 1;
-        document.getElementById("register-tianai-click-markers").appendChild(marker);
+        document.getElementById(getDomId("tianai-click-markers")).appendChild(marker);
 
         clickCoords.push({ x, y });
         if (clickCoords.length === WORD_CLICK_REQUIRED_POINTS) {
@@ -422,7 +461,7 @@
           showTianaiError(`请依次点击 ${WORD_CLICK_REQUIRED_POINTS} 个文字后自动验证`);
           return;
         }
-        const bg = document.getElementById("register-tianai-click-bg");
+        const bg = document.getElementById(getDomId("tianai-click-bg"));
         const bgDisplaySize = getElementDisplaySize(bg, 278, 200);
         tianaiTrackData = JSON.stringify(buildTianaiWordClickPayload({
           bgImageWidth: bgDisplaySize.width,
@@ -433,9 +472,9 @@
         }));
       }
 
-      const response = await requestRegisterEmailCodeDelivery(currentTianaiCaptchaId, tianaiTrackData, false);
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
+      const deliveryResult = await requestRegisterEmailCodeDelivery(currentTianaiCaptchaId, tianaiTrackData, false);
+      const { ok, payload } = await resolveDeliveryResult(deliveryResult);
+      if (!ok || !payload.success) {
         const pendingRegisterPayload = getPendingRegisterPayload?.() || null;
         if (pendingRegisterPayload) {
           pendingRegisterPayload.challengeType = payload.challengeType || pendingRegisterPayload.challengeType || "";

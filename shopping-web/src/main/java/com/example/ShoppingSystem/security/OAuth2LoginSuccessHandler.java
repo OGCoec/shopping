@@ -35,7 +35,8 @@ import java.util.Map;
 @Component
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private static final String LOGIN_PAGE_URL = "https://localhost:6655/shopping/user/login";
+    private static final String LOGIN_PAGE_URL = "https://localhost:6655/shopping/user/log-in";
+    private static final String AUTH_USER_ID_SESSION_ATTRIBUTE = "AUTH_USER_ID";
 
     private final GithubAuthService githubAuthService;
     private final GoogleAuthService googleAuthService;
@@ -93,6 +94,10 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 response.sendRedirect(buildFailedUrl(registrationId, "bind_failed"));
                 return;
             }
+            request.getSession(true).setAttribute(
+                    AUTH_USER_ID_SESSION_ATTRIBUTE,
+                    identity.getUserId()
+            );
 
             try {
                 UserProfileDraft profileDraft = buildProfileDraft(registrationId, attrs);

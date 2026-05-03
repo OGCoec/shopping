@@ -69,6 +69,7 @@ public class GoogleAuthServiceImpl implements GoogleAuthService {
                 .googleId(googleId)
                 .microsoftId(null)
                 .tokenVersion(IdUtil.fastSimpleUUID().substring(0, 24))
+                .totpEnabled(Boolean.FALSE)
                 .status("ACTIVE")
                 .lastLoginAt(now)
                 .createdAt(now)

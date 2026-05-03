@@ -100,6 +100,50 @@
     return firstCountry.iso2.localeCompare(secondCountry.iso2, "en");
   }
 
+  function getDialCodeDigits(country) {
+    return (country?.dialCode || "").replace(/\D/g, "");
+  }
+
+  function compareDigitStringsByPriority(firstDigits, secondDigits) {
+    const maxLength = Math.max(firstDigits.length, secondDigits.length);
+    for (let index = 0; index < maxLength; index += 1) {
+      const firstDigit = firstDigits.charCodeAt(index) || 0;
+      const secondDigit = secondDigits.charCodeAt(index) || 0;
+      if (firstDigit !== secondDigit) {
+        return firstDigit - secondDigit;
+      }
+    }
+    return 0;
+  }
+
+  function compareCountriesByDialSearch(firstCountry, secondCountry, queryDigits) {
+    const firstDigits = getDialCodeDigits(firstCountry);
+    const secondDigits = getDialCodeDigits(secondCountry);
+    const firstExact = firstDigits === queryDigits;
+    const secondExact = secondDigits === queryDigits;
+    if (firstExact !== secondExact) {
+      return firstExact ? -1 : 1;
+    }
+
+    const firstStartsWith = firstDigits.startsWith(queryDigits);
+    const secondStartsWith = secondDigits.startsWith(queryDigits);
+    if (firstStartsWith !== secondStartsWith) {
+      return firstStartsWith ? -1 : 1;
+    }
+
+    const lengthOrder = firstDigits.length - secondDigits.length;
+    if (lengthOrder !== 0) {
+      return lengthOrder;
+    }
+
+    const digitOrder = compareDigitStringsByPriority(firstDigits, secondDigits);
+    if (digitOrder !== 0) {
+      return digitOrder;
+    }
+
+    return compareCountriesByDialCode(firstCountry, secondCountry);
+  }
+
   function createCountryDisplayNameResolver() {
     if (typeof Intl === "undefined" || !Intl.DisplayNames) {
       return null;
@@ -330,11 +374,16 @@
 
     applyFilter(keyword) {
       const query = (keyword || "").trim().toLowerCase();
+      const queryDigits = query.replace(/\D/g, "");
 
       if (!query) {
         this.filteredCountries = [...this.allCountries];
       } else {
         this.filteredCountries = this.allCountries.filter((country) => this.matchesCountryQuery(country, query));
+        if (queryDigits) {
+          this.filteredCountries.sort((firstCountry, secondCountry) =>
+            compareCountriesByDialSearch(firstCountry, secondCountry, queryDigits));
+        }
       }
 
       const selectedIndex = this.filteredCountries.findIndex((country) => this.isSameCountry(country, this.selectedCountry));
@@ -343,6 +392,11 @@
     }
 
     matchesCountryQuery(country, query) {
+      const queryDigits = query.replace(/\D/g, "");
+      if (queryDigits && getDialCodeDigits(country).includes(queryDigits)) {
+        return true;
+      }
+
       return country.name.toLowerCase().includes(query)
         || country.iso2.toLowerCase().includes(query)
         || country.dialCode.toLowerCase().includes(query);
@@ -488,6 +542,27 @@
       return false;
     }
 
+    selectCountryForInternationalNumber(rawPhoneNumber, options = {}) {
+      const normalizedPhoneNumber = normalizeInternationalPhoneNumber(rawPhoneNumber);
+      if (!normalizedPhoneNumber) {
+        return null;
+      }
+
+      const matchedCountry = findBestCountryForInternationalNumber(this.allCountries, normalizedPhoneNumber);
+      if (!matchedCountry) {
+        return null;
+      }
+
+      this.select(matchedCountry, { silent: Boolean(options.silent) });
+      const nationalNumber = stripDialCodeFromInternationalNumber(normalizedPhoneNumber, matchedCountry.dialCode);
+      return {
+        country: matchedCountry,
+        dialCode: matchedCountry.dialCode,
+        nationalNumber,
+        e164: `${matchedCountry.dialCode}${nationalNumber}`
+      };
+    }
+
     setCountryIso2(iso2, options = {}) {
       const normalizedIso2 = normalizeCountryCode(iso2);
       if (!normalizedIso2) {
@@ -574,6 +649,81 @@
     return updated;
   }
 
+  function normalizeInternationalPhoneNumber(rawPhoneNumber) {
+    if (typeof rawPhoneNumber !== "string") {
+      return "";
+    }
+    const trimmed = rawPhoneNumber.trim();
+    if (!trimmed.startsWith("+")) {
+      return "";
+    }
+    const compact = `+${trimmed.slice(1).replace(/\D/g, "")}`;
+    return /^\+\d{2,17}$/.test(compact) ? compact : "";
+  }
+
+  function findBestCountryForInternationalNumber(countries, normalizedPhoneNumber) {
+    const matches = (Array.isArray(countries) ? countries : [])
+      .filter((country) => {
+        const dialCode = normalizeDialCode(country?.dialCode || "");
+        return dialCode && normalizedPhoneNumber.startsWith(dialCode);
+      })
+      .sort((firstCountry, secondCountry) => {
+        const lengthOrder = secondCountry.dialCode.length - firstCountry.dialCode.length;
+        if (lengthOrder !== 0) {
+          return lengthOrder;
+        }
+        return compareCountriesByDialCode(firstCountry, secondCountry);
+      });
+    return matches[0] || null;
+  }
+
+  function stripDialCodeFromInternationalNumber(normalizedPhoneNumber, dialCode) {
+    const normalizedDialCode = normalizeDialCode(dialCode);
+    if (!normalizedPhoneNumber || !normalizedDialCode || !normalizedPhoneNumber.startsWith(normalizedDialCode)) {
+      return normalizedPhoneNumber.replace(/\D/g, "");
+    }
+    return normalizedPhoneNumber.slice(normalizedDialCode.length).replace(/\D/g, "");
+  }
+
+  function bindInternationalPhoneInput(inputId, getPicker) {
+    const input = document.getElementById(inputId);
+    if (!input || input.dataset.internationalPhoneBound === "true") {
+      return false;
+    }
+    input.dataset.internationalPhoneBound = "true";
+
+    const applyInternationalNumber = () => {
+      const picker = getPicker();
+      if (!picker || !input.value.trim().startsWith("+")) {
+        return;
+      }
+      const result = picker.selectCountryForInternationalNumber(input.value, { silent: false });
+      if (!result || !result.nationalNumber) {
+        return;
+      }
+      input.value = result.nationalNumber;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    input.addEventListener("blur", applyInternationalNumber);
+    input.addEventListener("change", applyInternationalNumber);
+    input.addEventListener("paste", () => {
+      setTimeout(applyInternationalNumber, 0);
+    });
+    return true;
+  }
+
+  function bindInternationalPhoneInputs() {
+    let bound = false;
+    if (bindInternationalPhoneInput("phone-number", () => phoneCountryPicker)) {
+      bound = true;
+    }
+    if (bindInternationalPhoneInput("register-phone-required-input", () => registerPhoneRequiredCountryPicker)) {
+      bound = true;
+    }
+    return bound;
+  }
+
   function initPhoneCountryPicker() {
     phoneCountryPicker = new CountryPicker({
       containerId: "phone-country-picker",
@@ -587,7 +737,9 @@
       triggerCodeId: "phone-country-code-label",
       optionIdPrefix: "phone-country-option"
     });
-    return phoneCountryPicker.init();
+    const initialized = phoneCountryPicker.init();
+    bindInternationalPhoneInputs();
+    return initialized;
   }
 
   function initRegisterPhoneRequiredCountryPicker() {
@@ -603,7 +755,9 @@
       triggerCodeId: "register-phone-country-code-label",
       optionIdPrefix: "register-phone-country-option"
     });
-    return registerPhoneRequiredCountryPicker.init();
+    const initialized = registerPhoneRequiredCountryPicker.init();
+    bindInternationalPhoneInputs();
+    return initialized;
   }
 
   async function fetchDetectedCountryCodeFromBackend() {
@@ -640,10 +794,23 @@
     setCountryIso2ForAvailablePickers(detectedCountryCode);
   }
 
-  return {
+  const publicApi = {
     DEFAULT_PHONE_COUNTRY_CODE,
     initPhoneCountryPicker,
     initRegisterPhoneRequiredCountryPicker,
+    bindInternationalPhoneInputs,
     autoDetectPhoneCountryCode
   };
+
+  if (typeof module !== "undefined" && module.exports) {
+    publicApi.__test__ = {
+      normalizeAndSortCountries,
+      compareCountriesByDialSearch,
+      normalizeInternationalPhoneNumber,
+      findBestCountryForInternationalNumber,
+      stripDialCodeFromInternationalNumber
+    };
+  }
+
+  return publicApi;
 });

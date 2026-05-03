@@ -39,8 +39,16 @@ public class PreAuthFilter extends OncePerRequestFilter {
     private static final Set<String> PUBLIC_GET_PATHS = Set.of(
             "/",
             "/index.html",
+            "/shopping/user/log-in",
+            "/shopping/user/log-in/password",
             "/shopping/user/login",
+            "/shopping/user/create-account",
+            "/shopping/user/create-account/password",
             "/shopping/user/register",
+            "/shopping/user/email-verification",
+            "/shopping/user/totp-verification",
+            "/shopping/user/add-phone",
+            "/shopping/user/session-ended",
             "/shopping/user/forgot-password",
             "/swagger-ui.html",
             "/doc.html",
@@ -216,7 +224,8 @@ public class PreAuthFilter extends OncePerRequestFilter {
         PreAuthBinding binding = outcome.binding();
         refreshTokenCookie(response, request, binding.token());
 
-        if (preAuthBindingService.isBlockedRisk(binding.riskLevel())) {
+        if (preAuthBindingService.isBlockedRisk(binding.riskLevel())
+                && !isLoginFlowApiRequest(request)) {
             writeJsonError(
                     response,
                     request,
@@ -231,6 +240,11 @@ public class PreAuthFilter extends OncePerRequestFilter {
         request.setAttribute("preAuthToken", binding.token());
         request.setAttribute("preAuthRiskLevel", binding.riskLevel());
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isLoginFlowApiRequest(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return uri != null && uri.startsWith("/shopping/user/login/");
     }
 
     /**

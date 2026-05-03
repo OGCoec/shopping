@@ -2,35 +2,45 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
-const fragmentPath = path.resolve(__dirname, "../../main/resources/static/fragments/register-view.html");
-const fragment = fs.readFileSync(fragmentPath, "utf8");
+const registerEntryFragmentPath = path.resolve(__dirname, "../../main/resources/static/fragments/register-view.html");
+const registerPasswordFragmentPath = path.resolve(__dirname, "../../main/resources/static/fragments/register-password-view.html");
+const registerEntryFragment = fs.readFileSync(registerEntryFragmentPath, "utf8");
+const registerPasswordFragment = fs.readFileSync(registerPasswordFragmentPath, "utf8");
 
 assert.ok(
-  fragment.includes('id="register-hcaptcha-modal"'),
-  "register fragment should include hCaptcha modal"
+  registerEntryFragment.includes('id="register-entry-email"'),
+  "register entry fragment should include the email field"
 );
 assert.ok(
-  fragment.includes('id="register-hcaptcha-container"'),
-  "register fragment should include hCaptcha container"
+  registerEntryFragment.includes('id="btn-register-email-continue"'),
+  "register entry fragment should include the continue button"
 );
 assert.ok(
-  fragment.includes('id="register-hcaptcha-error-msg"'),
-  "register fragment should include hCaptcha error area"
+  registerPasswordFragment.includes('id="register-hcaptcha-modal"'),
+  "register password fragment should include hCaptcha modal"
 );
 assert.ok(
-  !fragment.includes('id="register-turnstile-cancel"'),
+  registerPasswordFragment.includes('id="register-hcaptcha-container"'),
+  "register password fragment should include hCaptcha container"
+);
+assert.ok(
+  registerPasswordFragment.includes('id="register-hcaptcha-error-msg"'),
+  "register password fragment should include hCaptcha error area"
+);
+assert.ok(
+  !registerPasswordFragment.includes('id="register-turnstile-cancel"'),
   "turnstile cancel button should be removed"
 );
 assert.ok(
-  !fragment.includes('id="register-turnstile-refresh"'),
+  !registerPasswordFragment.includes('id="register-turnstile-refresh"'),
   "turnstile refresh button should be removed"
 );
 assert.ok(
-  !fragment.includes('id="register-hcaptcha-cancel"'),
+  !registerPasswordFragment.includes('id="register-hcaptcha-cancel"'),
   "hCaptcha cancel button should not exist"
 );
 assert.ok(
-  !fragment.includes('id="register-hcaptcha-refresh"'),
+  !registerPasswordFragment.includes('id="register-hcaptcha-refresh"'),
   "hCaptcha refresh button should not exist"
 );
 

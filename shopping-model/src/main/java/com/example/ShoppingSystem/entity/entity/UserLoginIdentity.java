@@ -28,6 +28,12 @@ public class UserLoginIdentity {
     private String microsoftId;
 
     private String tokenVersion;
+    @Builder.Default
+    private Boolean totpEnabled = Boolean.FALSE;
+    private String totpSecretEncrypted;
+    private OffsetDateTime totpConfirmedAt;
+    private OffsetDateTime totpEnabledAt;
+    private Long totpLastUsedStep;
     private String status;
 
     private OffsetDateTime lastLoginAt;

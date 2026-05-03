@@ -47,6 +47,7 @@
   let mouseY = 0;
   let isTyping = false;
   let isLookingAtEachOther = false;
+  let activeTrackingField = null;
   let isPhoneCodeFocused = false;
   let isPasswordPrivacyMode = false;
   let isPurpleBlinking = false;
@@ -63,6 +64,7 @@
   const typingFieldIds = new Set([
     "email",
     "phone-number",
+    "register-entry-email",
     "register-email",
     "register-username",
     "register-phone-required-input"
@@ -81,6 +83,7 @@
   let numParticles = 180;
   let particleFrameRequestId = null;
   let lastParticleFrameTime = 0;
+  let visualsInitialized = false;
 
   const BASE_PARTICLES = 180;
   const TARGET_FPS = 48;
@@ -132,8 +135,16 @@
       return;
     }
     inputBindings.add(input);
-    input.addEventListener("focus", () => setTyping(true));
-    input.addEventListener("blur", () => setTyping(false));
+    input.addEventListener("focus", () => {
+      activeTrackingField = input;
+      setTyping(true);
+    });
+    input.addEventListener("blur", () => {
+      if (activeTrackingField === input) {
+        activeTrackingField = null;
+      }
+      setTyping(false);
+    });
     input.addEventListener("input", () => updateCharacters());
   }
 
@@ -182,12 +193,21 @@
     if (typeof document === "undefined") {
       return;
     }
-    const mode = resolveFocusedFieldMode(document.activeElement);
+    const activeElement = document.activeElement;
+    const mode = resolveFocusedFieldMode(activeElement);
     if (mode === "privacy") {
-      setPasswordPrivacyMode(true);
+      if (activeElement?.type === "text") {
+        activeTrackingField = null;
+        setPasswordPrivacyMode(true);
+        return;
+      }
+      setPasswordPrivacyMode(false);
+      activeTrackingField = activeElement;
+      setTyping(true);
       return;
     }
     setPasswordPrivacyMode(false);
+    activeTrackingField = mode === "typing" ? activeElement : null;
     setTyping(mode === "typing");
   }
 
@@ -205,6 +225,14 @@
       setTimeout(() => {
         applyFocusModeFromActiveElement();
       }, 0);
+    });
+
+    document.addEventListener("input", (event) => {
+      if (resolveFocusedFieldMode(event.target) !== "typing") {
+        return;
+      }
+      activeTrackingField = event.target;
+      updateCharacters();
     });
   }
 
@@ -428,25 +456,47 @@
     updateLayout();
   }
 
-  function calcPosition(element) {
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 3;
-    const dx = mouseX - centerX;
-    const dy = mouseY - centerY;
+  function resolveCharacterTargetPoint() {
+    if (
+      isTyping
+      && activeTrackingField instanceof HTMLElement
+      && activeTrackingField.isConnected
+    ) {
+      const rect = activeTrackingField.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width * 0.78,
+        y: rect.top + rect.height * 0.5,
+        source: "field"
+      };
+    }
+
     return {
-      faceX: Math.max(-15, Math.min(15, dx / 20)),
-      faceY: Math.max(-10, Math.min(10, dy / 30)),
-      bodySkew: Math.max(-6, Math.min(6, -dx / 120))
+      x: mouseX,
+      y: mouseY,
+      source: "pointer"
     };
   }
 
-  function calcPupilOffset(element, maxDistance) {
+  function calcPosition(element, targetPoint) {
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 3;
+    const dx = targetPoint.x - centerX;
+    const dy = targetPoint.y - centerY;
+    const isFieldTarget = targetPoint.source === "field";
+    return {
+      faceX: Math.max(-18, Math.min(18, dx / (isFieldTarget ? 14 : 20))),
+      faceY: Math.max(-12, Math.min(12, dy / (isFieldTarget ? 22 : 30))),
+      bodySkew: Math.max(-8, Math.min(8, -dx / (isFieldTarget ? 90 : 120)))
+    };
+  }
+
+  function calcPupilOffset(element, maxDistance, targetPoint) {
     const rect = element.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    const dx = mouseX - centerX;
-    const dy = mouseY - centerY;
+    const dx = targetPoint.x - centerX;
+    const dy = targetPoint.y - centerY;
     const distance = Math.min(Math.sqrt(dx * dx + dy * dy), maxDistance);
     const angle = Math.atan2(dy, dx);
     return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance };
@@ -465,10 +515,12 @@
       return;
     }
 
-    const purplePosition = calcPosition(purple);
-    const blackPosition = calcPosition(black);
-    const orangePosition = calcPosition(orange);
-    const yellowPosition = calcPosition(yellow);
+    const targetPoint = resolveCharacterTargetPoint();
+    const isFieldTarget = targetPoint.source === "field";
+    const purplePosition = calcPosition(purple, targetPoint);
+    const blackPosition = calcPosition(black, targetPoint);
+    const orangePosition = calcPosition(orange, targetPoint);
+    const yellowPosition = calcPosition(yellow, targetPoint);
     const isLookingAway = isPhoneCodeFocused || isPasswordPrivacyMode;
     const isShowingPassword = isPasswordPrivacyMode;
 
@@ -477,21 +529,27 @@
       : (isLookingAway
         ? "skewX(-14deg) translateX(-20px)"
         : (isTyping
-          ? `skewX(${purplePosition.bodySkew - 12}deg) translateX(40px)`
+          ? `skewX(${purplePosition.bodySkew - (isFieldTarget ? 14 : 12)}deg) translateX(${isFieldTarget ? 56 : 40}px)`
           : `skewX(${purplePosition.bodySkew}deg)`));
     purple.style.height = (isLookingAway || isTyping) ? "410px" : "370px";
     black.style.transform = isShowingPassword
       ? PRIVACY_BODY_TRANSFORMS.black
       : (isLookingAway
         ? "skewX(12deg) translateX(-10px)"
-        : `skewX(${isTyping ? blackPosition.bodySkew - 8 : blackPosition.bodySkew}deg)`);
+        : (isTyping
+          ? `skewX(${blackPosition.bodySkew - (isFieldTarget ? 10 : 8)}deg) translateX(${isFieldTarget ? 18 : 0}px)`
+          : `skewX(${blackPosition.bodySkew}deg)`));
 
     if (isShowingPassword) {
       orange.style.transform = PRIVACY_BODY_TRANSFORMS.orange;
       yellow.style.transform = PRIVACY_BODY_TRANSFORMS.yellow;
     } else {
-      orange.style.transform = `skewX(${orangePosition.bodySkew}deg)`;
-      yellow.style.transform = `skewX(${yellowPosition.bodySkew}deg)`;
+      orange.style.transform = isTyping
+        ? `skewX(${orangePosition.bodySkew - (isFieldTarget ? 4 : 2)}deg) translateX(${isFieldTarget ? 12 : 0}px)`
+        : `skewX(${orangePosition.bodySkew}deg)`;
+      yellow.style.transform = isTyping
+        ? `skewX(${yellowPosition.bodySkew - (isFieldTarget ? 6 : 3)}deg) translateX(${isFieldTarget ? 22 : 0}px)`
+        : `skewX(${yellowPosition.bodySkew}deg)`;
     }
 
     const purpleEyeLeft = document.getElementById("purple-eye-l");
@@ -512,11 +570,62 @@
     const orangeEyes = document.getElementById("orange-eyes");
     const yellowEyes = document.getElementById("yellow-eyes");
     const yellowMouth = document.getElementById("yellow-mouth");
-    if (!purpleEyes || !blackEyes || !orangeEyes || !yellowEyes || !yellowMouth) {
+    const purplePupilLeft = document.getElementById("purple-pupil-l");
+    const purplePupilRight = document.getElementById("purple-pupil-r");
+    const blackPupilLeft = document.getElementById("black-pupil-l");
+    const blackPupilRight = document.getElementById("black-pupil-r");
+    const orangePupilLeft = document.getElementById("orange-pupil-l");
+    const orangePupilRight = document.getElementById("orange-pupil-r");
+    const yellowPupilLeft = document.getElementById("yellow-pupil-l");
+    const yellowPupilRight = document.getElementById("yellow-pupil-r");
+    if (
+      !purpleEyes
+      || !blackEyes
+      || !orangeEyes
+      || !yellowEyes
+      || !yellowMouth
+      || !purplePupilLeft
+      || !purplePupilRight
+      || !blackPupilLeft
+      || !blackPupilRight
+      || !orangePupilLeft
+      || !orangePupilRight
+      || !yellowPupilLeft
+      || !yellowPupilRight
+    ) {
       return;
     }
 
+    const resetPupilTransforms = () => {
+      [
+        purplePupilLeft,
+        purplePupilRight,
+        blackPupilLeft,
+        blackPupilRight,
+        orangePupilLeft,
+        orangePupilRight,
+        yellowPupilLeft,
+        yellowPupilRight
+      ].forEach((node) => {
+        node.style.transform = "";
+      });
+    };
+
+    const purplePupilOffset = calcPupilOffset(purpleEyeLeft, 3.8, targetPoint);
+    const blackPupilOffset = calcPupilOffset(blackEyeLeft, 3.2, targetPoint);
+    const orangePupilOffset = calcPupilOffset(orangeEyes, 6, targetPoint);
+    const yellowPupilOffset = calcPupilOffset(yellowEyes, 5, targetPoint);
+    purplePupilLeft.style.transform = `translate(${purplePupilOffset.x}px, ${purplePupilOffset.y}px)`;
+    purplePupilRight.style.transform = `translate(${purplePupilOffset.x}px, ${purplePupilOffset.y}px)`;
+    blackPupilLeft.style.transform = `translate(${blackPupilOffset.x}px, ${blackPupilOffset.y}px)`;
+    blackPupilRight.style.transform = `translate(${blackPupilOffset.x}px, ${blackPupilOffset.y}px)`;
+    orangePupilLeft.style.transform = `translate(${orangePupilOffset.x}px, ${orangePupilOffset.y}px)`;
+    orangePupilRight.style.transform = `translate(${orangePupilOffset.x}px, ${orangePupilOffset.y}px)`;
+    yellowPupilLeft.style.transform = `translate(${yellowPupilOffset.x}px, ${yellowPupilOffset.y}px)`;
+    yellowPupilRight.style.transform = `translate(${yellowPupilOffset.x}px, ${yellowPupilOffset.y}px)`;
+
     if (isLoginError) {
+      resetPupilTransforms();
       purpleEyes.style.left = "30px";
       purpleEyes.style.top = "55px";
       blackEyes.style.left = "15px";
@@ -532,6 +641,7 @@
     }
 
     if (isShowingPassword) {
+      resetPupilTransforms();
       purpleEyes.style.left = PRIVACY_FACE_ANCHORS.purpleEyesLeft;
       purpleEyes.style.top = PRIVACY_FACE_ANCHORS.purpleEyesTop;
       blackEyes.style.left = PRIVACY_FACE_ANCHORS.blackEyesLeft;
@@ -547,6 +657,7 @@
     }
 
     if (isLookingAway) {
+      resetPupilTransforms();
       purpleEyes.style.left = "20px";
       purpleEyes.style.top = "25px";
       blackEyes.style.left = "10px";
@@ -648,6 +759,13 @@
   }
 
   function initializeVisuals(options = {}) {
+    if (visualsInitialized) {
+      startParticlesAnimation();
+      updateCharacters();
+      return;
+    }
+    visualsInitialized = true;
+
     bindPointerTracking();
     bindTypingInput(options.emailInput);
     bindTypingInput(options.phoneNumberInput);
@@ -678,6 +796,7 @@
     resizeDebounceTimer = setTimeout(() => {
       resizeDebounceTimer = null;
       resizeParticlesNow();
+      updateCharacters();
     }, RESIZE_DEBOUNCE_MS);
   }
 
@@ -686,6 +805,7 @@
     handleVisualResize,
     handleVisualVisibilityChange,
     triggerLoginError,
-    updateCharacters
+    updateCharacters,
+    applyFocusModeFromActiveElement
   };
 });

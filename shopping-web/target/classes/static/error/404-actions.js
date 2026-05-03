@@ -12,12 +12,12 @@
         window.history.back();
         return;
       }
-      window.location.href = "/shopping/user/login";
+      window.location.href = "/shopping/user/log-in";
       return;
     }
 
     if (action === "login") {
-      window.location.href = "/shopping/user/login";
+      window.location.href = "/shopping/user/log-in";
     }
   }
 

@@ -13,7 +13,9 @@ public interface RegisterPrecheckService {
                                                              String deviceFingerprint,
                                                              String publicIp);
 
-    RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String email,
+    RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String flowId,
+                                                             boolean allowPassedChallengeReuse,
+                                                             String email,
                                                              String username,
                                                              String rawPassword,
                                                              String deviceFingerprint,

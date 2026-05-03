@@ -5,12 +5,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>欢迎登录 - Shopping System</title>
+  <link rel="icon" href="/favicon.ico" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons/css/flag-icons.min.css" />
+  <link rel="stylesheet" href="/fonts/noto-sans-sc/noto-sans-sc.css" />
+  <link rel="preload" href="/js/user/auth/login/login-visuals.js" as="script" />
   <link rel="stylesheet" href="/css/login.css" />
 </head>
 
-<body>
+<body class="auth-route-pending">
   <!-- Background Particles -->
   <canvas id="canvas-container"></canvas>
 
@@ -385,6 +388,15 @@
               <input type="tel" id="register-phone-required-input" class="phone-pill-field" placeholder="电话号码" autocomplete="tel" />
             </div>
 
+            <div class="form-group phone-field-group" id="register-phone-required-code-group" hidden>
+              <label id="register-phone-required-code-label" for="register-phone-required-code-input">短信验证码</label>
+              <div class="sms-code-row">
+                <input type="text" inputmode="numeric" id="register-phone-required-code-input" class="phone-pill-field"
+                  placeholder="6 位验证码" autocomplete="one-time-code" maxlength="6" />
+                <button type="button" class="otp-resend-btn sms-code-send-btn" id="register-phone-required-send-code">发送验证码</button>
+              </div>
+            </div>
+
             <div class="error-msg" id="register-phone-required-error-msg"></div>
 
             <button type="submit" class="btn-login" id="btn-register-phone-required-continue">
@@ -402,28 +414,152 @@
 
           <div id="register-view" class="login-view is-hidden" aria-live="polite"></div>
 
+          <div id="register-password-view" class="login-view is-hidden" aria-live="polite"></div>
+
+          <div id="session-ended-view" class="login-view auth-terminal-view is-hidden" aria-live="polite">
+            <div class="auth-terminal-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3l7.5 4.25v8.5L12 20l-7.5-4.25v-8.5L12 3z" />
+                <path d="M12 8v4.25" />
+                <path d="M12 16h.01" />
+              </svg>
+            </div>
+            <h2 class="auth-terminal-title" id="session-ended-title">&#20320;&#30340;&#20250;&#35805;&#24050;&#32467;&#26463;</h2>
+            <p class="auth-terminal-copy" id="session-ended-message">&#30331;&#24405;&#20197;&#32487;&#32493;&#65292;&#25110;&#32773;&#37325;&#26032;&#24320;&#22987;&#27880;&#20876;&#12290;</p>
+            <a href="/shopping/user/log-in" class="auth-terminal-button" id="session-ended-primary-action" data-spa-route>
+              <span>&#30331;&#24405;</span>
+            </a>
+            <a href="/shopping/user/create-account" class="auth-terminal-secondary" id="session-ended-secondary-action" data-spa-route>
+              &#37325;&#26032;&#24320;&#22987;&#27880;&#20876;
+            </a>
+            <div class="auth-terminal-links">
+              <a href="#">&#20351;&#29992;&#26465;&#27454;</a>
+              <span aria-hidden="true">|</span>
+              <a href="#">&#38544;&#31169;&#25919;&#31574;</a>
+            </div>
+          </div>
+
           <div id="forgot-password-view" class="login-view is-hidden" aria-live="polite"></div>
         </form>
 
         <div class="signup-link" id="signup-link-wrap">
-          还没有账号？ <a href="/shopping/user/register" data-spa-route>立即注册</a>
+          还没有账号？ <a href="/shopping/user/create-account" data-spa-route>立即注册</a>
         </div>
       </div>
     </div>
   </div>
 
+  <div id="login-captcha-modal" style="display:none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="width: 360px; max-width: calc(100vw - 32px); background: rgba(255,255,255,0.96); border-radius: 20px; padding: 24px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);">
+      <div style="font-size: 22px; font-weight: 700; color: #1a1a2e; margin-bottom: 12px;">Image verification</div>
+      <div style="font-size: 14px; color: rgba(26,26,46,0.68); margin-bottom: 16px;">Enter the code shown in the image.</div>
+      <img id="login-captcha-image" alt="Captcha" style="width: 100%; height: 64px; object-fit: cover; border-radius: 12px; background: #f3f4f6; margin-bottom: 12px;" />
+      <button type="button" id="login-captcha-refresh" style="background:none;border:none;color:#6d28d9;font-size:14px;padding:0;margin-bottom:16px;cursor:pointer;">Refresh</button>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="login-captcha-code">Code</label>
+        <div class="input-wrapper">
+          <input type="text" id="login-captcha-code" placeholder="Enter verification code" autocomplete="off" />
+        </div>
+      </div>
+      <div class="error-msg" id="login-captcha-error-msg"></div>
+      <div style="display:flex; gap:12px; margin-top: 16px;">
+        <button type="button" class="btn-google" id="login-captcha-cancel" style="flex:1;">Cancel</button>
+        <button type="button" class="btn-login" id="login-captcha-confirm" style="flex:1;">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="login-tianai-modal" style="display:none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="width: 420px; max-width: calc(100vw - 32px); background: rgba(255,255,255,0.96); border-radius: 20px; padding: 24px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22); user-select: none;">
+      <div id="login-tianai-title" style="font-size: 22px; font-weight: 700; color: #1a1a2e; margin-bottom: 12px;">Security verification</div>
+      <div id="login-tianai-subtitle" style="font-size: 14px; color: rgba(26,26,46,0.68); margin-bottom: 16px;">Complete the challenge below.</div>
+
+      <div id="login-tianai-slider-area" style="display:none;">
+        <div style="position: relative; width: 100%; display: flex; justify-content: center; background: #f3f4f6; border-radius: 12px; margin-bottom: 16px; min-height: 200px;">
+          <div style="position: relative; display: inline-block;">
+            <img id="login-tianai-slider-bg" alt="Background" draggable="false" style="display: block; width: auto; height: 200px; object-fit: fill; border-radius: 12px;" />
+            <img id="login-tianai-slider-tpl" alt="Puzzle" draggable="false" style="position: absolute; top: 0; left: 0; width: auto; height: 200px; z-index: 10; display: none;" />
+          </div>
+        </div>
+        <div id="login-tianai-track-bg" style="position: relative; width: 100%; height: 40px; background: #e2e8f0; border-radius: 20px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
+          <div id="login-tianai-track-progress" style="position: absolute; left: 0; top: 0; height: 100%; width: 20px; background: #60a5fa; border-radius: 20px 0 0 20px; opacity: 0.5;"></div>
+          <div id="login-tianai-track-btn" style="position: absolute; left: 0; top: -5px; width: 50px; height: 50px; background: #3b82f6; border-radius: 50%; box-shadow: 0 4px 6px rgba(59,130,246,0.3); cursor: grab; display: flex; align-items: center; justify-content: center; color: white;">&rarr;</div>
+          <div style="position: absolute; width: 100%; text-align: center; line-height: 40px; color: #64748b; font-size: 14px; pointer-events: none;">Drag to complete verification</div>
+        </div>
+      </div>
+
+      <div id="login-tianai-click-area" style="display:none; position: relative;">
+        <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
+          <span style="font-size: 14px; font-weight: bold; color: #1e293b;">Click the characters in order:</span>
+          <img id="login-tianai-click-tpl" alt="Prompt" draggable="false" style="height: 32px; border-radius: 4px; border: 1px solid #e2e8f0; background: #fff; padding: 2px;" />
+        </div>
+        <div style="display: flex; justify-content: center; width: 100%; background: #f3f4f6; border-radius: 12px;">
+          <div id="login-tianai-click-box" style="position: relative; display: inline-block; border-radius: 12px; overflow: hidden; cursor: crosshair;">
+            <img id="login-tianai-click-bg" alt="Background" draggable="false" style="display: block; width: auto; height: 200px; object-fit: fill;" />
+            <div id="login-tianai-click-markers"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="error-msg" id="login-tianai-error-msg" style="margin-top: 16px;"></div>
+
+      <div id="login-tianai-actions" style="display:none; gap:12px; margin-top: 16px;">
+        <button type="button" class="btn-google" id="login-tianai-cancel" style="flex:1;">Cancel</button>
+        <button type="button" class="btn-login" id="login-tianai-refresh" style="flex:1;">Refresh</button>
+        <button type="button" class="btn-login" id="login-tianai-confirm" style="flex:1; display:none;">Verify</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="login-turnstile-modal" style="display:none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="width: 360px; max-width: calc(100vw - 32px); background: rgba(255,255,255,0.96); border-radius: 20px; padding: 24px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);">
+      <div style="font-size: 22px; font-weight: 700; color: #1a1a2e; margin-bottom: 12px;">Cloudflare Turnstile</div>
+      <div style="font-size: 14px; color: rgba(26,26,46,0.68); margin-bottom: 16px;">Complete the verification below.</div>
+      <div id="login-turnstile-container" style="min-height: 70px; display: flex; justify-content: center; align-items: center;"></div>
+      <div class="error-msg" id="login-turnstile-error-msg" style="margin-top: 16px;"></div>
+    </div>
+  </div>
+
+  <div id="login-hcaptcha-modal" style="display:none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="width: 360px; max-width: calc(100vw - 32px); background: rgba(255,255,255,0.96); border-radius: 20px; padding: 24px; box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);">
+      <div style="font-size: 22px; font-weight: 700; color: #1a1a2e; margin-bottom: 12px;">hCaptcha</div>
+      <div style="font-size: 14px; color: rgba(26,26,46,0.68); margin-bottom: 16px;">Complete the verification below.</div>
+      <div id="login-hcaptcha-container" style="min-height: 78px; display: flex; justify-content: center; align-items: center;"></div>
+      <div class="error-msg" id="login-hcaptcha-error-msg" style="margin-top: 16px;"></div>
+    </div>
+  </div>
+
   <script src="/js/user/auth/login/login-visuals.js"></script>
+  <script>
+    window.ShoppingLoginVisuals?.initializeVisuals?.({
+      emailInput: document.getElementById("email"),
+      phoneNumberInput: document.getElementById("phone-number")
+    });
+  </script>
   <script src="/js/user/auth/login/login-country-picker.js"></script>
+  <script src="/js/user/auth/shared/auth-routes.js"></script>
   <script src="/js/user/auth/login/login-shell.js"></script>
   <script src="/js/user/auth/login/login-otp.js"></script>
+  <script src="/js/user/auth/login/login-otp-resend.js"></script>
+  <script src="/js/user/auth/login/login-route-notice.js"></script>
+  <script src="/js/user/auth/login/login-captcha-coordinator.js"></script>
+  <script src="/js/user/auth/login/login-submit-handlers.js"></script>
+  <script src="/js/user/auth/login/login-register-bridge.js"></script>
   <script src="/js/user/auth/shared/auth-utils.js"></script>
   <script src="/js/user/auth/shared/preauth-client.js"></script>
   <script src="/js/user/auth/register/register-turnstile.js"></script>
   <script src="/js/user/auth/register/register-hcaptcha.js"></script>
+  <script src="/js/user/auth/register/register-recaptcha.js"></script>
   <script src="/js/user/auth/register/register-hutool-captcha.js"></script>
   <script src="/js/user/auth/register/tianai/register-tianai-track.js"></script>
   <script src="/js/user/auth/register/register-form.js"></script>
   <script src="/js/user/auth/register/tianai/register-tianai.js"></script>
+  <script src="/js/user/auth/register/register-route-state.js"></script>
+  <script src="/js/user/auth/register/register-flow.js"></script>
+  <script src="/js/user/auth/register/register-entry.js"></script>
+  <script src="/js/user/auth/register/register-otp-step.js"></script>
+  <script src="/js/user/auth/register/register-captcha-coordinator.js"></script>
+  <script src="/js/user/auth/register/register-password-step.js"></script>
   <script src="/js/user/login.js"></script>
   <script src="/js/user/register.js"></script>
 </body>

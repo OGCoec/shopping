@@ -2,12 +2,21 @@ package com.example.ShoppingSystem.service.user.auth.register.impl;
 
 import cn.hutool.core.lang.Validator;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import com.example.ShoppingSystem.redisdata.RegisterRedisKeys;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterPrecheckService;
 import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSelection;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RiskSnapshot;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Register precheck orchestration service.
@@ -26,23 +35,27 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
     static final String SUBTYPE_TIANAI_ROTATE = RegisterChallengeConstants.SUBTYPE_TIANAI_ROTATE;
     static final String SUBTYPE_TIANAI_CONCAT = RegisterChallengeConstants.SUBTYPE_TIANAI_CONCAT;
     static final String SUBTYPE_TIANAI_WORD_IMAGE_CLICK = RegisterChallengeConstants.SUBTYPE_TIANAI_WORD_IMAGE_CLICK;
+    private static final long EMAIL_CODE_RESEND_COOLDOWN_MS = 60_000L;
 
     private final ChallengeSessionService challengeSessionService;
     private final CaptchaVerificationService captchaVerificationService;
     private final EmailCodeDispatchService emailCodeDispatchService;
     private final RiskSnapshotService riskSnapshotService;
     private final ChallengePolicy challengePolicy;
+    private final StringRedisTemplate stringRedisTemplate;
 
     public RegisterPrecheckServiceImpl(ChallengeSessionService challengeSessionService,
                                        CaptchaVerificationService captchaVerificationService,
                                        EmailCodeDispatchService emailCodeDispatchService,
                                        RiskSnapshotService riskSnapshotService,
-                                       ChallengePolicy challengePolicy) {
+                                       ChallengePolicy challengePolicy,
+                                       StringRedisTemplate stringRedisTemplate) {
         this.challengeSessionService = challengeSessionService;
         this.captchaVerificationService = captchaVerificationService;
         this.emailCodeDispatchService = emailCodeDispatchService;
         this.riskSnapshotService = riskSnapshotService;
         this.challengePolicy = challengePolicy;
+        this.stringRedisTemplate = stringRedisTemplate;
     }
 
     @Override
@@ -86,7 +99,9 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
     }
 
     @Override
-    public RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String email,
+    public RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String flowId,
+                                                                    boolean allowPassedChallengeReuse,
+                                                                    String email,
                                                                     String username,
                                                                     String rawPassword,
                                                                     String deviceFingerprint,
@@ -109,8 +124,21 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 riskSnapshot.challengeSelection());
         String challengeType = challengeSelection.type();
         String challengeSubType = challengeSelection.subType();
+        ChallengePassedState challengePassedState = allowPassedChallengeReuse
+                ? readChallengePassed(flowId, email, deviceFingerprint)
+                : ChallengePassedState.missing();
+        boolean canReusePassedChallenge = challengePassedState.matched();
 
-        if (challengeType != null) {
+        if (canReusePassedChallenge) {
+            RegisterPrecheckResult cooldownFailure = buildEmailCodeCooldownResultIfNecessary(
+                    riskSnapshot,
+                    challengePassedState.passedAt());
+            if (cooldownFailure != null) {
+                return cooldownFailure;
+            }
+        }
+
+        if (challengeType != null && !canReusePassedChallenge) {
             boolean hasCaptchaPayload = StrUtil.isNotBlank(captchaCode) || StrUtil.isNotBlank(captchaUuid);
             if (pendingChallengeSelection == null) {
                 challengeSessionService.savePendingChallengeSelection(email, deviceFingerprint, challengeSelection);
@@ -163,6 +191,9 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 riskSnapshot,
                 challengeSelection);
 
+        long passedAt = System.currentTimeMillis() + EMAIL_CODE_RESEND_COOLDOWN_MS;
+        saveChallengePassed(flowId, email, deviceFingerprint, passedAt);
+
         return RegisterPrecheckResult.builder()
                 .success(true)
                 .message("邮箱验证码已发送，请在 5 分钟内完成验证")
@@ -170,6 +201,8 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 .riskLevel(riskSnapshot.riskLevel())
                 .challengeType(challengeType)
                 .challengeSubType(challengeSubType)
+                .emailCodeRetryAfterMs(EMAIL_CODE_RESEND_COOLDOWN_MS)
+                .passedAt(passedAt)
                 .emailCodeSent(true)
                 .requirePhoneBinding(shouldRequirePhoneBinding(riskSnapshot.riskLevel()))
                 .build();
@@ -197,6 +230,84 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 email,
                 deviceFingerprint,
                 expectedChallengeSelection);
+    }
+
+    private RegisterPrecheckResult buildEmailCodeCooldownResultIfNecessary(RiskSnapshot riskSnapshot, long passedAt) {
+        if (passedAt <= 0L) {
+            return null;
+        }
+        long retryAfterMs = Math.max(0L, passedAt - System.currentTimeMillis());
+        if (retryAfterMs <= 0L) {
+            return null;
+        }
+        long retryAfterSeconds = Math.max(1L, (retryAfterMs + 999L) / 1000L);
+        return RegisterPrecheckResult.builder()
+                .success(false)
+                .message("Please wait " + retryAfterSeconds + "s before resending the email code.")
+                .totalScore(riskSnapshot.totalScore())
+                .riskLevel(riskSnapshot.riskLevel())
+                .emailCodeRetryAfterMs(retryAfterMs)
+                .passedAt(passedAt)
+                .emailCodeSent(false)
+                .requirePhoneBinding(shouldRequirePhoneBinding(riskSnapshot.riskLevel()))
+                .build();
+    }
+
+    private ChallengePassedState readChallengePassed(String flowId, String email, String deviceFingerprint) {
+        if (StrUtil.hasBlank(flowId, email, deviceFingerprint)) {
+            return ChallengePassedState.missing();
+        }
+        String value = stringRedisTemplate.opsForValue().get(challengePassedKey(flowId));
+        if (StrUtil.isBlank(value)) {
+            return ChallengePassedState.missing();
+        }
+        try {
+            JSONObject payload = JSONUtil.parseObj(value);
+            boolean matched = Boolean.TRUE.equals(payload.getBool("pass", false))
+                    && Objects.equals(normalizeChallengeText(email), normalizeChallengeText(payload.getStr("email")))
+                    && Objects.equals(
+                    normalizeChallengeText(deviceFingerprint),
+                    normalizeChallengeText(payload.getStr("deviceFingerprint")));
+            if (!matched) {
+                return ChallengePassedState.missing();
+            }
+            Long passedAt = payload.getLong("passedAt");
+            return new ChallengePassedState(true, passedAt == null ? 0L : passedAt);
+        } catch (RuntimeException ignored) {
+            return ChallengePassedState.missing();
+        }
+    }
+
+    private void saveChallengePassed(String flowId, String email, String deviceFingerprint, long passedAt) {
+        if (StrUtil.hasBlank(flowId, email, deviceFingerprint)) {
+            return;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("email", normalizeChallengeText(email));
+        payload.put("deviceFingerprint", normalizeChallengeText(deviceFingerprint));
+        payload.put("pass", true);
+        payload.put("passedAt", passedAt);
+        stringRedisTemplate.opsForValue().set(
+                challengePassedKey(flowId),
+                JSONUtil.toJsonStr(payload),
+                RegisterRedisKeys.EMAIL_CODE_TTL_MINUTES,
+                TimeUnit.MINUTES
+        );
+    }
+
+    private String challengePassedKey(String flowId) {
+        return RegisterRedisKeys.EMAIL_CODE_CHALLENGE_PASSED_PREFIX + flowId;
+    }
+
+    private String normalizeChallengeText(String value) {
+        return StrUtil.blankToDefault(value, "").trim();
+    }
+
+    private record ChallengePassedState(boolean matched, long passedAt) {
+
+        private static ChallengePassedState missing() {
+            return new ChallengePassedState(false, 0L);
+        }
     }
 
     // test compatibility wrapper

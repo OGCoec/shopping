@@ -16,6 +16,11 @@
         google_id,
         microsoft_id,
         token_version,
+        totp_enabled,
+        totp_secret_encrypted,
+        totp_confirmed_at,
+        totp_enabled_at,
+        totp_last_used_step,
         status,
         last_login_at,
         created_at,
@@ -34,6 +39,11 @@
         #{googleId},
         #{microsoftId},
         #{tokenVersion},
+        #{totpEnabled},
+        #{totpSecretEncrypted},
+        #{totpConfirmedAt},
+        #{totpEnabledAt},
+        #{totpLastUsedStep},
         #{status},
         #{lastLoginAt},
         #{createdAt},
@@ -41,6 +51,166 @@
     </sql>
 
     <!-- 新增 GitHub 登录身份记录 -->
+    <select id="findByGithubId" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE github_id = #{githubId}
+        LIMIT 1
+    </select>
+
+    <select id="findByEmail" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE email = #{email}
+        LIMIT 1
+    </select>
+
+    <select id="findByGoogleId" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE google_id = #{googleId}
+        LIMIT 1
+    </select>
+
+    <select id="findByMicrosoftId" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE microsoft_id = #{microsoftId}
+        LIMIT 1
+    </select>
+
+    <select id="findById" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="findByUserId" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="findVerifiedByPhone" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE phone = #{phone}
+          AND phone_verified = TRUE
+        LIMIT 1
+    </select>
+
+    <select id="countVerifiedPhones" resultType="long">
+        SELECT COUNT(1)
+        FROM user_login_identity
+        WHERE phone IS NOT NULL
+          AND phone_verified = TRUE
+    </select>
+
+    <select id="listVerifiedPhones" resultType="string">
+        SELECT phone
+        FROM user_login_identity
+        WHERE phone IS NOT NULL
+          AND phone_verified = TRUE
+        ORDER BY id
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+
+    <update id="bindGithubIdById">
+        UPDATE user_login_identity
+        SET github_id = #{githubId},
+            last_login_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <update id="bindGoogleIdById">
+        UPDATE user_login_identity
+        SET google_id = #{googleId},
+            last_login_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <update id="bindMicrosoftIdById">
+        UPDATE user_login_identity
+        SET microsoft_id = #{microsoftId},
+            last_login_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateLastLoginAtById">
+        UPDATE user_login_identity
+        SET last_login_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateLastLoginAtByUserId">
+        UPDATE user_login_identity
+        SET last_login_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="bindVerifiedPhoneByUserId">
+        UPDATE user_login_identity
+        SET phone = #{phone},
+            phone_verified = TRUE,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="savePendingTotpSecret">
+        UPDATE user_login_identity
+        SET totp_enabled = FALSE,
+            totp_secret_encrypted = #{secretEncrypted},
+            totp_confirmed_at = NULL,
+            totp_enabled_at = NULL,
+            totp_last_used_step = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <update id="enableTotpById">
+        UPDATE user_login_identity
+        SET totp_enabled = TRUE,
+            totp_confirmed_at = CURRENT_TIMESTAMP,
+            totp_enabled_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND totp_secret_encrypted IS NOT NULL
+    </update>
+
+    <update id="updateTotpLastUsedStep">
+        UPDATE user_login_identity
+        SET totp_last_used_step = #{timeStep},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+          AND (totp_last_used_step IS NULL OR totp_last_used_step &lt; #{timeStep})
+    </update>
+
+    <update id="disableTotpById">
+        UPDATE user_login_identity
+        SET totp_enabled = FALSE,
+            totp_secret_encrypted = NULL,
+            totp_confirmed_at = NULL,
+            totp_enabled_at = NULL,
+            totp_last_used_step = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
     <insert id="insertGithubIdentity" parameterType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
         INSERT INTO user_login_identity (
             <include refid="baseIdentityColumns"/>

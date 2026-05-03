@@ -11,38 +11,47 @@
 
   function createRegisterHutoolCaptcha(options) {
     const {
+      idPrefix,
+      captchaPath,
       showRegisterError,
       triggerCaptchaFailureAnimation,
       requestRegisterEmailCodeDelivery,
       openRegisterOtpAfterEmailSent,
       getPendingRegisterPayload
     } = options || {};
+    const domIdPrefix = (typeof idPrefix === "string" && idPrefix.trim()) || "register";
+    const captchaRequestPath = (typeof captchaPath === "string" && captchaPath.trim())
+      || "/shopping/user/register/hutoolcaptcha";
 
     let currentRegisterCaptchaUuid = "";
 
+    function getDomId(suffix) {
+      return `${domIdPrefix}-${suffix}`;
+    }
+
     function showRegisterCaptchaError(message) {
-      const captchaErrorMessage = document.getElementById("register-captcha-error-msg");
+      const captchaErrorMessage = document.getElementById(getDomId("captcha-error-msg"));
       if (!captchaErrorMessage) return;
       captchaErrorMessage.textContent = message;
       captchaErrorMessage.style.display = "block";
     }
 
     function clearRegisterCaptchaError() {
-      const captchaErrorMessage = document.getElementById("register-captcha-error-msg");
+      const captchaErrorMessage = document.getElementById(getDomId("captcha-error-msg"));
       if (!captchaErrorMessage) return;
       captchaErrorMessage.textContent = "";
       captchaErrorMessage.style.display = "none";
     }
 
     function openRegisterCaptchaModal() {
-      const captchaModal = document.getElementById("register-captcha-modal");
+      const captchaModal = document.getElementById(getDomId("captcha-modal"));
       if (!captchaModal) return;
       captchaModal.style.display = "flex";
     }
 
     function closeRegisterCaptchaModal() {
-      const captchaModal = document.getElementById("register-captcha-modal");
-      const captchaCodeInput = document.getElementById("register-captcha-code");
+      const captchaModal = document.getElementById(getDomId("captcha-modal"));
+      const captchaCodeInput = document.getElementById(getDomId("captcha-code"));
       if (captchaModal) {
         captchaModal.style.display = "none";
       }
@@ -52,8 +61,23 @@
       clearRegisterCaptchaError();
     }
 
+    async function resolveDeliveryResult(deliveryResult) {
+      if (deliveryResult && typeof deliveryResult.json === "function") {
+        const payload = await deliveryResult.json();
+        return {
+          ok: Boolean(deliveryResult.ok),
+          payload: payload || {}
+        };
+      }
+      const payload = deliveryResult && typeof deliveryResult === "object" ? deliveryResult : {};
+      return {
+        ok: Boolean(payload.success),
+        payload
+      };
+    }
+
     async function loadRegisterCaptcha(existingUuid = "") {
-      const imageNode = document.getElementById("register-captcha-image");
+      const imageNode = document.getElementById(getDomId("captcha-image"));
       if (!imageNode) return;
 
       clearRegisterCaptchaError();
@@ -70,19 +94,31 @@
       }
 
       const query = params.toString() ? `?${params.toString()}` : "";
-      const response = await preAuthFetch(`/shopping/user/register/hutoolcaptcha${query}`);
+      let response;
+      try {
+        response = await preAuthFetch(`${captchaRequestPath}${query}`);
+      } catch (_) {
+        showRegisterCaptchaError("Captcha image request failed. Please retry.");
+        return;
+      }
       if (!response.ok) {
         showRegisterCaptchaError("验证码加载失败，请稍后重试");
         return;
       }
 
-      const payload = await response.json();
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (_) {
+        showRegisterCaptchaError("Captcha endpoint returned an invalid response. Please retry.");
+        return;
+      }
       currentRegisterCaptchaUuid = payload.uuid || "";
       imageNode.src = payload.image || "";
     }
 
     async function continueRegisterWithCaptcha() {
-      const captchaCodeInput = document.getElementById("register-captcha-code");
+      const captchaCodeInput = document.getElementById(getDomId("captcha-code"));
       if (!captchaCodeInput) return;
 
       const captchaCode = captchaCodeInput.value.trim();
@@ -97,14 +133,14 @@
         return;
       }
 
-      const response = await requestRegisterEmailCodeDelivery(
+      const deliveryResult = await requestRegisterEmailCodeDelivery(
         currentRegisterCaptchaUuid,
         captchaCode,
         false
       );
 
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
+      const { ok, payload } = await resolveDeliveryResult(deliveryResult);
+      if (!ok || !payload.success) {
         pendingRegisterPayload.challengeType = payload.challengeType || pendingRegisterPayload.challengeType || "";
         pendingRegisterPayload.challengeSubType = payload.challengeSubType || pendingRegisterPayload.challengeSubType || "";
         const canRetryCurrentHutool = !payload.challengeType || payload.challengeType === "HUTOOL_SHEAR_CAPTCHA";

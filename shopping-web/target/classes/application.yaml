@@ -116,6 +116,18 @@ app:
       max-concurrency: 10
       prefetch: 1
       max-retry-count: 2
+    sms-code:
+      exchange: ${SMS_CODE_EXCHANGE:sms.code.exchange}
+      queue: ${SMS_CODE_QUEUE:sms.code.queue}
+      retry-queue: ${SMS_CODE_RETRY_QUEUE:sms.code.retry.queue}
+      dead-letter-queue: ${SMS_CODE_DLQ:sms.code.dlq}
+      routing-key: ${SMS_CODE_ROUTING_KEY:sms.code.send}
+      retry-routing-key: ${SMS_CODE_RETRY_ROUTING_KEY:sms.code.retry}
+      dead-routing-key: ${SMS_CODE_DEAD_ROUTING_KEY:sms.code.dead}
+      concurrency: ${SMS_CODE_CONCURRENCY:2}
+      max-concurrency: ${SMS_CODE_MAX_CONCURRENCY:10}
+      prefetch: ${SMS_CODE_PREFETCH:1}
+      max-retry-count: ${SMS_CODE_MAX_RETRY_COUNT:2}
     ip-risk-writeback:
       exchange: ${IP_RISK_WRITEBACK_EXCHANGE:ip.risk.writeback.exchange}
       queue: ${IP_RISK_WRITEBACK_QUEUE:ip.risk.writeback.queue}
@@ -128,6 +140,15 @@ app:
       max-concurrency: 8
       prefetch: 5
       max-retry-count: 3
+  sms-code:
+    template-code: ${ALIYUN_SMS_TEMPLATE_CODE:100001}
+    code-hash-secret: ${SMS_CODE_HASH_SECRET:shopping-local-sms-secret}
+    code-ttl-minutes: ${SMS_CODE_TTL_MINUTES:5}
+    cooldown-seconds: ${SMS_CODE_COOLDOWN_SECONDS:60}
+    ip-window-minutes: ${SMS_CODE_IP_WINDOW_MINUTES:60}
+    phone-daily-limit: ${SMS_CODE_PHONE_DAILY_LIMIT:10}
+    ip-hourly-limit: ${SMS_CODE_IP_HOURLY_LIMIT:60}
+    supported-dial-code: ${SMS_CODE_SUPPORTED_DIAL_CODE:86}
 
 elasticsearch:
   host: localhost
@@ -157,8 +178,27 @@ captcha:
     site-key: ${HCAPTCHA_SITE_KEY}
     secret-key: ${HCAPTCHA_SECRET_KEY}
     verify-url: https://api.hcaptcha.com/siteverify
+  recaptcha:
+    site-key: ${RECAPTCHA_SITE_KEY:}
+    secret-key: ${RECAPTCHA_SECRET_KEY:}
+    verify-url: https://www.google.com/recaptcha/api/siteverify
+    min-score: ${RECAPTCHA_MIN_SCORE:0.5}
+    expected-action: ${RECAPTCHA_EXPECTED_ACTION:shopping_auth}
   expire:
     default: 300000
+
+login:
+  phone-bound-counting-bloom:
+    enabled: true
+    key: "login:phone:bound:cbf"
+    member-key-prefix: "login:phone:bound:member:"
+    capacity: 600000
+    hash-count: 7
+    counter-bytes: 2
+    page-size: 2000
+    async-core-pool-size: 1
+    async-max-pool-size: 2
+    async-queue-capacity: 1000
 
 register:
   pre-auth:
@@ -171,11 +211,19 @@ register:
     cookie-http-only: true
     cookie-secure: false
     cookie-same-site: "Lax"
+  flow:
+    redis-key-prefix: "auth:register:flow:"
+    ttl-minutes: 15
+    cookie-name: "REGISTER_FLOW_ID"
+    cookie-path: "/shopping/user"
+    cookie-http-only: true
+    cookie-secure: false
+    cookie-same-site: "Lax"
   password-crypto:
     enabled: true
     redis-key-prefix: "register:crypto:keypair:"
     nonce-key-prefix: "register:crypto:nonce:"
-    key-ttl-seconds: 1800
+    key-ttl-seconds: 600
     nonce-ttl-seconds: 600
     timestamp-window-seconds: 600
     rsa-key-size: 2048

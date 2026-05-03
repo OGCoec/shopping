@@ -7,50 +7,62 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   function createRegisterHCaptcha(options) {
     const {
+      idPrefix,
+      scriptOnloadCallbackName,
       autoRetryDelayMs,
       autoRetryLimit,
       showRegisterError,
       triggerCaptchaFailureAnimation,
+      handleCaptchaDeliveryFailure,
       requestRegisterEmailCodeDelivery,
       waitForCaptchaSuccessFeedback,
       waitForNextPaint,
       openRegisterOtpAfterEmailSent,
       getPendingRegisterPayload
     } = options || {};
+    const domIdPrefix = (typeof idPrefix === "string" && idPrefix.trim()) || "register";
+    const hcaptchaOnloadName = (typeof scriptOnloadCallbackName === "string" && scriptOnloadCallbackName.trim())
+      || `onload${domIdPrefix.replace(/[^a-zA-Z0-9]/g, "") || "Register"}HCaptcha`;
 
     let currentHCaptchaWidgetId = null;
     let currentHCaptchaSiteKey = "";
     let hcaptchaScriptPromise = null;
     let currentHCaptchaAutoRetryCount = 0;
     let hcaptchaAutoRetryTimer = null;
+    let hcaptchaSubmissionInFlight = false;
+
+    function getDomId(suffix) {
+      return `${domIdPrefix}-${suffix}`;
+    }
 
     function showHCaptchaError(message) {
-      const errorNode = document.getElementById("register-hcaptcha-error-msg");
+      const errorNode = document.getElementById(getDomId("hcaptcha-error-msg"));
       if (!errorNode) return;
       errorNode.textContent = message;
       errorNode.style.display = "block";
     }
 
     function clearHCaptchaError() {
-      const errorNode = document.getElementById("register-hcaptcha-error-msg");
+      const errorNode = document.getElementById(getDomId("hcaptcha-error-msg"));
       if (!errorNode) return;
       errorNode.textContent = "";
       errorNode.style.display = "none";
     }
 
     function openHCaptchaModal() {
-      const modal = document.getElementById("register-hcaptcha-modal");
+      const modal = document.getElementById(getDomId("hcaptcha-modal"));
       if (modal) modal.style.display = "flex";
     }
 
     function closeHCaptchaModal() {
-      const modal = document.getElementById("register-hcaptcha-modal");
+      const modal = document.getElementById(getDomId("hcaptcha-modal"));
       if (modal) modal.style.display = "none";
       if (hcaptchaAutoRetryTimer !== null) {
         clearTimeout(hcaptchaAutoRetryTimer);
         hcaptchaAutoRetryTimer = null;
       }
       currentHCaptchaAutoRetryCount = 0;
+      hcaptchaSubmissionInFlight = false;
       clearHCaptchaError();
     }
 
@@ -72,7 +84,7 @@
       const widgetId = currentHCaptchaWidgetId;
       hcaptchaAutoRetryTimer = setTimeout(() => {
         hcaptchaAutoRetryTimer = null;
-        const modal = document.getElementById("register-hcaptcha-modal");
+        const modal = document.getElementById(getDomId("hcaptcha-modal"));
         if (!window.hcaptcha || currentHCaptchaWidgetId === null || currentHCaptchaWidgetId !== widgetId) {
           return;
         }
@@ -93,11 +105,11 @@
         return hcaptchaScriptPromise;
       }
       hcaptchaScriptPromise = new Promise((resolve, reject) => {
-        window.onloadRegisterHCaptcha = () => {
+        window[hcaptchaOnloadName] = () => {
           resolve();
         };
         const script = document.createElement("script");
-        script.src = "https://js.hcaptcha.com/1/api.js?onload=onloadRegisterHCaptcha&render=explicit";
+        script.src = `https://js.hcaptcha.com/1/api.js?onload=${hcaptchaOnloadName}&render=explicit`;
         script.async = true;
         script.defer = true;
         script.onerror = () => {
@@ -107,6 +119,21 @@
         document.head.appendChild(script);
       });
       return hcaptchaScriptPromise;
+    }
+
+    async function resolveDeliveryResult(deliveryResult) {
+      if (deliveryResult && typeof deliveryResult.json === "function") {
+        const payload = await deliveryResult.json();
+        return {
+          ok: Boolean(deliveryResult.ok),
+          payload: payload || {}
+        };
+      }
+      const payload = deliveryResult && typeof deliveryResult === "object" ? deliveryResult : {};
+      return {
+        ok: Boolean(payload.success),
+        payload
+      };
     }
 
     async function continueRegisterWithHCaptcha(token, successFeedbackStartedAt = Date.now()) {
@@ -119,40 +146,66 @@
         triggerCaptchaFailureAnimation?.();
         return;
       }
-
-      const response = await requestRegisterEmailCodeDelivery("", token, false);
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        showHCaptchaError(payload.message || "hCaptcha 校验失败，请重试");
-        triggerCaptchaFailureAnimation?.();
-        if (window.hcaptcha && currentHCaptchaWidgetId !== null) {
-          window.hcaptcha.reset(currentHCaptchaWidgetId);
-        }
+      if (hcaptchaSubmissionInFlight) {
         return;
       }
 
-      await waitForCaptchaSuccessFeedback(successFeedbackStartedAt);
-      closeHCaptchaModal();
-      const pendingRegisterPayload = getPendingRegisterPayload?.() || null;
-      if (pendingRegisterPayload) {
-        pendingRegisterPayload.riskLevel = payload.riskLevel || pendingRegisterPayload.riskLevel || "";
-        pendingRegisterPayload.requirePhoneBinding = Boolean(payload.requirePhoneBinding);
+      hcaptchaSubmissionInFlight = true;
+      try {
+        const deliveryResult = await requestRegisterEmailCodeDelivery("", token, false);
+        const { ok, payload } = await resolveDeliveryResult(deliveryResult);
+        if (!ok || !payload.success) {
+          if (typeof handleCaptchaDeliveryFailure === "function") {
+            const handled = await handleCaptchaDeliveryFailure(payload, {
+              defaultMessage: "Captcha verification failed. Please retry.",
+              closeModal: closeHCaptchaModal,
+              showCaptchaError: showHCaptchaError
+            });
+            if (handled) {
+              return;
+            }
+          }
+          showHCaptchaError(payload.message || "hCaptcha 校验失败，请重试");
+          triggerCaptchaFailureAnimation?.();
+          if (window.hcaptcha && currentHCaptchaWidgetId !== null) {
+            window.hcaptcha.reset(currentHCaptchaWidgetId);
+          }
+          return;
+        }
+
+        await waitForCaptchaSuccessFeedback(successFeedbackStartedAt);
+        closeHCaptchaModal();
+        const pendingRegisterPayload = getPendingRegisterPayload?.() || null;
+        if (pendingRegisterPayload) {
+          pendingRegisterPayload.riskLevel = payload.riskLevel || pendingRegisterPayload.riskLevel || "";
+          pendingRegisterPayload.requirePhoneBinding = Boolean(payload.requirePhoneBinding);
+        }
+        openRegisterOtpAfterEmailSent(payload);
+      } finally {
+        hcaptchaSubmissionInFlight = false;
       }
-      openRegisterOtpAfterEmailSent(payload);
     }
 
     async function renderHCaptcha(siteKey) {
       currentHCaptchaSiteKey = siteKey || "";
+      openHCaptchaModal();
+      clearHCaptchaError();
       if (!currentHCaptchaSiteKey) {
+        showHCaptchaError("hCaptcha site key is not configured.");
         showRegisterError("hCaptcha siteKey 未配置");
         return;
       }
       openHCaptchaModal();
       clearHCaptchaError();
-      await loadHCaptchaScript();
+      try {
+        await loadHCaptchaScript();
+      } catch (_) {
+        showHCaptchaError("hCaptcha script failed to load. Please retry.");
+        return;
+      }
       await waitForNextPaint(2);
 
-      const container = document.getElementById("register-hcaptcha-container");
+      const container = document.getElementById(getDomId("hcaptcha-container"));
       if (!container || !window.hcaptcha) {
         showHCaptchaError("hCaptcha 初始化失败");
         return;

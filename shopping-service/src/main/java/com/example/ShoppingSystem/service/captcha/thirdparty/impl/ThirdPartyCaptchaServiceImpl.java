@@ -32,6 +32,11 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
     private final String hCaptchaSiteKey;
     private final String hCaptchaSecretKey;
     private final String hCaptchaVerifyUrl;
+    private final String recaptchaSiteKey;
+    private final String recaptchaSecretKey;
+    private final String recaptchaVerifyUrl;
+    private final double recaptchaMinScore;
+    private final String recaptchaExpectedAction;
 
     @Autowired
     public ThirdPartyCaptchaServiceImpl(
@@ -40,14 +45,24 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
             @Value("${captcha.turnstile.verify-url:https://challenges.cloudflare.com/turnstile/v0/siteverify}") String turnstileVerifyUrl,
             @Value("${captcha.hcaptcha.site-key:}") String hCaptchaSiteKey,
             @Value("${captcha.hcaptcha.secret-key:}") String hCaptchaSecretKey,
-            @Value("${captcha.hcaptcha.verify-url:https://api.hcaptcha.com/siteverify}") String hCaptchaVerifyUrl) {
+            @Value("${captcha.hcaptcha.verify-url:https://api.hcaptcha.com/siteverify}") String hCaptchaVerifyUrl,
+            @Value("${captcha.recaptcha.site-key:}") String recaptchaSiteKey,
+            @Value("${captcha.recaptcha.secret-key:}") String recaptchaSecretKey,
+            @Value("${captcha.recaptcha.verify-url:https://www.google.com/recaptcha/api/siteverify}") String recaptchaVerifyUrl,
+            @Value("${captcha.recaptcha.min-score:0.5}") double recaptchaMinScore,
+            @Value("${captcha.recaptcha.expected-action:shopping_auth}") String recaptchaExpectedAction) {
         this(HttpClient.newBuilder().connectTimeout(VERIFY_TIMEOUT).build(),
                 turnstileSiteKey,
                 turnstileSecretKey,
                 turnstileVerifyUrl,
                 hCaptchaSiteKey,
                 hCaptchaSecretKey,
-                hCaptchaVerifyUrl);
+                hCaptchaVerifyUrl,
+                recaptchaSiteKey,
+                recaptchaSecretKey,
+                recaptchaVerifyUrl,
+                recaptchaMinScore,
+                recaptchaExpectedAction);
     }
 
     ThirdPartyCaptchaServiceImpl(HttpClient httpClient,
@@ -56,7 +71,12 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
                                  String turnstileVerifyUrl,
                                  String hCaptchaSiteKey,
                                  String hCaptchaSecretKey,
-                                 String hCaptchaVerifyUrl) {
+                                 String hCaptchaVerifyUrl,
+                                 String recaptchaSiteKey,
+                                 String recaptchaSecretKey,
+                                 String recaptchaVerifyUrl,
+                                 double recaptchaMinScore,
+                                 String recaptchaExpectedAction) {
         this.httpClient = httpClient;
         this.turnstileSiteKey = turnstileSiteKey;
         this.turnstileSecretKey = turnstileSecretKey;
@@ -64,6 +84,11 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
         this.hCaptchaSiteKey = hCaptchaSiteKey;
         this.hCaptchaSecretKey = hCaptchaSecretKey;
         this.hCaptchaVerifyUrl = hCaptchaVerifyUrl;
+        this.recaptchaSiteKey = recaptchaSiteKey;
+        this.recaptchaSecretKey = recaptchaSecretKey;
+        this.recaptchaVerifyUrl = recaptchaVerifyUrl;
+        this.recaptchaMinScore = Math.max(0.0, Math.min(1.0, recaptchaMinScore));
+        this.recaptchaExpectedAction = recaptchaExpectedAction;
     }
 
     @Override
@@ -74,6 +99,11 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
     @Override
     public String getHCaptchaSiteKey() {
         return hCaptchaSiteKey;
+    }
+
+    @Override
+    public String getRecaptchaSiteKey() {
+        return recaptchaSiteKey;
     }
 
     @Override
@@ -168,6 +198,50 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
             }
             // 任何异常都按“第三方验证码验证失败”处理，不把异常直接抛给上层业务。
             log.warn("hCaptcha validation error: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean validateRecaptchaV3(String token, String remoteIp) {
+        if (StrUtil.hasBlank(recaptchaSecretKey, token)) {
+            return false;
+        }
+
+        try {
+            String body = formBody(
+                    "secret", recaptchaSecretKey,
+                    "response", token,
+                    "remoteip", remoteIp
+            );
+            HttpRequest request = HttpRequest.newBuilder(URI.create(recaptchaVerifyUrl))
+                    .timeout(VERIFY_TIMEOUT)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warn("Google reCAPTCHA siteverify returned httpStatus={}", response.statusCode());
+                return false;
+            }
+
+            var payload = JSONUtil.parseObj(response.body());
+            boolean success = payload.getBool("success", false);
+            double score = payload.getDouble("score", 0.0);
+            String action = payload.getStr("action", "");
+            boolean actionMatches = StrUtil.isBlank(recaptchaExpectedAction)
+                    || StrUtil.equals(recaptchaExpectedAction, action);
+            boolean accepted = success && score >= recaptchaMinScore && actionMatches;
+            if (!accepted) {
+                log.warn("Google reCAPTCHA validation failed, score={}, action={}, response={}",
+                        score, action, response.body());
+            }
+            return accepted;
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            log.warn("Google reCAPTCHA validation error: {}", e.getMessage());
             return false;
         }
     }

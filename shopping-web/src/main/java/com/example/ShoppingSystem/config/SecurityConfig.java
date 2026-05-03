@@ -49,9 +49,18 @@ public class SecurityConfig {
             "/",
             "/index.html",
             "/favicon.ico",
+            "/shopping/user/log-in",
+            "/shopping/user/log-in/password",
             "/shopping/user/login",
+            "/shopping/user/login/**",
+            "/shopping/user/create-account",
+            "/shopping/user/create-account/password",
             "/shopping/user/register",
             "/shopping/user/register/**",
+            "/shopping/user/email-verification",
+            "/shopping/user/totp-verification",
+            "/shopping/user/add-phone",
+            "/shopping/user/session-ended",
             "/shopping/user/forgot-password",
             "/shopping/auth/preauth/bootstrap",
             "/shopping/auth/preauth/phone-country",
@@ -122,7 +131,7 @@ public class SecurityConfig {
                         .authenticated())
                 .oauth2Login(oauth2 -> oauth2
                         // 指定自定义登录页，禁用 Spring Security 默认 /login 登录页
-                        .loginPage("/shopping/user/login")
+                        .loginPage("/shopping/user/log-in")
                         .authorizationEndpoint(endpoint -> endpoint
                                 .authorizationRequestResolver(oauth2AuthorizationRequestResolver)
                                 .authorizationRequestRepository(redisStateAuthorizationRequestRepository))

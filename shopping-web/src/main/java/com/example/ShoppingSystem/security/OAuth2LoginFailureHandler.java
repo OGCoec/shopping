@@ -17,7 +17,7 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
-    private static final String LOGIN_PAGE_URL = "https://localhost:6655/shopping/user/login";
+    private static final String LOGIN_PAGE_URL = "https://localhost:6655/shopping/user/log-in";
 
     @Override
     public void onAuthenticationFailure(HttpServletRequest request,

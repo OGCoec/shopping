@@ -6,13 +6,23 @@
   root.ShoppingRegisterForm = factory(root.ShoppingPreAuthClient);
 })(typeof globalThis !== "undefined" ? globalThis : this, function (preAuthClientApi) {
   const DEFAULT_PASSWORD_STRENGTH_COLORS = ["#ccc", "red", "orange", "yellowgreen", "green"];
-  const DEFAULT_PASSWORD_STRENGTH_LABELS = ["太短", "极弱", "中等", "强", "极强"];
+  const DEFAULT_PASSWORD_STRENGTH_LABELS = ["Too short", "Weak", "Medium", "Strong", "Very strong"];
   const DEFAULT_PASSWORD_STRENGTH_BASE_WIDTH = 40;
   const DEFAULT_PASSWORD_STRENGTH_STEP_WIDTH = 30;
   const REGISTER_PENDING_CONTEXT_KEY = "shopping:register:pending-context:v1";
   const REGISTER_EMAIL_CODE_TYPE_PATH = "/shopping/user/register/email-code-type";
   const REGISTER_EMAIL_CODE_VERIFY_PATH = "/shopping/user/register/email-code/verify";
-  const REGISTER_CRYPTO_ERROR_MESSAGE = "密码加密不可用，请刷新后重试";
+  const REGISTER_CRYPTO_ERROR_MESSAGE = "Password encryption is unavailable, please refresh and try again.";
+  const REGISTER_FLOW_ERROR_CODES = new Set([
+    "REGISTER_FLOW_MISSING",
+    "REGISTER_FLOW_EXPIRED",
+    "REGISTER_FLOW_PREAUTH_MISMATCH",
+    "REGISTER_FLOW_DEVICE_MISMATCH",
+    "REGISTER_FLOW_EMAIL_MISMATCH",
+    "REGISTER_STEP_OUT_OF_ORDER",
+    "REGISTER_ALREADY_COMPLETED"
+  ]);
+
   const preAuthFetch = preAuthClientApi && typeof preAuthClientApi.fetchWithPreAuth === "function"
     ? preAuthClientApi.fetchWithPreAuth
     : fetch;
@@ -77,9 +87,21 @@
     return {
       remainingMs,
       message: remainingMs > 0
-        ? `当前操作过于频繁，请在 ${waitSeconds} 秒后重试`
-        : (payload?.message || "当前操作过于频繁，请稍后重试")
+        ? `Current action is cooling down. Try again in ${waitSeconds}s.`
+        : (payload?.message || "Current action is cooling down. Please try again later.")
     };
+  }
+
+  function resolveEmailCodeResendCooldownMs(payload) {
+    const retryAfterMs = Number(payload?.emailCodeRetryAfterMs);
+    if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+      return Math.round(retryAfterMs);
+    }
+    const passedAt = Number(payload?.passedAt);
+    if (Number.isFinite(passedAt) && passedAt > 0) {
+      return Math.max(0, Math.round(passedAt - Date.now()));
+    }
+    return 0;
   }
 
   function isBrowserRuntime() {
@@ -271,6 +293,7 @@
       openRegisterCaptchaModal,
       renderTurnstileCaptcha,
       renderHCaptcha,
+      executeRecaptcha,
       loadTianaiCaptcha,
       openTianaiModal,
       passwordStrengthColors = DEFAULT_PASSWORD_STRENGTH_COLORS,
@@ -312,10 +335,7 @@
         }
         const parsed = JSON.parse(raw);
         const snapshot = buildPendingRegisterPayloadSnapshot(parsed?.payload);
-        if (!snapshot) {
-          return null;
-        }
-        if (!snapshot.email || !snapshot.username || !snapshot.passwordCipher || !snapshot.kid || !snapshot.deviceFingerprint) {
+        if (!snapshot || !snapshot.email || !snapshot.deviceFingerprint) {
           return null;
         }
         pendingRegisterPayload = snapshot;
@@ -334,6 +354,40 @@
         sessionStorage.removeItem(REGISTER_PENDING_CONTEXT_KEY);
       } catch (_) {
       }
+    }
+
+    function hydratePendingRegisterPayload(patch = {}) {
+      const currentPayload = pendingRegisterPayload || restorePendingRegisterPayloadFromSession() || {};
+      pendingRegisterPayload = buildPendingRegisterPayloadSnapshot({
+        ...currentPayload,
+        ...patch
+      });
+      persistPendingRegisterPayload();
+      return pendingRegisterPayload;
+    }
+
+    function shouldHandleRegisterFlowError(payload) {
+      const errorCode = typeof payload?.error === "string" ? payload.error.trim() : "";
+      return REGISTER_FLOW_ERROR_CODES.has(errorCode);
+    }
+
+    function redirectForRegisterFlowError(payload) {
+      if (!shouldHandleRegisterFlowError(payload) || typeof window === "undefined") {
+        return false;
+      }
+      const errorCode = typeof payload?.error === "string" ? payload.error.trim() : "";
+      if (errorCode !== "REGISTER_STEP_OUT_OF_ORDER") {
+        clearPendingRegisterPayload();
+      }
+      const redirectPath = typeof payload?.redirectPath === "string" ? payload.redirectPath.trim() : "";
+      if (!redirectPath) {
+        return false;
+      }
+      const registerFlowNavigationApi = globalThis.ShoppingRegisterFlow;
+      if (!registerFlowNavigationApi?.navigateWithinAuthShell?.(redirectPath, { replace: true })) {
+        window.location.assign(redirectPath);
+      }
+      return true;
     }
 
     async function handleChallengeRequirement(payload) {
@@ -372,6 +426,10 @@
         showRegisterError?.(`Risk ${riskLevel}: complete hCaptcha first`, false);
         return { handled: true, submitCooldownMs: 0 };
       }
+      if (challengeType === "GOOGLE_RECAPTCHA_V3") {
+        await executeRecaptcha?.(payload.challengeSiteKey);
+        return { handled: true, submitCooldownMs: 0 };
+      }
       if (challengeType === "TIANAI_CAPTCHA") {
         await loadTianaiCaptcha?.(challengeSubType);
         openTianaiModal?.();
@@ -385,11 +443,11 @@
       showRegisterError?.(`Risk ${riskLevel}: complete captcha ${challengeLabel} first`, false);
       return { handled: true, submitCooldownMs: 0 };
     }
+
     function getRegisterPasswordStrengthWidth(level) {
       if (level === 0) {
         return passwordStrengthBaseWidth;
       }
-
       return passwordStrengthBaseWidth + level * passwordStrengthStepWidth;
     }
 
@@ -407,7 +465,6 @@
 
       const level = checkRegisterPasswordStrength(password);
       const color = passwordStrengthColors[level];
-
       passwordStrengthBar.style.background = color;
       passwordStrengthBar.style.width = `${getRegisterPasswordStrengthWidth(level)}px`;
       passwordStrengthText.innerText = passwordStrengthLabels[level];
@@ -418,11 +475,14 @@
       if (!pendingRegisterPayload) {
         restorePendingRegisterPayloadFromSession();
       }
-      if (!pendingRegisterPayload) {
+      if (!pendingRegisterPayload || !pendingRegisterPayload.email || !pendingRegisterPayload.deviceFingerprint) {
         throw new Error("register payload missing");
       }
-      const requestPayload = buildRegisterRequestPayload(pendingRegisterPayload, captchaUuid, captchaCode);
+      if (!pendingRegisterPayload.passwordCipher || !pendingRegisterPayload.kid) {
+        throw new Error("register payload missing");
+      }
 
+      const requestPayload = buildRegisterRequestPayload(pendingRegisterPayload, captchaUuid, captchaCode);
       return preAuthFetch("/shopping/user/register/email-code", {
         method: "POST",
         headers: {
@@ -451,23 +511,23 @@
       const passwordStrengthLevel = checkRegisterPasswordStrength(password);
 
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        showRegisterError?.("请输入有效的电子邮箱地址");
+        showRegisterError?.("Please enter a valid email address.");
         return { submitCooldownMs: 0 };
       }
       if (!username) {
-        showRegisterError?.("用户名不能为空");
+        showRegisterError?.("Username is required.");
         return { submitCooldownMs: 0 };
       }
       if (!password || password.length < 6) {
-        showRegisterError?.("密码至少 6 位");
+        showRegisterError?.("Password must be at least 6 characters.");
         return { submitCooldownMs: 0 };
       }
       if (passwordStrengthLevel < 2) {
-        showRegisterError?.("密码强度至少达到中等");
+        showRegisterError?.("Password strength must reach at least medium.");
         return { submitCooldownMs: 0 };
       }
       if (password !== confirmPassword) {
-        showRegisterError?.("两次输入的密码不一致");
+        showRegisterError?.("Passwords do not match.");
         return { submitCooldownMs: 0 };
       }
 
@@ -488,7 +548,7 @@
       };
       persistPendingRegisterPayload();
 
-      const response = await preAuthFetch("/shopping/user/register/email-code-type", {
+      const response = await preAuthFetch(REGISTER_EMAIL_CODE_TYPE_PATH, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -498,7 +558,10 @@
 
       const payload = await parseJsonSafely(response);
       if (!response.ok) {
-        showRegisterError?.(payload.message || "注册请求失败");
+        if (redirectForRegisterFlowError(payload)) {
+          return { submitCooldownMs: 0 };
+        }
+        showRegisterError?.(payload.message || "Register request failed.");
         return { submitCooldownMs: 0 };
       }
 
@@ -508,8 +571,7 @@
         if (challengeResult.handled) {
           return { submitCooldownMs: challengeResult.submitCooldownMs };
         }
-
-        showRegisterError?.(payload.message || "注册请求失败");
+        showRegisterError?.(payload.message || "Register request failed.");
         return { submitCooldownMs: 0 };
       }
 
@@ -520,12 +582,20 @@
       const deliveryResponse = await requestRegisterEmailCodeDelivery("", "");
       const deliveryPayload = await parseJsonSafely(deliveryResponse);
       if (!deliveryResponse.ok || !deliveryPayload.success) {
+        if (!deliveryResponse.ok && redirectForRegisterFlowError(deliveryPayload)) {
+          return { submitCooldownMs: 0 };
+        }
         persistPendingRegisterPayload();
+        const resendCooldownMs = resolveEmailCodeResendCooldownMs(deliveryPayload);
+        if (resendCooldownMs > 0) {
+          showRegisterError?.(deliveryPayload.message || "Please wait before resending the email code.");
+          return { submitCooldownMs: resendCooldownMs };
+        }
         const challengeResult = await handleChallengeRequirement(deliveryPayload);
         if (challengeResult.handled) {
           return { submitCooldownMs: challengeResult.submitCooldownMs };
         }
-        showRegisterError?.(deliveryPayload.message || "注册请求失败");
+        showRegisterError?.(deliveryPayload.message || "Register request failed.");
         return { submitCooldownMs: 0 };
       }
 
@@ -533,7 +603,7 @@
       pendingRegisterPayload.requirePhoneBinding = Boolean(deliveryPayload.requirePhoneBinding);
       persistPendingRegisterPayload();
       openRegisterOtpAfterEmailSent?.(deliveryPayload);
-      return { submitCooldownMs: 0 };
+      return { submitCooldownMs: resolveEmailCodeResendCooldownMs(deliveryPayload) };
     }
 
     async function resendRegisterEmailCode() {
@@ -543,7 +613,14 @@
       if (!pendingRegisterPayload) {
         return {
           success: false,
-          message: "注册上下文已失效，请返回注册表单重新提交。",
+          message: "Register context expired. Please go back and submit the form again.",
+          submitCooldownMs: 0
+        };
+      }
+      if (!pendingRegisterPayload.passwordCipher || !pendingRegisterPayload.kid) {
+        return {
+          success: false,
+          message: "This page was restored, but resending the code requires resubmitting the password step.",
           submitCooldownMs: 0
         };
       }
@@ -551,6 +628,21 @@
       const deliveryResponse = await requestRegisterEmailCodeDelivery("", "");
       const deliveryPayload = await parseJsonSafely(deliveryResponse);
       if (!deliveryResponse.ok || !deliveryPayload.success) {
+        if (!deliveryResponse.ok && redirectForRegisterFlowError(deliveryPayload)) {
+          return {
+            success: false,
+            message: deliveryPayload?.message || "",
+            submitCooldownMs: 0
+          };
+        }
+        const resendCooldownMs = resolveEmailCodeResendCooldownMs(deliveryPayload);
+        if (resendCooldownMs > 0) {
+          return {
+            success: false,
+            message: deliveryPayload.message || "Please wait before resending the email code.",
+            submitCooldownMs: resendCooldownMs
+          };
+        }
         const challengeResult = await handleChallengeRequirement(deliveryPayload);
         if (challengeResult.handled) {
           const timeoutMessage = challengeResult.submitCooldownMs > 0
@@ -558,13 +650,13 @@
             : "";
           return {
             success: false,
-            message: timeoutMessage || deliveryPayload.message || "请先完成安全验证。",
+            message: timeoutMessage || deliveryPayload.message || "Please complete the security check first.",
             submitCooldownMs: challengeResult.submitCooldownMs
           };
         }
         return {
           success: false,
-          message: deliveryPayload.message || "重新发送失败，请稍后重试。",
+          message: deliveryPayload.message || "Failed to resend the email code.",
           submitCooldownMs: 0
         };
       }
@@ -575,8 +667,8 @@
       openRegisterOtpAfterEmailSent?.(deliveryPayload);
       return {
         success: true,
-        message: "邮箱验证码已重新发送",
-        submitCooldownMs: 0
+        message: "Email code sent again.",
+        submitCooldownMs: resolveEmailCodeResendCooldownMs(deliveryPayload)
       };
     }
 
@@ -584,10 +676,10 @@
       if (!pendingRegisterPayload) {
         restorePendingRegisterPayloadFromSession();
       }
-      if (!pendingRegisterPayload) {
+      if (!pendingRegisterPayload || !pendingRegisterPayload.email || !pendingRegisterPayload.deviceFingerprint) {
         return {
           success: false,
-          message: "Register context expired, please submit register form again.",
+          message: "Register context expired, please submit the register form again.",
           requirePhoneBinding: false
         };
       }
@@ -615,6 +707,13 @@
       const payload = await parseJsonSafely(response);
 
       if (!response.ok) {
+        if (redirectForRegisterFlowError(payload)) {
+          return {
+            success: false,
+            message: payload?.message || "",
+            requirePhoneBinding: false
+          };
+        }
         return {
           success: false,
           message: payload?.message || "Register verification failed, please retry.",
@@ -655,6 +754,9 @@
       const replayStatus = Number(replayDetail?.status || 0);
       const replayOk = replayDetail?.ok !== false && replayStatus >= 200 && replayStatus < 300;
       if (!replayOk) {
+        if (redirectForRegisterFlowError(replayPayload)) {
+          return { handled: true, submitCooldownMs: 0 };
+        }
         showRegisterError?.(replayPayload.message || "Register request failed, please retry.");
         return { handled: true, submitCooldownMs: 0 };
       }
@@ -676,7 +778,15 @@
       const deliveryResponse = await requestRegisterEmailCodeDelivery("", "");
       const deliveryPayload = await parseJsonSafely(deliveryResponse);
       if (!deliveryResponse.ok || !deliveryPayload.success) {
+        if (!deliveryResponse.ok && redirectForRegisterFlowError(deliveryPayload)) {
+          return { handled: true, submitCooldownMs: 0 };
+        }
         persistPendingRegisterPayload();
+        const resendCooldownMs = resolveEmailCodeResendCooldownMs(deliveryPayload);
+        if (resendCooldownMs > 0) {
+          showRegisterError?.(deliveryPayload.message || "Please wait before resending the email code.");
+          return { handled: true, submitCooldownMs: resendCooldownMs };
+        }
         const challengeResult = await handleChallengeRequirement(deliveryPayload);
         if (challengeResult.handled) {
           return { handled: true, submitCooldownMs: challengeResult.submitCooldownMs };
@@ -689,7 +799,7 @@
       pendingRegisterPayload.requirePhoneBinding = Boolean(deliveryPayload.requirePhoneBinding);
       persistPendingRegisterPayload();
       openRegisterOtpAfterEmailSent?.(deliveryPayload);
-      return { handled: true, submitCooldownMs: 0 };
+      return { handled: true, submitCooldownMs: resolveEmailCodeResendCooldownMs(deliveryPayload) };
     }
 
     return {
@@ -702,6 +812,7 @@
       verifyRegisterEmailCode,
       continueRegisterAfterWafReplay,
       requestRegisterEmailCodeDelivery,
+      hydratePendingRegisterPayload,
       clearPendingRegisterPayload,
       getPendingRegisterPayload() {
         if (!pendingRegisterPayload) {

@@ -13,6 +13,7 @@ import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationError;
 import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
 import com.example.ShoppingSystem.quota.IpCountryQueryService;
 import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -37,19 +38,26 @@ import java.util.Map;
 @RequestMapping("/shopping/auth/preauth")
 public class PreAuthBootstrapController {
 
+    private static final String PHONE_VALIDATION_PURPOSE_BIND_PHONE = "BIND_PHONE";
+    private static final String REASON_PHONE_ALREADY_BOUND = "PHONE_ALREADY_BOUND";
+    private static final String REASON_PHONE_BOUND_BLOOM_UNAVAILABLE = "PHONE_BOUND_BLOOM_UNAVAILABLE";
+
     private final PreAuthBindingService preAuthBindingService;
     private final IpCountryQueryService ipCountryQueryService;
     private final RegisterPasswordCryptoService registerPasswordCryptoService;
     private final PhoneNumberValidationService phoneNumberValidationService;
+    private final PhoneBoundCountingBloomService phoneBoundCountingBloomService;
 
     public PreAuthBootstrapController(PreAuthBindingService preAuthBindingService,
                                       IpCountryQueryService ipCountryQueryService,
                                       RegisterPasswordCryptoService registerPasswordCryptoService,
-                                      PhoneNumberValidationService phoneNumberValidationService) {
+                                      PhoneNumberValidationService phoneNumberValidationService,
+                                      PhoneBoundCountingBloomService phoneBoundCountingBloomService) {
         this.preAuthBindingService = preAuthBindingService;
         this.ipCountryQueryService = ipCountryQueryService;
         this.registerPasswordCryptoService = registerPasswordCryptoService;
         this.phoneNumberValidationService = phoneNumberValidationService;
+        this.phoneBoundCountingBloomService = phoneBoundCountingBloomService;
     }
 
     /**
@@ -109,6 +117,26 @@ public class PreAuthBootstrapController {
         PhoneNumberValidationService.ValidationResult result =
                 phoneNumberValidationService.validateMobileLikeNumber(request.dialCode(), request.phoneNumber());
         if (result.allowed()) {
+            if (shouldRejectAlreadyBoundPhone(request)) {
+                PhoneBoundCountingBloomService.PhoneBoundLookupResult lookupResult =
+                        phoneBoundCountingBloomService.lookupVerifiedPhone(result.normalizedE164());
+                if (!lookupResult.available()) {
+                    return new PreAuthPhoneValidationResponse(
+                            false,
+                            resolvePhoneValidationMessage(REASON_PHONE_BOUND_BLOOM_UNAVAILABLE),
+                            REASON_PHONE_BOUND_BLOOM_UNAVAILABLE,
+                            result.phoneType(),
+                            result.normalizedE164());
+                }
+                if (lookupResult.mightContain()) {
+                    return new PreAuthPhoneValidationResponse(
+                            false,
+                            resolvePhoneValidationMessage(REASON_PHONE_ALREADY_BOUND),
+                            REASON_PHONE_ALREADY_BOUND,
+                            result.phoneType(),
+                            result.normalizedE164());
+                }
+            }
             return new PreAuthPhoneValidationResponse(
                     true,
                     "ok",
@@ -151,7 +179,7 @@ public class PreAuthBootstrapController {
     private String buildBootstrapWafVerifyUrl(HttpServletRequest request) {
         String returnPath = buildReturnPathFromReferer(request);
         if (returnPath == null || returnPath.isBlank()) {
-            returnPath = "/shopping/user/login";
+            returnPath = "/shopping/user/log-in";
         }
         return "/shopping/auth/waf/verify?return="
                 + URLEncoder.encode(returnPath, StandardCharsets.UTF_8);
@@ -200,7 +228,15 @@ public class PreAuthBootstrapController {
             case PhoneNumberValidationService.REASON_TYPE_NOT_ALLOWED -> "only mobile phone numbers are allowed";
             case PhoneNumberValidationService.REASON_INVALID_DIAL_CODE -> "invalid dial code";
             case PhoneNumberValidationService.REASON_INVALID_PHONE -> "invalid phone number";
+            case REASON_PHONE_ALREADY_BOUND -> "phone number is already in use";
+            case REASON_PHONE_BOUND_BLOOM_UNAVAILABLE -> "phone existence filter is temporarily unavailable";
             default -> "phone validation failed";
         };
+    }
+
+    private boolean shouldRejectAlreadyBoundPhone(PreAuthPhoneValidationRequest request) {
+        return request != null
+                && request.purpose() != null
+                && PHONE_VALIDATION_PURPOSE_BIND_PHONE.equalsIgnoreCase(request.purpose().trim());
     }
 }

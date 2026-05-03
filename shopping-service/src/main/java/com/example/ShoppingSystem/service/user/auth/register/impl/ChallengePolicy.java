@@ -6,6 +6,7 @@ import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSele
 import org.springframework.stereotype.Service;
 
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_OPERATION_TIMEOUT;
@@ -76,22 +77,28 @@ public class ChallengePolicy {
             }
             case "L3" -> resolveL3ChallengeSelection(RandomUtil.randomInt(6));
             case "L4" -> {
-                int choice = RandomUtil.randomInt(3);
-                if (choice == 0) {
-                    yield new ChallengeSelection(CHALLENGE_CLOUDFLARE_TURNSTILE, null);
-                }
-                if (choice == 1) {
-                    yield new ChallengeSelection(CHALLENGE_HCAPTCHA, null);
-                }
-                yield new ChallengeSelection(CHALLENGE_TIANAI, randomTianaiSubType());
-            }
-            case "L5" -> {
                 int choice = RandomUtil.randomInt(4);
                 if (choice == 0) {
                     yield new ChallengeSelection(CHALLENGE_CLOUDFLARE_TURNSTILE, null);
                 }
                 if (choice == 1) {
                     yield new ChallengeSelection(CHALLENGE_HCAPTCHA, null);
+                }
+                if (choice == 2) {
+                    yield new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V3, null);
+                }
+                yield new ChallengeSelection(CHALLENGE_TIANAI, randomTianaiSubType());
+            }
+            case "L5" -> {
+                int choice = RandomUtil.randomInt(5);
+                if (choice == 0) {
+                    yield new ChallengeSelection(CHALLENGE_CLOUDFLARE_TURNSTILE, null);
+                }
+                if (choice == 1) {
+                    yield new ChallengeSelection(CHALLENGE_HCAPTCHA, null);
+                }
+                if (choice == 2) {
+                    yield new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V3, null);
                 }
                 yield new ChallengeSelection(CHALLENGE_OPERATION_TIMEOUT, null);
             }
@@ -146,6 +153,7 @@ public class ChallengePolicy {
                 || CHALLENGE_TIANAI.equals(challengeType)
                 || CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)
                 || CHALLENGE_HCAPTCHA.equals(challengeType)
+                || CHALLENGE_GOOGLE_RECAPTCHA_V3.equals(challengeType)
                 || CHALLENGE_OPERATION_TIMEOUT.equals(challengeType);
     }
 

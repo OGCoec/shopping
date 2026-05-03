@@ -326,6 +326,8 @@ function createRenderTarget() {
 function initParticlesBackground(container) {
   if (!container) return;
 
+  container.classList.remove("is-webgl-ready");
+
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: true,
@@ -449,7 +451,16 @@ function initParticlesBackground(container) {
   let animationId = 0;
   let visible = true;
   let skipFrame = false;
+  let webglReady = false;
   const clock = new THREE.Clock();
+
+  const markWebglReady = () => {
+    if (webglReady) {
+      return;
+    }
+    webglReady = true;
+    container.classList.add("is-webgl-ready");
+  };
 
   const resize = () => {
     const width = container.offsetWidth || window.innerWidth;
@@ -518,10 +529,11 @@ function initParticlesBackground(container) {
       renderer.render(simScene, simCamera);
       renderer.setRenderTarget(null);
 
-      renderMaterial.uniforms.uPosition.value = everRendered ? rt2.texture : posTex;
+      renderMaterial.uniforms.uPosition.value = rt2.texture;
       renderMaterial.uniforms.uTime.value = time;
       renderMaterial.uniforms.uRingPos.value.copy(ringPos);
       renderer.render(scene, camera);
+      markWebglReady();
 
       const next = rt1;
       rt1 = rt2;

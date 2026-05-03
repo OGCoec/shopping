@@ -47,8 +47,6 @@ public class RegisterPasswordCryptoService {
     private static final String FIELD_KEY_SIZE = "key_size";
     private static final String FIELD_PUBLIC_JWK = "public_jwk";
     private static final String FIELD_PRIVATE_PKCS8_ENC = "private_pkcs8_enc";
-    private static final String FIELD_CREATED_AT_MS = "created_at_ms";
-    private static final String FIELD_EXPIRES_AT_MS = "expires_at_ms";
 
     private static final String ALG_RSA_OAEP_256 = "RSA-OAEP-256";
     private static final String RSA_TRANSFORMATION = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
@@ -75,7 +73,7 @@ public class RegisterPasswordCryptoService {
     @Value("${register.password-crypto.nonce-key-prefix:register:crypto:nonce:}")
     private String nonceKeyPrefix;
 
-    @Value("${register.password-crypto.key-ttl-seconds:1800}")
+    @Value("${register.password-crypto.key-ttl-seconds:600}")
     private int keyTtlSeconds;
 
     @Value("${register.password-crypto.nonce-ttl-seconds:600}")
@@ -123,8 +121,6 @@ public class RegisterPasswordCryptoService {
             redisValue.put(FIELD_KEY_SIZE, String.valueOf(effectiveRsaKeySize));
             redisValue.put(FIELD_PUBLIC_JWK, objectMapper.writeValueAsString(publicKeyJwk));
             redisValue.put(FIELD_PRIVATE_PKCS8_ENC, privatePkcs8Enc);
-            redisValue.put(FIELD_CREATED_AT_MS, String.valueOf(now));
-            redisValue.put(FIELD_EXPIRES_AT_MS, String.valueOf(expiresAt));
 
             String key = redisKey(kid);
             stringRedisTemplate.opsForHash().putAll(key, redisValue);
@@ -174,8 +170,7 @@ public class RegisterPasswordCryptoService {
             return DecryptOutcome.failed("加密会话已失效，请重新输入密码");
         }
         String privatePkcs8Enc = asString(raw.get(FIELD_PRIVATE_PKCS8_ENC));
-        Long expiresAtMs = asLong(raw.get(FIELD_EXPIRES_AT_MS));
-        if (StrUtil.isBlank(privatePkcs8Enc) || expiresAtMs == null || now > expiresAtMs) {
+        if (StrUtil.isBlank(privatePkcs8Enc)) {
             return DecryptOutcome.failed("加密会话已过期，请重新输入密码");
         }
 
@@ -302,17 +297,6 @@ public class RegisterPasswordCryptoService {
 
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
-    }
-
-    private Long asLong(Object value) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Long.parseLong(String.valueOf(value));
-        } catch (Exception ignored) {
-            return null;
-        }
     }
 
     public record PasswordCryptoKey(String kid,

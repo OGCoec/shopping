@@ -21,23 +21,48 @@
     let currentIdentifierType = "email";
     let currentIdentifierValue = "";
     let currentOtpScenario = "login";
+    let currentLoginFactor = "EMAIL_OTP";
     let currentRegisterRiskLevel = "";
     let currentRegisterRequirePhoneBinding = false;
 
+    function isRegisterEmailVerificationRoute() {
+      if (typeof window === "undefined") {
+        return false;
+      }
+      const pathname = window.location?.pathname || "";
+      return pathname.replace(/\/+$/g, "") === "/shopping/user/email-verification"
+        && currentOtpScenario === "register";
+    }
+
+    function isLoginTotpFactor() {
+      return currentOtpScenario === "login" && currentLoginFactor === "TOTP";
+    }
+
     function syncOtpViewCopy() {
-      const shouldShowPasswordFallback = currentOtpScenario !== "register";
+      const shouldShowPasswordFallback = currentOtpScenario !== "register"
+        && !isRegisterEmailVerificationRoute();
+      const isTotp = isLoginTotpFactor();
 
       if (otpStepTitle) {
-        otpStepTitle.textContent = "检查您的收件箱";
+        otpStepTitle.textContent = isTotp ? "Enter authenticator code" : "Check your inbox";
       }
       if (otpCodeLabel) {
-        otpCodeLabel.textContent = "验证码";
+        otpCodeLabel.textContent = isTotp ? "Authenticator code" : "Verification code";
       }
       if (otpResendBtn) {
-        otpResendBtn.textContent = currentOtpScenario === "register" ? "重新发送电子邮件" : "重新发送验证码";
+        if (currentOtpScenario === "register") {
+          otpResendBtn.textContent = "Resend email";
+          otpResendBtn.style.display = "inline-flex";
+        } else if (isTotp) {
+          otpResendBtn.textContent = "Use email code";
+          otpResendBtn.style.display = "none";
+        } else {
+          otpResendBtn.textContent = "Resend code";
+          otpResendBtn.style.display = "inline-flex";
+        }
       }
       if (backToPasswordBtn) {
-        backToPasswordBtn.textContent = "使用密码继续";
+        backToPasswordBtn.textContent = "Use password";
         backToPasswordBtn.style.display = shouldShowPasswordFallback ? "block" : "none";
       }
       if (otpSecondaryDivider) {
@@ -47,20 +72,27 @@
 
     function getOtpDeliveryText(destination) {
       if (currentOtpScenario === "register") {
-        return `输入我们刚刚向 ${destination} 发送的验证码`;
+        return `Enter the code we sent to ${destination}.`;
       }
-
+      if (isLoginTotpFactor()) {
+        return "Enter the 6-digit code from your authenticator app.";
+      }
       if (currentIdentifierType === "phone") {
-        return `输入我们刚刚向 ${destination} 发送的短信验证码`;
+        return `Enter the code we sent to ${destination}.`;
       }
-
-      return `输入我们刚刚向 ${destination} 发送的邮箱验证码`;
+      return `Enter the code we sent to ${destination}.`;
     }
 
     function openOtpStep() {
-      if (!otpStepSubtitle || !otpCodeInput) return;
+      openLoginOtpStep("EMAIL_OTP");
+    }
 
+    function openLoginOtpStep(factor) {
+      if (!otpStepSubtitle || !otpCodeInput) {
+        return;
+      }
       currentOtpScenario = "login";
+      currentLoginFactor = factor === "TOTP" ? "TOTP" : "EMAIL_OTP";
       currentRegisterRiskLevel = "";
       currentRegisterRequirePhoneBinding = false;
       syncOtpViewCopy();
@@ -68,7 +100,10 @@
       otpStepSubtitle.textContent = getOtpDeliveryText(destination);
 
       const otpErrorMessage = document.getElementById("otp-error-msg");
-      if (otpErrorMessage) otpErrorMessage.style.display = "none";
+      if (otpErrorMessage) {
+        otpErrorMessage.textContent = "";
+        otpErrorMessage.style.display = "none";
+      }
 
       otpCodeInput.value = "";
       if (typeof setAuthView === "function") {
@@ -78,9 +113,12 @@
     }
 
     function openRegisterOtpStep(email, options = {}) {
-      if (!otpStepSubtitle || !otpCodeInput) return;
+      if (!otpStepSubtitle || !otpCodeInput) {
+        return;
+      }
 
       currentOtpScenario = "register";
+      currentLoginFactor = "EMAIL_OTP";
       currentIdentifierType = "email";
       currentIdentifierValue = email || "";
       currentRegisterRiskLevel = (options?.riskLevel || "").toString().trim().toUpperCase();
@@ -91,7 +129,7 @@
       }
       syncOtpViewCopy();
 
-      const destination = currentIdentifierValue || "当前邮箱";
+      const destination = currentIdentifierValue || "your email";
       otpStepSubtitle.textContent = getOtpDeliveryText(destination);
 
       const otpErrorMessage = document.getElementById("otp-error-msg");
@@ -108,11 +146,13 @@
     }
 
     function getOtpResendMessage() {
-      if (currentIdentifierType === "phone") {
-        return "短信验证码已重新发送";
+      if (isLoginTotpFactor()) {
+        return "";
       }
-
-      return "邮箱验证码已重新发送";
+      if (currentIdentifierType === "phone") {
+        return "SMS code sent again.";
+      }
+      return "Email code sent again.";
     }
 
     function setIdentifierContext(identifierType, identifierText) {
@@ -124,9 +164,21 @@
       syncOtpViewCopy,
       getOtpDeliveryText,
       openOtpStep,
+      openLoginOtpStep,
       openRegisterOtpStep,
       getOtpResendMessage,
       setIdentifierContext,
+      setLoginFactorContext(factor, identifierType, identifierText) {
+        currentOtpScenario = "login";
+        currentLoginFactor = factor === "TOTP" ? "TOTP" : "EMAIL_OTP";
+        if (identifierType) {
+          currentIdentifierType = identifierType;
+        }
+        if (typeof identifierText === "string") {
+          currentIdentifierValue = identifierText;
+        }
+        syncOtpViewCopy();
+      },
       getCurrentIdentifierType() {
         return currentIdentifierType;
       },
@@ -135,6 +187,9 @@
       },
       getCurrentOtpScenario() {
         return currentOtpScenario;
+      },
+      getCurrentLoginFactor() {
+        return currentLoginFactor;
       },
       shouldRequirePhoneBinding() {
         return currentOtpScenario === "register" && Boolean(currentRegisterRequirePhoneBinding);

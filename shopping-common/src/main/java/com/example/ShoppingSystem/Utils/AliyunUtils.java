@@ -81,7 +81,7 @@ public class AliyunUtils {
 
             SendSmsVerifyCodeRequest sendSmsVerifyCodeRequest = SendSmsVerifyCodeRequest.builder()
                     .phoneNumber(telephoneNumber)
-                    .signName("速通互联验证平台")
+                    .signName(resolveSmsSignName())
                     .templateCode(templateCode)
                     .templateParam(templateParamJson)
                     .build();
@@ -92,6 +92,14 @@ public class AliyunUtils {
             SendSmsVerifyCodeResponse resp = responseFuture.get();
             log.info("阿里云短信发送结果: {}", new Gson().toJson(resp));
         }
+    }
+
+    private String resolveSmsSignName() {
+        String signName = System.getenv("ALIYUN_SMS_SIGN_NAME");
+        if (signName == null || signName.isBlank()) {
+            return "速通互联验证平台";
+        }
+        return signName.trim();
     }
 
     // ─── OSS 文件上传 ────────────────────────────────────────────────────────
