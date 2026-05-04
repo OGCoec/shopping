@@ -206,8 +206,13 @@
     }
 
     async function handleRegisterPhoneRequiredSubmit() {
-      const rawPhone = registerPhoneRequiredInput ? registerPhoneRequiredInput.value.trim() : "";
-      const dialCode = resolveDialCodeValue("register-phone-country-code");
+      const phoneParts = window.ShoppingLoginCountryPicker?.resolveRegisterPhoneRequiredForSubmit?.()
+        || {
+          dialCode: resolveDialCodeValue("register-phone-country-code"),
+          phoneNumber: registerPhoneRequiredInput ? registerPhoneRequiredInput.value.trim().replace(/\D/g, "") : ""
+        };
+      const rawPhone = phoneParts.phoneNumber || "";
+      const dialCode = phoneParts.dialCode || "";
       resetRegisterPhoneRequiredValidationState();
 
       if (!dialCode) {
@@ -394,8 +399,13 @@
     }
     if (registerPhoneRequiredSendCodeButton) {
       registerPhoneRequiredSendCodeButton.addEventListener("click", async () => {
-        const rawPhone = registerPhoneRequiredInput ? registerPhoneRequiredInput.value.trim() : "";
-        const dialCode = resolveDialCodeValue("register-phone-country-code");
+        const phoneParts = window.ShoppingLoginCountryPicker?.resolveRegisterPhoneRequiredForSubmit?.()
+          || {
+            dialCode: resolveDialCodeValue("register-phone-country-code"),
+            phoneNumber: registerPhoneRequiredInput ? registerPhoneRequiredInput.value.trim().replace(/\D/g, "") : ""
+          };
+        const rawPhone = phoneParts.phoneNumber || "";
+        const dialCode = phoneParts.dialCode || "";
         resetRegisterPhoneRequiredValidationState();
         if (!dialCode || !/^\d{6,15}$/.test(rawPhone)) {
           showRegisterPhoneRequiredValidationError("请输入有效的手机号码");

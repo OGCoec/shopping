@@ -31,9 +31,14 @@ public final class RegisterChallengeConstants {
     public static final String CHALLENGE_HCAPTCHA = "HCAPTCHA";
 
     /**
-     * Google reCAPTCHA v3.
+     * Google reCAPTCHA v2 checkbox.
      */
-    public static final String CHALLENGE_GOOGLE_RECAPTCHA_V3 = "GOOGLE_RECAPTCHA_V3";
+    public static final String CHALLENGE_GOOGLE_RECAPTCHA_V2 = "GOOGLE_RECAPTCHA_V2";
+
+    /**
+     * Legacy pending challenge value kept only for old Redis entries.
+     */
+    public static final String CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY = "GOOGLE_RECAPTCHA_V3";
 
     /**
      * 超时阻断（无图形挑战，直接阻断）。

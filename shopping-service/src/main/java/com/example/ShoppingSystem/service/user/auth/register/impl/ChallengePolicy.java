@@ -6,7 +6,8 @@ import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSele
 import org.springframework.stereotype.Service;
 
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_OPERATION_TIMEOUT;
@@ -85,7 +86,7 @@ public class ChallengePolicy {
                     yield new ChallengeSelection(CHALLENGE_HCAPTCHA, null);
                 }
                 if (choice == 2) {
-                    yield new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V3, null);
+                    yield new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V2, null);
                 }
                 yield new ChallengeSelection(CHALLENGE_TIANAI, randomTianaiSubType());
             }
@@ -98,7 +99,7 @@ public class ChallengePolicy {
                     yield new ChallengeSelection(CHALLENGE_HCAPTCHA, null);
                 }
                 if (choice == 2) {
-                    yield new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V3, null);
+                    yield new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V2, null);
                 }
                 yield new ChallengeSelection(CHALLENGE_OPERATION_TIMEOUT, null);
             }
@@ -151,10 +152,11 @@ public class ChallengePolicy {
     public boolean isSupportedChallengeType(String challengeType) {
         return CHALLENGE_HUTOOL_SHEAR.equals(challengeType)
                 || CHALLENGE_TIANAI.equals(challengeType)
-                || CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)
-                || CHALLENGE_HCAPTCHA.equals(challengeType)
-                || CHALLENGE_GOOGLE_RECAPTCHA_V3.equals(challengeType)
-                || CHALLENGE_OPERATION_TIMEOUT.equals(challengeType);
+            || CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)
+            || CHALLENGE_HCAPTCHA.equals(challengeType)
+            || CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
+            || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType)
+            || CHALLENGE_OPERATION_TIMEOUT.equals(challengeType);
     }
 
     /**

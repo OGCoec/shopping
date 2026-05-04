@@ -74,6 +74,7 @@
       captchaPathMap,
       getElementDisplaySize,
       triggerCaptchaFailureAnimation,
+      handleCaptchaDeliveryFailure,
       requestRegisterEmailCodeDelivery,
       openRegisterOtpAfterEmailSent,
       getPendingRegisterPayload
@@ -479,6 +480,17 @@
         if (pendingRegisterPayload) {
           pendingRegisterPayload.challengeType = payload.challengeType || pendingRegisterPayload.challengeType || "";
           pendingRegisterPayload.challengeSubType = payload.challengeSubType || pendingRegisterPayload.challengeSubType || "";
+        }
+        if (typeof handleCaptchaDeliveryFailure === "function") {
+          const handled = await handleCaptchaDeliveryFailure(payload, {
+            defaultMessage: "Security challenge failed. Please retry.",
+            closeModal: closeTianaiModal,
+            showCaptchaError: showTianaiError
+          });
+          if (handled) {
+            wordClickAutoSubmitting = false;
+            return;
+          }
         }
         const canRetryCurrentTianai = !payload.challengeType || payload.challengeType === "TIANAI_CAPTCHA";
         const errorMessage = payload.message === "当前风险等级需要先通过验证码验证"

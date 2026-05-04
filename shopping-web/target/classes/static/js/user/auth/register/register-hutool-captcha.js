@@ -15,6 +15,7 @@
       captchaPath,
       showRegisterError,
       triggerCaptchaFailureAnimation,
+      handleCaptchaDeliveryFailure,
       requestRegisterEmailCodeDelivery,
       openRegisterOtpAfterEmailSent,
       getPendingRegisterPayload
@@ -143,6 +144,16 @@
       if (!ok || !payload.success) {
         pendingRegisterPayload.challengeType = payload.challengeType || pendingRegisterPayload.challengeType || "";
         pendingRegisterPayload.challengeSubType = payload.challengeSubType || pendingRegisterPayload.challengeSubType || "";
+        if (typeof handleCaptchaDeliveryFailure === "function") {
+          const handled = await handleCaptchaDeliveryFailure(payload, {
+            defaultMessage: "Captcha verification failed, please try again.",
+            closeModal: closeRegisterCaptchaModal,
+            showCaptchaError: showRegisterCaptchaError
+          });
+          if (handled) {
+            return;
+          }
+        }
         const canRetryCurrentHutool = !payload.challengeType || payload.challengeType === "HUTOOL_SHEAR_CAPTCHA";
         if (canRetryCurrentHutool) {
           showRegisterCaptchaError(payload.message || "验证码校验失败，请重试");

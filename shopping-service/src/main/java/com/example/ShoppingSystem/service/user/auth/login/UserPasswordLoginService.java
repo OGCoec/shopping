@@ -11,7 +11,8 @@ public interface UserPasswordLoginService {
                                    String riskLevel,
                                    String publicIp,
                                    String captchaUuid,
-                                   String captchaCode);
+                                   String captchaCode,
+                                   boolean wafResumeRequest);
 
     LoginVerificationResult currentFlow(String flowId, String preAuthToken);
 

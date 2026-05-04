@@ -9,7 +9,10 @@ public class RegisterPhoneBindingResult {
 
     boolean success;
     String error;
+    String reasonCode;
     String message;
+    String phoneType;
+    String normalizedE164;
     Long userId;
     String email;
     String riskLevel;

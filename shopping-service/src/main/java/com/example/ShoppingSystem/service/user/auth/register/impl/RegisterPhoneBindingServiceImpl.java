@@ -86,11 +86,12 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
 
         SmsCodeSendResult sendResult = smsCodeService.sendBindPhoneCode(dialCode, phoneNumber, clientIp);
         if (!sendResult.isSuccess()) {
-            return fail(sendResult.getMessage());
+            return fail(sendResult.getReasonCode(), sendResult.getReasonCode(), sendResult.getMessage(), null, sendResult.getNormalizedE164());
         }
         return RegisterPhoneBindingResult.builder()
                 .success(true)
                 .message(sendResult.getMessage())
+                .normalizedE164(sendResult.getNormalizedE164())
                 .email(session.getEmail())
                 .riskLevel(effectiveRiskLevel)
                 .step(RegisterFlowStep.ADD_PHONE.name())
@@ -123,7 +124,7 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
 
         SmsCodeVerifyResult verifyResult = smsCodeService.verifyBindPhoneCode(dialCode, phoneNumber, smsCode);
         if (!verifyResult.isSuccess()) {
-            return fail(verifyResult.getMessage());
+            return fail(verifyResult.getReasonCode(), verifyResult.getReasonCode(), verifyResult.getMessage(), null, verifyResult.getNormalizedE164());
         }
 
         String phone = StrUtil.blankToDefault(verifyResult.getNormalizedE164(), normalizeVerifiedPhone(dialCode, phoneNumber));
@@ -143,6 +144,7 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
         return RegisterPhoneBindingResult.builder()
                 .success(true)
                 .message("Register completed.")
+                .normalizedE164(phone)
                 .userId(identity.getUserId())
                 .email(session.getEmail())
                 .riskLevel(effectiveRiskLevel(session, null))
@@ -172,15 +174,21 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
         PhoneNumberValidationService.ValidationResult validationResult =
                 phoneNumberValidationService.validateMobileLikeNumber(dialCode, phoneNumber);
         if (!validationResult.allowed() || StrUtil.isBlank(validationResult.normalizedE164())) {
-            return fail("Phone number validation failed.");
+            return fail(
+                    validationResult.reasonCode(),
+                    validationResult.reasonCode(),
+                    resolvePhoneValidationMessage(validationResult.reasonCode()),
+                    validationResult.phoneType(),
+                    validationResult.normalizedE164()
+            );
         }
         PhoneBoundCountingBloomService.PhoneBoundLookupResult lookupResult =
                 phoneBoundCountingBloomService.lookupVerifiedPhone(validationResult.normalizedE164());
         if (!lookupResult.available()) {
-            return fail(ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE, "Phone existence filter is temporarily unavailable.");
+            return fail(ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE, ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE, "Phone existence filter is temporarily unavailable.");
         }
         if (lookupResult.mightContain()) {
-            return fail(ERROR_PHONE_ALREADY_BOUND, "This phone number is already in use.");
+            return fail(ERROR_PHONE_ALREADY_BOUND, ERROR_PHONE_ALREADY_BOUND, "This phone number is already in use.");
         }
         return null;
     }
@@ -189,6 +197,7 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
         return RegisterPhoneBindingResult.builder()
                 .success(false)
                 .error(gateResult.getError())
+                .reasonCode(gateResult.getError())
                 .message(gateResult.getMessage())
                 .email(gateResult.getChallengeIdentity())
                 .riskLevel(gateResult.getRiskLevel())
@@ -233,11 +242,38 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
     }
 
     private RegisterPhoneBindingResult fail(String error, String message) {
+        return fail(error, error, message);
+    }
+
+    private RegisterPhoneBindingResult fail(String error, String reasonCode, String message) {
+        return fail(error, reasonCode, message, null, null);
+    }
+
+    private RegisterPhoneBindingResult fail(String error, String reasonCode, String message, String phoneType, String normalizedE164) {
         return RegisterPhoneBindingResult.builder()
                 .success(false)
                 .error(error)
+                .reasonCode(reasonCode)
                 .message(message)
+                .phoneType(phoneType)
+                .normalizedE164(normalizedE164)
                 .authenticated(false)
                 .build();
+    }
+
+    private String resolvePhoneValidationMessage(String reasonCode) {
+        if (PhoneNumberValidationService.REASON_INVALID_DIAL_CODE.equals(reasonCode)) {
+            return "Please choose a valid country or region.";
+        }
+        if (PhoneNumberValidationService.REASON_VOIP_NOT_ALLOWED.equals(reasonCode)) {
+            return "Virtual or VoIP phone numbers are not allowed.";
+        }
+        if (PhoneNumberValidationService.REASON_FIXED_LINE_NOT_ALLOWED.equals(reasonCode)) {
+            return "Landline phone numbers are not allowed.";
+        }
+        if (PhoneNumberValidationService.REASON_TYPE_NOT_ALLOWED.equals(reasonCode)) {
+            return "Only mobile phone numbers are allowed.";
+        }
+        return "Please enter a valid mobile phone number.";
     }
 }

@@ -29,7 +29,15 @@
       : () => {};
     const handleCaptchaDeliveryFailure = typeof options.handleCaptchaDeliveryFailure === "function"
       ? options.handleCaptchaDeliveryFailure
-      : null;
+      : async (payload, controls = {}) => {
+        if (payload?.challengeType) {
+          return false;
+        }
+        const message = payload?.message || controls.defaultMessage || "Verification failed. Please retry.";
+        controls.closeModal?.();
+        showRegisterError(message);
+        return true;
+      };
     const openRegisterOtpAfterEmailSent = typeof options.openRegisterOtpAfterEmailSent === "function"
       ? options.openRegisterOtpAfterEmailSent
       : () => false;
@@ -67,6 +75,7 @@
       captchaPathMap: tianaiCaptchaPathMap,
       getElementDisplaySize,
       triggerCaptchaFailureAnimation,
+      handleCaptchaDeliveryFailure,
       requestRegisterEmailCodeDelivery,
       openRegisterOtpAfterEmailSent,
       getPendingRegisterPayload
@@ -77,6 +86,7 @@
       captchaPath: hutoolCaptchaPath,
       showRegisterError,
       triggerCaptchaFailureAnimation,
+      handleCaptchaDeliveryFailure,
       requestRegisterEmailCodeDelivery,
       openRegisterOtpAfterEmailSent,
       getPendingRegisterPayload
@@ -117,6 +127,7 @@
         idPrefix: domIdPrefix,
         showRegisterError,
         triggerCaptchaFailureAnimation,
+        handleCaptchaDeliveryFailure,
         requestRegisterEmailCodeDelivery,
         waitForCaptchaSuccessFeedback(startedAt) {
           return waitForCaptchaSuccessFeedback(startedAt, captchaSuccessFeedbackMinMs);

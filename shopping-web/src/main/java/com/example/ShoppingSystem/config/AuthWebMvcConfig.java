@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.config;
 
 import com.example.ShoppingSystem.interceptor.LoginFlowGuardInterceptor;
+import com.example.ShoppingSystem.interceptor.PasswordResetTokenGuardInterceptor;
 import com.example.ShoppingSystem.interceptor.RegisterFlowGuardInterceptor;
 import com.example.ShoppingSystem.registerflow.RegisterFlowWebSupport;
 import org.springframework.context.annotation.Configuration;
@@ -15,11 +16,14 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
 
     private final RegisterFlowGuardInterceptor registerFlowGuardInterceptor;
     private final LoginFlowGuardInterceptor loginFlowGuardInterceptor;
+    private final PasswordResetTokenGuardInterceptor passwordResetTokenGuardInterceptor;
 
     public AuthWebMvcConfig(RegisterFlowGuardInterceptor registerFlowGuardInterceptor,
-                            LoginFlowGuardInterceptor loginFlowGuardInterceptor) {
+                            LoginFlowGuardInterceptor loginFlowGuardInterceptor,
+                            PasswordResetTokenGuardInterceptor passwordResetTokenGuardInterceptor) {
         this.registerFlowGuardInterceptor = registerFlowGuardInterceptor;
         this.loginFlowGuardInterceptor = loginFlowGuardInterceptor;
+        this.passwordResetTokenGuardInterceptor = passwordResetTokenGuardInterceptor;
     }
 
     @Override
@@ -36,6 +40,11 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         com.example.ShoppingSystem.loginflow.LoginFlowWebSupport.EMAIL_VERIFICATION_PATH,
                         com.example.ShoppingSystem.loginflow.LoginFlowWebSupport.TOTP_VERIFICATION_PATH,
                         com.example.ShoppingSystem.loginflow.LoginFlowWebSupport.ADD_PHONE_PATH
+                );
+        registry.addInterceptor(passwordResetTokenGuardInterceptor)
+                .addPathPatterns(
+                        "/shopping/user/reset-password-url",
+                        "/shopping/user/reset-password-code"
                 );
     }
 }

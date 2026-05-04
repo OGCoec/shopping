@@ -41,7 +41,8 @@ import java.util.concurrent.TimeUnit;
 
 import static com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengePolicy.CHALLENGE_WAF_REQUIRED;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_OPERATION_TIMEOUT;
@@ -126,7 +127,8 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                                           String riskLevel,
                                           String publicIp,
                                           String captchaUuid,
-                                          String captchaCode) {
+                                          String captchaCode,
+                                          boolean wafResumeRequest) {
         String normalizedEmail = normalizeEmail(email);
         String normalizedDeviceFingerprint = normalizeText(deviceFingerprint);
         String normalizedPreAuthToken = normalizeText(preAuthToken);
@@ -145,7 +147,8 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 normalizedRiskLevel,
                 publicIp,
                 captchaUuid,
-                captchaCode
+                captchaCode,
+                wafResumeRequest
         );
         if (challengeResult != null) {
             return challengeResult;
@@ -363,15 +366,6 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
 
         String normalizedPhone = validationResult.normalizedE164();
-        if (!phoneBoundCountingBloomService.mightContainVerifiedPhone(normalizedPhone)) {
-            return verifyFail(ERROR_PHONE_LOGIN_BLOOM_MISS, "Phone number was not found by counting bloom filter.");
-        }
-        UserLoginIdentity identity = userLoginIdentityMapper.findVerifiedByPhone(normalizedPhone);
-        if (identity == null || !isActive(identity)) {
-            return verifyFail(ERROR_PHONE_LOGIN_DB_MISS, "Phone number was not found in verified login identities.");
-        }
-        phoneBoundCountingBloomService.addVerifiedPhoneAsync(normalizedPhone);
-
         PhoneSmsRiskGateResult gateResult = phoneSmsRiskGateService.checkOrVerify(
                 PhoneSmsRiskGateService.SCENE_PHONE_LOGIN_SMS,
                 normalizedPhone,
@@ -385,6 +379,15 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         if (!gateResult.isAllowed()) {
             return fromSmsRiskGate(gateResult);
         }
+
+        if (!phoneBoundCountingBloomService.mightContainVerifiedPhone(normalizedPhone)) {
+            return verifyFail(ERROR_PHONE_LOGIN_BLOOM_MISS, "Phone number was not found by counting bloom filter.");
+        }
+        UserLoginIdentity identity = userLoginIdentityMapper.findVerifiedByPhone(normalizedPhone);
+        if (identity == null || !isActive(identity)) {
+            return verifyFail(ERROR_PHONE_LOGIN_DB_MISS, "Phone number was not found in verified login identities.");
+        }
+        phoneBoundCountingBloomService.addVerifiedPhoneAsync(normalizedPhone);
 
         SmsCodeSendResult sendResult = smsCodeService.sendBindPhoneCode(dialCode, phoneNumber, clientIp);
         if (!sendResult.isSuccess()) {
@@ -459,7 +462,8 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                                                                String riskLevel,
                                                                String publicIp,
                                                                String captchaUuid,
-                                                               String captchaCode) {
+                                                               String captchaCode,
+                                                               boolean wafResumeRequest) {
         ChallengeSelection pendingSelection = loginChallengeSessionService.readPendingChallengeSelection(email, deviceFingerprint);
         if (pendingSelection != null && loginChallengePolicy.isOperationTimeoutChallenge(pendingSelection.type())) {
             Long waitUntil = loginChallengeSessionService.readOperationTimeoutWaitUntil(email, deviceFingerprint);
@@ -480,7 +484,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
 
         if (loginChallengePolicy.isWafChallenge(challengeType)) {
-            if (loginChallengeSessionService.isWafVerified(preAuthToken)) {
+            if (wafResumeRequest && loginChallengeSessionService.consumeWafVerified(preAuthToken)) {
                 loginChallengeSessionService.clearPendingChallengeSelection(email, deviceFingerprint);
                 return null;
             }
@@ -717,7 +721,8 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             case CHALLENGE_TIANAI -> tianaiCaptchaService.validateCaptcha(captchaUuid, captchaCode);
             case CHALLENGE_CLOUDFLARE_TURNSTILE -> thirdPartyCaptchaService.validateTurnstile(captchaCode, publicIp);
             case CHALLENGE_HCAPTCHA -> thirdPartyCaptchaService.validateHCaptcha(captchaCode, publicIp);
-            case CHALLENGE_GOOGLE_RECAPTCHA_V3 -> thirdPartyCaptchaService.validateRecaptchaV3(captchaCode, publicIp);
+            case CHALLENGE_GOOGLE_RECAPTCHA_V2, CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY ->
+                    thirdPartyCaptchaService.validateRecaptcha(captchaCode, publicIp);
             default -> false;
         };
     }
@@ -729,7 +734,8 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         if (CHALLENGE_HCAPTCHA.equals(challengeType)) {
             return thirdPartyCaptchaService.getHCaptchaSiteKey();
         }
-        if (CHALLENGE_GOOGLE_RECAPTCHA_V3.equals(challengeType)) {
+        if (CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
+                || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType)) {
             return thirdPartyCaptchaService.getRecaptchaSiteKey();
         }
         return null;
@@ -832,7 +838,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
 
     private String buildWafVerifyUrl() {
         return "/shopping/auth/waf/verify?return="
-                + URLEncoder.encode(LOGIN_PATH, StandardCharsets.UTF_8);
+                + URLEncoder.encode(PASSWORD_PATH, StandardCharsets.UTF_8);
     }
 
     private String normalizePhone(String dialCode, String phoneNumber) {

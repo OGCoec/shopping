@@ -426,7 +426,7 @@
         showRegisterError?.(`Risk ${riskLevel}: complete hCaptcha first`, false);
         return { handled: true, submitCooldownMs: 0 };
       }
-      if (challengeType === "GOOGLE_RECAPTCHA_V3") {
+      if (challengeType === "GOOGLE_RECAPTCHA_V2" || challengeType === "GOOGLE_RECAPTCHA_V3") {
         await executeRecaptcha?.(payload.challengeSiteKey);
         return { handled: true, submitCooldownMs: 0 };
       }

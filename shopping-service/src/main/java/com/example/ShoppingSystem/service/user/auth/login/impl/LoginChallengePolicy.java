@@ -8,7 +8,8 @@ import org.springframework.stereotype.Service;
 import java.util.Locale;
 
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_OPERATION_TIMEOUT;
@@ -52,7 +53,8 @@ public class LoginChallengePolicy {
                 || CHALLENGE_TIANAI.equals(challengeType)
                 || CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)
                 || CHALLENGE_HCAPTCHA.equals(challengeType)
-                || CHALLENGE_GOOGLE_RECAPTCHA_V3.equals(challengeType);
+                || CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
+                || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType);
     }
 
     public boolean isWafChallenge(String challengeType) {
@@ -89,6 +91,6 @@ public class LoginChallengePolicy {
         if (bucket == 1) {
             return new ChallengeSelection(CHALLENGE_HCAPTCHA, null);
         }
-        return new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V3, null);
+        return new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V2, null);
     }
 }

@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -35,8 +37,6 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
     private final String recaptchaSiteKey;
     private final String recaptchaSecretKey;
     private final String recaptchaVerifyUrl;
-    private final double recaptchaMinScore;
-    private final String recaptchaExpectedAction;
 
     @Autowired
     public ThirdPartyCaptchaServiceImpl(
@@ -49,9 +49,10 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
             @Value("${captcha.recaptcha.site-key:}") String recaptchaSiteKey,
             @Value("${captcha.recaptcha.secret-key:}") String recaptchaSecretKey,
             @Value("${captcha.recaptcha.verify-url:https://www.google.com/recaptcha/api/siteverify}") String recaptchaVerifyUrl,
-            @Value("${captcha.recaptcha.min-score:0.5}") double recaptchaMinScore,
-            @Value("${captcha.recaptcha.expected-action:shopping_auth}") String recaptchaExpectedAction) {
-        this(HttpClient.newBuilder().connectTimeout(VERIFY_TIMEOUT).build(),
+            @Value("${captcha.proxy.enabled:false}") boolean proxyEnabled,
+            @Value("${captcha.proxy.host:127.0.0.1}") String proxyHost,
+            @Value("${captcha.proxy.port:0}") int proxyPort) {
+        this(buildHttpClient(proxyEnabled, proxyHost, proxyPort),
                 turnstileSiteKey,
                 turnstileSecretKey,
                 turnstileVerifyUrl,
@@ -60,9 +61,7 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
                 hCaptchaVerifyUrl,
                 recaptchaSiteKey,
                 recaptchaSecretKey,
-                recaptchaVerifyUrl,
-                recaptchaMinScore,
-                recaptchaExpectedAction);
+                recaptchaVerifyUrl);
     }
 
     ThirdPartyCaptchaServiceImpl(HttpClient httpClient,
@@ -74,9 +73,7 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
                                  String hCaptchaVerifyUrl,
                                  String recaptchaSiteKey,
                                  String recaptchaSecretKey,
-                                 String recaptchaVerifyUrl,
-                                 double recaptchaMinScore,
-                                 String recaptchaExpectedAction) {
+                                 String recaptchaVerifyUrl) {
         this.httpClient = httpClient;
         this.turnstileSiteKey = turnstileSiteKey;
         this.turnstileSecretKey = turnstileSecretKey;
@@ -87,8 +84,20 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
         this.recaptchaSiteKey = recaptchaSiteKey;
         this.recaptchaSecretKey = recaptchaSecretKey;
         this.recaptchaVerifyUrl = recaptchaVerifyUrl;
-        this.recaptchaMinScore = Math.max(0.0, Math.min(1.0, recaptchaMinScore));
-        this.recaptchaExpectedAction = recaptchaExpectedAction;
+    }
+
+    private static HttpClient buildHttpClient(boolean proxyEnabled, String proxyHost, int proxyPort) {
+        HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(VERIFY_TIMEOUT);
+        boolean effectiveProxyEnabled = proxyEnabled && StrUtil.isNotBlank(proxyHost) && proxyPort > 0;
+        log.info("Third-party captcha HTTP proxy config: enabled={}, host={}, port={}, effective={}",
+                proxyEnabled,
+                StrUtil.blankToDefault(proxyHost, ""),
+                proxyPort,
+                effectiveProxyEnabled);
+        if (effectiveProxyEnabled) {
+            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyHost.trim(), proxyPort)));
+        }
+        return builder.build();
     }
 
     @Override
@@ -203,7 +212,7 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
     }
 
     @Override
-    public boolean validateRecaptchaV3(String token, String remoteIp) {
+    public boolean validateRecaptcha(String token, String remoteIp) {
         if (StrUtil.hasBlank(recaptchaSecretKey, token)) {
             return false;
         }
@@ -225,18 +234,11 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
                 return false;
             }
 
-            var payload = JSONUtil.parseObj(response.body());
-            boolean success = payload.getBool("success", false);
-            double score = payload.getDouble("score", 0.0);
-            String action = payload.getStr("action", "");
-            boolean actionMatches = StrUtil.isBlank(recaptchaExpectedAction)
-                    || StrUtil.equals(recaptchaExpectedAction, action);
-            boolean accepted = success && score >= recaptchaMinScore && actionMatches;
-            if (!accepted) {
-                log.warn("Google reCAPTCHA validation failed, score={}, action={}, response={}",
-                        score, action, response.body());
+            boolean success = JSONUtil.parseObj(response.body()).getBool("success", false);
+            if (!success) {
+                log.warn("Google reCAPTCHA validation failed, response={}", response.body());
             }
-            return accepted;
+            return success;
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();

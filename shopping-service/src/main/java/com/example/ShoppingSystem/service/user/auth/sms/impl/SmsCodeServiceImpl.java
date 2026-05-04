@@ -53,7 +53,7 @@ public class SmsCodeServiceImpl implements SmsCodeService {
     public SmsCodeSendResult sendBindPhoneCode(String dialCode, String phoneNumber, String clientIp) {
         PhoneNumberValidationService.ValidationResult validation = validateSupportedPhone(dialCode, phoneNumber);
         if (!validation.allowed()) {
-            return sendFail("Phone number validation failed.", validation.reasonCode(), validation.normalizedE164());
+            return sendFail(resolvePhoneValidationMessage(validation.reasonCode()), validation.reasonCode(), validation.normalizedE164());
         }
         if (StrUtil.isBlank(properties.getTemplateCode())) {
             return sendFail("SMS template is not configured.", REASON_TEMPLATE_MISSING, validation.normalizedE164());
@@ -109,7 +109,7 @@ public class SmsCodeServiceImpl implements SmsCodeService {
     public SmsCodeVerifyResult verifyBindPhoneCode(String dialCode, String phoneNumber, String code) {
         PhoneNumberValidationService.ValidationResult validation = validateSupportedPhone(dialCode, phoneNumber);
         if (!validation.allowed()) {
-            return verifyFail("Phone number validation failed.", validation.reasonCode(), validation.normalizedE164());
+            return verifyFail(resolvePhoneValidationMessage(validation.reasonCode()), validation.reasonCode(), validation.normalizedE164());
         }
         String normalizedPhone = validation.normalizedE164();
         String normalizedCode = StrUtil.blankToDefault(code, "").trim();
@@ -202,5 +202,24 @@ public class SmsCodeServiceImpl implements SmsCodeService {
                 .reasonCode(reasonCode)
                 .normalizedE164(normalizedPhone)
                 .build();
+    }
+
+    private String resolvePhoneValidationMessage(String reasonCode) {
+        if (REASON_UNSUPPORTED_COUNTRY.equals(reasonCode)) {
+            return "SMS verification is not supported for this country or region.";
+        }
+        if (PhoneNumberValidationService.REASON_INVALID_DIAL_CODE.equals(reasonCode)) {
+            return "Please choose a valid country or region.";
+        }
+        if (PhoneNumberValidationService.REASON_VOIP_NOT_ALLOWED.equals(reasonCode)) {
+            return "Virtual or VoIP phone numbers are not allowed.";
+        }
+        if (PhoneNumberValidationService.REASON_FIXED_LINE_NOT_ALLOWED.equals(reasonCode)) {
+            return "Landline phone numbers are not allowed.";
+        }
+        if (PhoneNumberValidationService.REASON_TYPE_NOT_ALLOWED.equals(reasonCode)) {
+            return "Only mobile phone numbers are allowed.";
+        }
+        return "Please enter a valid mobile phone number.";
     }
 }

@@ -50,6 +50,8 @@ public class PreAuthFilter extends OncePerRequestFilter {
             "/shopping/user/add-phone",
             "/shopping/user/session-ended",
             "/shopping/user/forgot-password",
+            "/shopping/user/reset-password-url",
+            "/shopping/user/reset-password-code",
             "/swagger-ui.html",
             "/doc.html",
             "/error",

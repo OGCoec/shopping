@@ -171,6 +171,15 @@
         WHERE user_id = #{userId}
     </update>
 
+    <update id="updateEmailPasswordHashByUserId">
+        UPDATE user_login_identity
+        SET email_password_hash = #{emailPasswordHash},
+            token_version = #{tokenVersion},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+          AND email IS NOT NULL
+    </update>
+
     <update id="savePendingTotpSecret">
         UPDATE user_login_identity
         SET totp_enabled = FALSE,

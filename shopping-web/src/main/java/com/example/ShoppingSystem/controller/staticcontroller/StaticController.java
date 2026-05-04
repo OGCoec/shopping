@@ -82,6 +82,11 @@ public class StaticController {
         return htmlPage("login.html");
     }
 
+    @GetMapping({"/shopping/user/reset-password-url", "/shopping/user/reset-password-code"})
+    public ResponseEntity<Resource> resetPasswordPage() {
+        return htmlPage("login.html");
+    }
+
     /**
      * 统一构造 HTML 响应。
      * HTML 文件位于 resources/static 目录下，因此这里使用 static/<fileName> 加载。

@@ -47,14 +47,27 @@ public class RegisterEmailCodeMessageConsumer {
             containerFactory = "registerEmailCodeRabbitListenerContainerFactory"
     )
     public void consumeRegisterEmailCode(RegisterEmailCodeMessage message) {
+        long consumeStartedAt = System.currentTimeMillis();
+        long queueLagMs = elapsedSince(message.getCreatedAtEpochMilli(), consumeStartedAt);
+        log.info("Register email message consumed, messageId={}, email={}, retryCount={}, queueLagMs={}, lastError={}",
+                message.getMessageId(), message.getEmail(), message.getRetryCount(), queueLagMs, message.getLastError());
         try {
+            long smtpStartedAt = System.currentTimeMillis();
             registerEmailCodeMailSender.sendRegisterEmailCode(
                     message.getEmail(),
                     message.getCode(),
                     message.getExpireMinutes()
             );
+            long smtpDurationMs = System.currentTimeMillis() - smtpStartedAt;
+            long totalAgeMs = elapsedSince(message.getCreatedAtEpochMilli(), System.currentTimeMillis());
+            log.info("Register email message sent, messageId={}, email={}, retryCount={}, queueLagMs={}, smtpDurationMs={}, totalAgeMs={}",
+                    message.getMessageId(), message.getEmail(), message.getRetryCount(), queueLagMs, smtpDurationMs, totalAgeMs);
         } catch (Exception e) {
-            handleConsumeFailure(message, e);
+            long smtpDurationMs = System.currentTimeMillis() - consumeStartedAt;
+            long totalAgeMs = elapsedSince(message.getCreatedAtEpochMilli(), System.currentTimeMillis());
+            log.warn("Register email message send failed, messageId={}, email={}, retryCount={}, queueLagMs={}, smtpDurationMs={}, totalAgeMs={}, error={}",
+                    message.getMessageId(), message.getEmail(), message.getRetryCount(), queueLagMs, smtpDurationMs, totalAgeMs, e.getMessage());
+            handleConsumeFailure(message, e, queueLagMs, smtpDurationMs, totalAgeMs);
         }
     }
 
@@ -66,20 +79,35 @@ public class RegisterEmailCodeMessageConsumer {
      * @param exception 本次失败抛出的异常
      */
     void handleConsumeFailure(RegisterEmailCodeMessage message, Exception exception) {
+        handleConsumeFailure(message, exception, -1L, -1L, -1L);
+    }
+
+    void handleConsumeFailure(RegisterEmailCodeMessage message,
+                              Exception exception,
+                              long queueLagMs,
+                              long smtpDurationMs,
+                              long totalAgeMs) {
         String errorMessage = exception.getMessage();
         if (message.getRetryCount() < properties.getMaxRetryCount()) {
             long delayMilli = resolveRetryDelayMilli(message.getRetryCount());
             RegisterEmailCodeMessage retryMessage = message.nextRetry(errorMessage);
             registerEmailCodeMessagePublisher.publishRetry(retryMessage, delayMilli);
-            log.warn("Register email message retry scheduled, messageId={}, retryCount={}, delayMilli={}, error={}",
-                    message.getMessageId(), retryMessage.getRetryCount(), delayMilli, errorMessage);
+            log.warn("Register email message retry scheduled, messageId={}, email={}, retryCount={}, delayMilli={}, queueLagMs={}, smtpDurationMs={}, totalAgeMs={}, error={}",
+                    message.getMessageId(), message.getEmail(), retryMessage.getRetryCount(), delayMilli, queueLagMs, smtpDurationMs, totalAgeMs, errorMessage);
             return;
         }
 
         RegisterEmailCodeMessage deadLetterMessage = message.markFailed(errorMessage);
         registerEmailCodeMessagePublisher.publishDeadLetter(deadLetterMessage);
-        log.error("Register email message moved to dead letter queue, messageId={}, retryCount={}, error={}",
-                message.getMessageId(), message.getRetryCount(), errorMessage);
+        log.error("Register email message moved to dead letter queue, messageId={}, email={}, retryCount={}, queueLagMs={}, smtpDurationMs={}, totalAgeMs={}, error={}",
+                message.getMessageId(), message.getEmail(), message.getRetryCount(), queueLagMs, smtpDurationMs, totalAgeMs, errorMessage);
+    }
+
+    private long elapsedSince(long startedAtEpochMilli, long nowEpochMilli) {
+        if (startedAtEpochMilli <= 0L) {
+            return -1L;
+        }
+        return Math.max(0L, nowEpochMilli - startedAtEpochMilli);
     }
 
     /**

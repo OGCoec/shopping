@@ -13,7 +13,8 @@ import com.example.ShoppingSystem.service.user.auth.sms.model.PhoneSmsRiskGateRe
 import org.springframework.stereotype.Service;
 
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_TIANAI;
@@ -124,8 +125,8 @@ public class PhoneSmsRiskGateServiceImpl implements PhoneSmsRiskGateService {
         return switch (riskLevel) {
             case "L1", "L2" -> resolveL1L2SmsChallenge();
             case "L3" -> randomHalf(CHALLENGE_CLOUDFLARE_TURNSTILE, CHALLENGE_HCAPTCHA);
-            case "L4" -> randomHalf(CHALLENGE_GOOGLE_RECAPTCHA_V3, CHALLENGE_HCAPTCHA);
-            case "L5" -> new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V3, null);
+            case "L4" -> randomHalf(CHALLENGE_GOOGLE_RECAPTCHA_V2, CHALLENGE_HCAPTCHA);
+            case "L5" -> new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V2, null);
             default -> ChallengeSelection.none();
         };
     }
@@ -163,8 +164,8 @@ public class PhoneSmsRiskGateServiceImpl implements PhoneSmsRiskGateService {
                     thirdPartyCaptchaService.validateTurnstile(captchaCode, remoteIp);
             case CHALLENGE_HCAPTCHA ->
                     thirdPartyCaptchaService.validateHCaptcha(captchaCode, remoteIp);
-            case CHALLENGE_GOOGLE_RECAPTCHA_V3 ->
-                    thirdPartyCaptchaService.validateRecaptchaV3(captchaCode, remoteIp);
+            case CHALLENGE_GOOGLE_RECAPTCHA_V2, CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY ->
+                    thirdPartyCaptchaService.validateRecaptcha(captchaCode, remoteIp);
             default -> false;
         };
     }
@@ -176,7 +177,8 @@ public class PhoneSmsRiskGateServiceImpl implements PhoneSmsRiskGateService {
         if (CHALLENGE_HCAPTCHA.equals(challengeType)) {
             return thirdPartyCaptchaService.getHCaptchaSiteKey();
         }
-        if (CHALLENGE_GOOGLE_RECAPTCHA_V3.equals(challengeType)) {
+        if (CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
+                || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType)) {
             return thirdPartyCaptchaService.getRecaptchaSiteKey();
         }
         return null;

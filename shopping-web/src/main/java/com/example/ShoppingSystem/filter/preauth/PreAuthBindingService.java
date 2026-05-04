@@ -16,6 +16,8 @@ import com.example.ShoppingSystem.filter.preauth.support.PreAuthHashingService;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthProperties;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthRequestResolver;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +36,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class PreAuthBindingService {
+
+    private static final Logger log = LoggerFactory.getLogger(PreAuthBindingService.class);
 
     /** preauth 模块的配置集合。 */
     private final PreAuthProperties properties;
@@ -106,6 +110,15 @@ public class PreAuthBindingService {
                 // 指纹和 UA 都一致时，说明还是同一个浏览器环境；接下来只需要判断 IP 是否漂移。
                 boolean ipChanged = !StrUtil.equals(existing.currentIp(), ip);
                 if (ipChanged) {
+                    logPreAuthDecision(
+                            "bootstrap_ip_changed_waf_required",
+                            incomingToken,
+                            request,
+                            existing.currentIp(),
+                            ip,
+                            true,
+                            true
+                    );
                     // 当前设计不再保留“WAF 已验证豁免票据”。
                     // 只要绑定里的 currentIp 和当前真实 IP 不一致，就固定要求重新经过 WAF 回调。
                     return PreAuthBootstrapOutcome.blocked(PreAuthValidationError.IP_CHANGED_WAF_REQUIRED);
@@ -145,6 +158,15 @@ public class PreAuthBindingService {
         // 先读取当前 token 对应的绑定对象。
         PreAuthBinding existing = bindingRepository.load(token.trim());
         if (existing == null) {
+            logPreAuthDecision(
+                    "validate_expired",
+                    token,
+                    request,
+                    null,
+                    requestResolver.resolveClientIp(request),
+                    null,
+                    null
+            );
             // Redis 中没有绑定，说明 token 已过期或已被清理。
             return PreAuthValidationOutcome.invalid(PreAuthValidationError.EXPIRED);
         }
@@ -153,6 +175,15 @@ public class PreAuthBindingService {
         String normalizedFingerprint = requestResolver.normalizeFingerprint(rawFingerprint, request);
         String fpHash = hashingService.sha256(normalizedFingerprint);
         if (!fpHash.equals(existing.fpHash())) {
+            logPreAuthDecision(
+                    "validate_fingerprint_mismatch",
+                    token,
+                    request,
+                    existing.currentIp(),
+                    requestResolver.resolveClientIp(request),
+                    false,
+                    null
+            );
             // 指纹不匹配通常说明 token 被换到了别的浏览器环境中，直接删掉旧绑定。
             bindingRepository.delete(existing.token());
             return PreAuthValidationOutcome.invalid(PreAuthValidationError.FINGERPRINT_MISMATCH);
@@ -161,6 +192,15 @@ public class PreAuthBindingService {
         // 再对比 UA，进一步确认是不是同一浏览器环境。
         String uaHash = hashingService.sha256(requestResolver.resolveUserAgent(request));
         if (!uaHash.equals(existing.uaHash())) {
+            logPreAuthDecision(
+                    "validate_user_agent_mismatch",
+                    token,
+                    request,
+                    existing.currentIp(),
+                    requestResolver.resolveClientIp(request),
+                    true,
+                    false
+            );
             // UA 不匹配时同样清掉旧绑定，避免脏状态残留。
             bindingRepository.delete(existing.token());
             return PreAuthValidationOutcome.invalid(PreAuthValidationError.USER_AGENT_MISMATCH);
@@ -170,6 +210,15 @@ public class PreAuthBindingService {
         String currentIp = requestResolver.resolveClientIp(request);
         boolean ipChanged = !StrUtil.equals(existing.currentIp(), currentIp);
         if (ipChanged) {
+            logPreAuthDecision(
+                    "validate_ip_changed_waf_required",
+                    token,
+                    request,
+                    existing.currentIp(),
+                    currentIp,
+                    true,
+                    true
+            );
             // 当前设计不再缓存“WAF 已验证”短期豁免状态。
             // 因此只要 currentIp 发生变化，就固定要求重新进入 WAF 回调。
             return PreAuthValidationOutcome.invalid(PreAuthValidationError.IP_CHANGED_WAF_REQUIRED);
@@ -193,6 +242,10 @@ public class PreAuthBindingService {
      */
     public String resolveIncomingToken(HttpServletRequest request) {
         return requestResolver.resolveIncomingToken(request);
+    }
+
+    public String resolveClientIp(HttpServletRequest request) {
+        return requestResolver.resolveClientIp(request);
     }
 
     /**
@@ -270,5 +323,55 @@ public class PreAuthBindingService {
                 riskService.isBlockedRisk(binding.riskLevel()),
                 binding.expiresAtEpochMillis()
         );
+    }
+
+    private void logPreAuthDecision(String stage,
+                                    String token,
+                                    HttpServletRequest request,
+                                    String bindingIp,
+                                    String currentIp,
+                                    Boolean fpMatches,
+                                    Boolean uaMatches) {
+        log.warn("PreAuth decision: stage={}, tokenId={}, uri={}, bindingIp={}, currentIp={}, fpMatches={}, uaMatches={}, xForwardedFor={}, xRealIp={}, remoteAddr={}",
+                stage,
+                shortToken(token),
+                requestUri(request),
+                StrUtil.blankToDefault(bindingIp, "none"),
+                StrUtil.blankToDefault(currentIp, "none"),
+                fpMatches,
+                uaMatches,
+                header(request, "X-Forwarded-For"),
+                header(request, "X-Real-IP"),
+                remoteAddr(request));
+    }
+
+    private String requestUri(HttpServletRequest request) {
+        return request == null ? "unknown" : StrUtil.blankToDefault(request.getRequestURI(), "unknown");
+    }
+
+    private String remoteAddr(HttpServletRequest request) {
+        return request == null ? "unknown" : StrUtil.blankToDefault(request.getRemoteAddr(), "unknown");
+    }
+
+    private String header(HttpServletRequest request, String name) {
+        if (request == null) {
+            return "none";
+        }
+        String value = request.getHeader(name);
+        if (StrUtil.isBlank(value)) {
+            return "none";
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= 180 ? trimmed : trimmed.substring(0, 180) + "...";
+    }
+
+    private String shortToken(String token) {
+        if (StrUtil.isBlank(token)) {
+            return "none";
+        }
+        String normalized = token.trim();
+        int length = normalized.length();
+        String tail = normalized.substring(Math.max(0, length - 8));
+        return "len=" + length + ",tail=" + tail;
     }
 }

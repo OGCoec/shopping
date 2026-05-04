@@ -69,6 +69,7 @@ const registerHCaptchaModule = globalThis.ShoppingRegisterHCaptcha;
 const registerRecaptchaModule = globalThis.ShoppingRegisterRecaptcha;
 const registerHutoolCaptchaModule = globalThis.ShoppingRegisterHutoolCaptcha;
 const registerCaptchaCoordinatorModule = globalThis.ShoppingRegisterCaptchaCoordinator;
+const passwordResetModule = globalThis.ShoppingPasswordReset;
 const PHONE_VALIDATE_PATH = "/shopping/auth/preauth/phone-validate";
 const AUTH_PATHS = authRoutesApi?.PATHS || {
   LOGIN: "/shopping/user/log-in",
@@ -83,7 +84,9 @@ const AUTH_PATHS = authRoutesApi?.PATHS || {
   LOGIN_TOTP_VERIFICATION: "/shopping/user/totp-verification?mode=login",
   REGISTER_ADD_PHONE: "/shopping/user/add-phone?mode=register",
   LOGIN_ADD_PHONE: "/shopping/user/add-phone?mode=login",
-  SESSION_ENDED: "/shopping/user/session-ended"
+  SESSION_ENDED: "/shopping/user/session-ended",
+  RESET_PASSWORD_URL: "/shopping/user/reset-password-url",
+  RESET_PASSWORD_CODE: "/shopping/user/reset-password-code"
 };
 
 if (!loginVisualsApi || !loginCountryPickerApi || !loginShellModule || !loginOtpModule
@@ -91,7 +94,7 @@ if (!loginVisualsApi || !loginCountryPickerApi || !loginShellModule || !loginOtp
     || !loginRegisterBridgeModule || !loginCaptchaCoordinatorModule || !authUtilsModule
     || !registerTianaiModule || !registerTurnstileModule || !registerHCaptchaModule
     || !registerRecaptchaModule
-    || !registerHutoolCaptchaModule || !registerCaptchaCoordinatorModule) {
+    || !registerHutoolCaptchaModule || !registerCaptchaCoordinatorModule || !passwordResetModule) {
   throw new Error("login dependencies failed to load");
 }
 
@@ -128,6 +131,7 @@ const { createRegisterHCaptcha } = registerHCaptchaModule;
 const { createRegisterRecaptcha } = registerRecaptchaModule;
 const { createRegisterHutoolCaptcha } = registerHutoolCaptchaModule;
 const { createRegisterCaptchaCoordinator } = registerCaptchaCoordinatorModule;
+const { initializePasswordResetFragment } = passwordResetModule;
 
 let lastIdentifierView = "email";
 
@@ -147,6 +151,12 @@ const shellApi = createLoginShell({
   initializeRouteFragment(view) {
     if (typeof globalThis.initializeRegisterRouteFragment === "function") {
       globalThis.initializeRegisterRouteFragment(view);
+    }
+    if (view === "forgot-password") {
+      initializePasswordResetFragment({
+        shellApi,
+        preAuthClientApi
+      });
     }
   }
 });

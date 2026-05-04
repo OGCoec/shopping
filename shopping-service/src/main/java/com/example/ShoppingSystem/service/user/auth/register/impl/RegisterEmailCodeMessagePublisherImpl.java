@@ -4,6 +4,8 @@ import cn.hutool.core.util.IdUtil;
 import com.example.ShoppingSystem.config.RegisterEmailCodeRabbitProperties;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterEmailCodeMessagePublisher;
 import com.example.ShoppingSystem.service.user.auth.register.mq.RegisterEmailCodeMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class RegisterEmailCodeMessagePublisherImpl implements RegisterEmailCodeMessagePublisher {
 
+    private static final Logger log = LoggerFactory.getLogger(RegisterEmailCodeMessagePublisherImpl.class);
     private static final int MESSAGE_ID_LENGTH = 48;
 
     private final RabbitTemplate rabbitTemplate;
@@ -42,19 +45,24 @@ public class RegisterEmailCodeMessagePublisherImpl implements RegisterEmailCodeM
      */
     @Override
     public void publishRegisterEmailCode(String email, String code, long expireMinutes) {
+        long createdAtEpochMilli = System.currentTimeMillis();
         RegisterEmailCodeMessage message = RegisterEmailCodeMessage.builder()
                 .messageId(IdUtil.nanoId(MESSAGE_ID_LENGTH))
                 .email(email)
                 .code(code)
                 .expireMinutes(expireMinutes)
                 .retryCount(0)
-                .createdAtEpochMilli(System.currentTimeMillis())
+                .createdAtEpochMilli(createdAtEpochMilli)
                 .build();
+        long publishStartedAt = System.currentTimeMillis();
         rabbitTemplate.convertAndSend(
                 properties.getExchange(),
                 properties.getRoutingKey(),
                 message
         );
+        long publishDurationMs = System.currentTimeMillis() - publishStartedAt;
+        log.info("Register email message published, messageId={}, email={}, exchange={}, routingKey={}, publishDurationMs={}",
+                message.getMessageId(), email, properties.getExchange(), properties.getRoutingKey(), publishDurationMs);
     }
 
     /**
@@ -76,6 +84,8 @@ public class RegisterEmailCodeMessagePublisherImpl implements RegisterEmailCodeM
                 message,
                 delayProcessor
         );
+        log.info("Register email retry message published, messageId={}, email={}, retryCount={}, delayMilli={}, exchange={}, routingKey={}",
+                message.getMessageId(), message.getEmail(), message.getRetryCount(), delayMilli, properties.getExchange(), properties.getRetryRoutingKey());
     }
 
     /**
@@ -91,5 +101,7 @@ public class RegisterEmailCodeMessagePublisherImpl implements RegisterEmailCodeM
                 properties.getDeadRoutingKey(),
                 message
         );
+        log.info("Register email dead-letter message published, messageId={}, email={}, retryCount={}, exchange={}, routingKey={}",
+                message.getMessageId(), message.getEmail(), message.getRetryCount(), properties.getExchange(), properties.getDeadRoutingKey());
     }
 }

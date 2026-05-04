@@ -21,7 +21,9 @@
     REGISTER_ADD_PHONE: "/shopping/user/add-phone?mode=register",
     LOGIN_ADD_PHONE: "/shopping/user/add-phone?mode=login",
     SESSION_ENDED: "/shopping/user/session-ended",
-    FORGOT_PASSWORD: "/shopping/user/forgot-password"
+    FORGOT_PASSWORD: "/shopping/user/forgot-password",
+    RESET_PASSWORD_URL: "/shopping/user/reset-password-url",
+    RESET_PASSWORD_CODE: "/shopping/user/reset-password-code"
   };
 
   const VIEW_BY_PATH = {
@@ -35,7 +37,9 @@
     [PATHS.TOTP_VERIFICATION]: "otp",
     [PATHS.ADD_PHONE]: "register-phone-required",
     [PATHS.SESSION_ENDED]: "session-ended",
-    [PATHS.FORGOT_PASSWORD]: "forgot-password"
+    [PATHS.FORGOT_PASSWORD]: "forgot-password",
+    [PATHS.RESET_PASSWORD_URL]: "forgot-password",
+    [PATHS.RESET_PASSWORD_CODE]: "forgot-password"
   };
 
   const PATH_BY_VIEW = {

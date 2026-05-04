@@ -49,6 +49,7 @@ public class LoginController {
     private static final String TIANAI_SUBTYPE_CONCAT = "CONCAT";
     private static final String TIANAI_SUBTYPE_WORD_IMAGE_CLICK = "WORD_IMAGE_CLICK";
     private static final String ERROR_INVALID_STATE = "INVALID_STATE";
+    private static final String LOGIN_WAF_RESUME_HEADER = "X-Login-Waf-Resume";
 
     private final UserPasswordLoginService userPasswordLoginService;
     private final LoginFlowSessionService loginFlowSessionService;
@@ -93,13 +94,18 @@ public class LoginController {
                         resolveRiskLevel(request),
                         resolveClientIp(request),
                         body.captchaUuid(),
-                        body.captchaCode()
+                        body.captchaCode(),
+                        isLoginWafResumeRequest(request)
                 )
         );
         if (responseBody.success() && StrUtil.isNotBlank(responseBody.flowId())) {
             response.addHeader("Set-Cookie", loginFlowCookieFactory.buildFlowCookie(responseBody.flowId(), request).toString());
         }
         return ResponseEntity.ok(responseBody);
+    }
+
+    private boolean isLoginWafResumeRequest(HttpServletRequest request) {
+        return request != null && "1".equals(StrUtil.blankToDefault(request.getHeader(LOGIN_WAF_RESUME_HEADER), "").trim());
     }
 
     @Operation(summary = "Get current login flow state.")

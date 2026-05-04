@@ -24,5 +24,5 @@ public interface ThirdPartyCaptchaService {
      */
     boolean validateHCaptcha(String token, String remoteIp);
 
-    boolean validateRecaptchaV3(String token, String remoteIp);
+    boolean validateRecaptcha(String token, String remoteIp);
 }

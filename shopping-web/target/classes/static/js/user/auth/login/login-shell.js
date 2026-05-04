@@ -15,6 +15,8 @@
       if (pathname === "/shopping/user/add-phone") return "register-phone-required";
       if (pathname === "/shopping/user/session-ended") return "session-ended";
       if (pathname === "/shopping/user/forgot-password") return "forgot-password";
+      if (pathname === "/shopping/user/reset-password-url") return "forgot-password";
+      if (pathname === "/shopping/user/reset-password-code") return "forgot-password";
       return "email";
     },
     mapViewToPath(view) {

@@ -9,6 +9,7 @@ import com.example.ShoppingSystem.service.user.auth.login.LoginFlowSessionServic
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowSession;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowStep;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowValidationResult;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 @Component
 public class LoginFlowGuardInterceptor implements HandlerInterceptor {
+
+    private static final String LOGIN_WAF_RESUME_COOKIE_NAME = "LOGIN_WAF_RESUME";
 
     private final LoginFlowSessionService loginFlowSessionService;
     private final LoginFlowCookieFactory loginFlowCookieFactory;
@@ -54,6 +57,10 @@ public class LoginFlowGuardInterceptor implements HandlerInterceptor {
         }
 
         String preAuthToken = preAuthBindingService.resolveIncomingToken(request);
+        if (isPasswordWafResumeRequest(requestPath, request, preAuthToken)) {
+            return true;
+        }
+
         LoginFlowValidationResult validationResult = loginFlowSessionService.validate(loginFlowId, preAuthToken);
         if (!validationResult.valid()) {
             clearFlowCookie(response, request);
@@ -91,6 +98,31 @@ public class LoginFlowGuardInterceptor implements HandlerInterceptor {
                 LoginFlowWebSupport.routeForStep(step),
                 LoginFlowWebSupport.NOTICE_STEP_RESTORED
         ));
+        return false;
+    }
+
+    private boolean isPasswordWafResumeRequest(String requestPath,
+                                               HttpServletRequest request,
+                                               String preAuthToken) {
+        return LoginFlowWebSupport.LOGIN_PASSWORD_PATH.equals(requestPath)
+                && hasLoginWafResumeCookie(request)
+                && StrUtil.isNotBlank(preAuthToken);
+    }
+
+    private boolean hasLoginWafResumeCookie(HttpServletRequest request) {
+        Cookie[] cookies = request == null ? null : request.getCookies();
+        if (cookies == null || cookies.length == 0) {
+            return false;
+        }
+        for (Cookie cookie : cookies) {
+            if (cookie == null) {
+                continue;
+            }
+            if (LOGIN_WAF_RESUME_COOKIE_NAME.equals(cookie.getName())
+                    && "1".equals(StrUtil.blankToDefault(cookie.getValue(), "").trim())) {
+                return true;
+            }
+        }
         return false;
     }
 

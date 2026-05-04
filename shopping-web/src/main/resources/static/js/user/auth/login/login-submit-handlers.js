@@ -19,6 +19,8 @@
   const REGISTER_PHONE_CODE_PATH = "/shopping/user/register/phone/code";
   const REGISTER_PHONE_BIND_PATH = "/shopping/user/register/phone/bind";
   const LOGIN_WAF_PENDING_START_KEY = "shopping.login.waf.pending-start";
+  const LOGIN_WAF_RESUME_COOKIE_NAME = "LOGIN_WAF_RESUME";
+  const LOGIN_WAF_RESUME_HEADER = "X-Login-Waf-Resume";
   const ERROR_INVALID_STATE = "INVALID_STATE";
   const INVALID_STATE_MESSAGE = "验证过程中出错 (invalid_state)。请重试。";
 
@@ -150,6 +152,9 @@
     }
 
     function shouldResumeAfterWafVerification() {
+      if (readCookieValue(LOGIN_WAF_RESUME_COOKIE_NAME) === "1") {
+        return true;
+      }
       if (typeof window === "undefined" || !window.location) {
         return false;
       }
@@ -161,6 +166,7 @@
     }
 
     function stripWafVerifiedQueryFlag() {
+      clearCookie(LOGIN_WAF_RESUME_COOKIE_NAME);
       if (typeof window === "undefined" || !window.location || !window.history
           || typeof window.history.replaceState !== "function") {
         return;
@@ -175,6 +181,28 @@
         window.history.replaceState({}, "", nextUrl);
       } catch (_) {
       }
+    }
+
+    function readCookieValue(name) {
+      if (typeof document === "undefined" || !document.cookie || !name) {
+        return "";
+      }
+      const target = `${name}=`;
+      const entries = document.cookie.split(";");
+      for (let index = 0; index < entries.length; index += 1) {
+        const item = entries[index].trim();
+        if (item.startsWith(target)) {
+          return decodeURIComponent(item.substring(target.length));
+        }
+      }
+      return "";
+    }
+
+    function clearCookie(name) {
+      if (typeof document === "undefined" || !name) {
+        return;
+      }
+      document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`;
     }
 
     function setCurrentLoginFlow(flow) {
@@ -308,7 +336,7 @@
     }
 
     function resolvePhoneValidationMessage(payload) {
-      const reasonCode = payload?.reasonCode || "";
+      const reasonCode = payload?.reasonCode || payload?.error || "";
       switch (reasonCode) {
         case "PHONE_VOIP_NOT_ALLOWED":
           return "Virtual or VoIP phone numbers are not allowed";
@@ -324,6 +352,14 @@
           return "This phone number is already in use";
         case "PHONE_BOUND_BLOOM_UNAVAILABLE":
           return "Phone validation is temporarily unavailable. Please try again later";
+        case "SMS_UNSUPPORTED_COUNTRY":
+          return "SMS verification is not supported for this country or region";
+        case "SMS_TEMPLATE_MISSING":
+          return "SMS template is not configured";
+        case "SMS_RATE_LIMITED":
+          return payload?.message || "Please wait before requesting another SMS code";
+        case "SMS_CODE_INVALID":
+          return payload?.message || "SMS code is incorrect or expired";
         default:
           return payload?.message || "Phone number validation failed";
       }
@@ -349,6 +385,7 @@
         return {
           success: false,
           message: resolvePhoneValidationMessage(payload),
+          reasonCode: payload?.reasonCode || payload?.error || "",
           normalizedE164: payload?.normalizedE164 || ""
         };
       }
@@ -424,12 +461,16 @@
       };
     }
 
-    async function postLoginFlowStart(requestBody) {
+    async function postLoginFlowStart(requestBody, options = {}) {
+      const headers = {
+        "Content-Type": "application/json"
+      };
+      if (options.wafResume === true) {
+        headers[LOGIN_WAF_RESUME_HEADER] = "1";
+      }
       return getFetchWithPreAuth()(LOGIN_FLOW_START_PATH, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers,
         body: JSON.stringify(requestBody)
       });
     }
@@ -568,7 +609,8 @@
         buildLoginFlowStartRequest(
           pendingLoginStartPayload.email,
           pendingLoginStartPayload.deviceFingerprint
-        )
+        ),
+        { wafResume: true }
       );
       const payload = await parseJsonSafely(response);
       if (!response.ok || !payload?.success) {
@@ -623,11 +665,16 @@
     }
 
     async function handlePhoneSubmit() {
-      const rawPhone = phoneNumberInput ? phoneNumberInput.value.trim() : "";
+      const phoneParts = window.ShoppingLoginCountryPicker?.resolvePhoneNumberForSubmit?.()
+        || {
+          dialCode: resolveDialCodeValue("phone-country-code"),
+          phoneNumber: phoneNumberInput ? phoneNumberInput.value.trim().replace(/\D/g, "") : ""
+        };
+      const dialCode = phoneParts.dialCode || "";
+      const rawPhone = phoneParts.phoneNumber || "";
 
       resetPhoneValidationState();
 
-      const dialCode = resolveDialCodeValue("phone-country-code");
       if (!dialCode) {
         showPhoneValidationError("Please choose a country or region.", phoneNumberInput, phoneNumberLabel);
         return;
@@ -823,8 +870,9 @@
       if (!response.ok || !payload?.success) {
         return {
           success: false,
-          message: payload?.message || "Failed to send SMS code.",
+          message: resolvePhoneValidationMessage(payload) || "Failed to send SMS code.",
           error: payload?.error || "",
+          reasonCode: payload?.reasonCode || payload?.error || "",
           challengeType: payload?.challengeType || "",
           challengeSubType: payload?.challengeSubType || "",
           challengeSiteKey: payload?.challengeSiteKey || "",
@@ -908,8 +956,9 @@
       if (!response.ok || !payload?.success) {
         return {
           success: false,
-          message: payload?.message || "Failed to bind phone number.",
-          error: payload?.error || ""
+          message: resolvePhoneValidationMessage(payload) || "Failed to bind phone number.",
+          error: payload?.error || "",
+          reasonCode: payload?.reasonCode || payload?.error || ""
         };
       }
       return payload;
@@ -941,6 +990,25 @@
 
       if (await resumeLoginFlowAfterWaf()) {
         return true;
+      }
+
+      const loginEntryPaths = new Set([
+        authPaths.LOGIN,
+        "/shopping/user/login"
+      ]);
+      if (loginEntryPaths.has(normalizedPath)) {
+        setCurrentLoginFlow(null);
+        return false;
+      }
+
+      const loginStepPaths = new Set([
+        authPaths.LOGIN_PASSWORD,
+        authPaths.EMAIL_VERIFICATION,
+        authPaths.TOTP_VERIFICATION,
+        authPaths.ADD_PHONE
+      ]);
+      if (!loginStepPaths.has(normalizedPath)) {
+        return false;
       }
 
       const payload = await fetchCurrentLoginFlowState();

@@ -148,8 +148,8 @@
       }
 
       const pending = rememberPendingChallenge(payload);
-      if (!pending?.email) {
-        errorTarget("Login request expired. Please enter your email again.");
+      if (!pending || typeof pending !== "object") {
+        errorTarget("Login request expired. Please submit again.");
         return true;
       }
       pending.challengeType = challengeType;
@@ -195,7 +195,7 @@
         return true;
       }
 
-      if (challengeType === "GOOGLE_RECAPTCHA_V3") {
+      if (challengeType === "GOOGLE_RECAPTCHA_V2" || challengeType === "GOOGLE_RECAPTCHA_V3") {
         try {
           await sharedCaptchaApi.executeRecaptcha(payload?.challengeSiteKey || "");
         } catch (_) {

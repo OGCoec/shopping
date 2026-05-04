@@ -21,6 +21,9 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\LoginPasswordVerifyRequest.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\LoginPhoneBindRequest.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\LoginTotpVerifyRequest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\PasswordResetEmailRequest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\PasswordResetResponse.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\PasswordResetSubmitRequest.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\RegisterCaptchaResponse.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\RegisterFlowStartRequest.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\RegisterFlowStartResponse.java
@@ -35,6 +38,7 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\dto\TianaiSimpleCheckResponse.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\LoginController.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\OAuth2LoginEntryController.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\PasswordResetController.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\RegisterController.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\RegisterControllerExceptionHandler.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\staticcontroller\StaticController.java
@@ -60,6 +64,7 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\filter\preauth\support\PreAuthProperties.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\filter\preauth\support\PreAuthRequestResolver.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\LoginFlowGuardInterceptor.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\PasswordResetTokenGuardInterceptor.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\RegisterFlowGuardInterceptor.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\listener\HutoolCaptchaWarmUpListener.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\listener\TianaiCaptchaWarmUpListener.java

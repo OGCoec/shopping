@@ -41,6 +41,10 @@ public interface UserLoginIdentityMapper {
 
     int bindVerifiedPhoneByUserId(@Param("userId") Long userId, @Param("phone") String phone);
 
+    int updateEmailPasswordHashByUserId(@Param("userId") Long userId,
+                                         @Param("emailPasswordHash") String emailPasswordHash,
+                                         @Param("tokenVersion") String tokenVersion);
+
     int savePendingTotpSecret(@Param("id") Long id, @Param("secretEncrypted") String secretEncrypted);
 
     int enableTotpById(@Param("id") Long id);

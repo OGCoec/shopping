@@ -182,8 +182,10 @@ captcha:
     site-key: ${RECAPTCHA_SITE_KEY:}
     secret-key: ${RECAPTCHA_SECRET_KEY:}
     verify-url: https://www.google.com/recaptcha/api/siteverify
-    min-score: ${RECAPTCHA_MIN_SCORE:0.5}
-    expected-action: ${RECAPTCHA_EXPECTED_ACTION:shopping_auth}
+  proxy:
+    enabled: ${CAPTCHA_PROXY_ENABLED:true}
+    host: ${CAPTCHA_PROXY_HOST:127.0.0.1}
+    port: ${CAPTCHA_PROXY_PORT:7892}
   expire:
     default: 300000
 

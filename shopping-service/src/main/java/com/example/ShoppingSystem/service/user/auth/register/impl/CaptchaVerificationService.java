@@ -6,7 +6,8 @@ import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
 import org.springframework.stereotype.Service;
 
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_TIANAI;
@@ -41,7 +42,8 @@ public class CaptchaVerificationService {
             case CHALLENGE_TIANAI -> tianaiCaptchaService.validateCaptcha(captchaUuid, captchaCode);
             case CHALLENGE_CLOUDFLARE_TURNSTILE -> thirdPartyCaptchaService.validateTurnstile(captchaCode, publicIp);
             case CHALLENGE_HCAPTCHA -> thirdPartyCaptchaService.validateHCaptcha(captchaCode, publicIp);
-            case CHALLENGE_GOOGLE_RECAPTCHA_V3 -> thirdPartyCaptchaService.validateRecaptchaV3(captchaCode, publicIp);
+            case CHALLENGE_GOOGLE_RECAPTCHA_V2, CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY ->
+                    thirdPartyCaptchaService.validateRecaptcha(captchaCode, publicIp);
             default -> false;
         };
     }
@@ -56,7 +58,8 @@ public class CaptchaVerificationService {
         if (CHALLENGE_HCAPTCHA.equals(challengeType)) {
             return thirdPartyCaptchaService.getHCaptchaSiteKey();
         }
-        if (CHALLENGE_GOOGLE_RECAPTCHA_V3.equals(challengeType)) {
+        if (CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
+                || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType)) {
             return thirdPartyCaptchaService.getRecaptchaSiteKey();
         }
         return null;

@@ -8,6 +8,7 @@ C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\Shoppin
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\Ip2LocationQuotaRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\LoginRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\MicrosoftRedisKeys.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\PasswordResetRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\RegisterRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisfilter\CountingBloomFilter.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisfilter\CuckooFilter.java

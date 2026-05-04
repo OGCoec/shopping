@@ -154,6 +154,15 @@ public class LoginChallengeSessionService {
         return Boolean.TRUE.equals(stringRedisTemplate.hasKey(LoginRedisKeys.WAF_VERIFIED_PREFIX + sha256(normalizedToken)));
     }
 
+    public boolean consumeWafVerified(String preAuthToken) {
+        String normalizedToken = normalizeText(preAuthToken);
+        if (normalizedToken == null) {
+            return false;
+        }
+        String key = LoginRedisKeys.WAF_VERIFIED_PREFIX + sha256(normalizedToken);
+        return Boolean.TRUE.equals(stringRedisTemplate.delete(key));
+    }
+
     private void refreshOperationTimeoutWaitUntilTtl(String email, String deviceFingerprint) {
         String waitKey = operationTimeoutWaitUntilKey(pendingChallengeKey(email, deviceFingerprint));
         if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(waitKey))) {

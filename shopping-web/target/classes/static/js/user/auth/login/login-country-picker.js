@@ -10,6 +10,7 @@
 
   let phoneCountryPicker = null;
   let registerPhoneRequiredCountryPicker = null;
+  let detectedPhoneCountryIso2 = "";
 
   const FALLBACK_COUNTRIES = [
     { name: "China", iso2: "cn", dialCode: "+86" },
@@ -584,6 +585,13 @@
       return this.setCountryIso2(this.preferredIso2, { silent: true });
     }
 
+    restorePreferredCountry(options = {}) {
+      if (!this.preferredIso2) {
+        return false;
+      }
+      return this.setCountryIso2(this.preferredIso2, options);
+    }
+
     isOpen() {
       return this.container.dataset.open === "true";
     }
@@ -639,6 +647,7 @@
   }
 
   function setCountryIso2ForAvailablePickers(iso2) {
+    detectedPhoneCountryIso2 = normalizeCountryCode(iso2);
     let updated = false;
     if (phoneCountryPicker?.setPreferredIso2(iso2)) {
       updated = true;
@@ -647,6 +656,19 @@
       updated = true;
     }
     return updated;
+  }
+
+  function restorePreferredCountry(getPicker, options = {}) {
+    const picker = getPicker();
+    if (!picker) {
+      return false;
+    }
+    if (!picker.preferredIso2 && detectedPhoneCountryIso2) {
+      picker.preferredIso2 = detectedPhoneCountryIso2;
+    }
+    return picker.restorePreferredCountry({
+      silent: Boolean(options.silent)
+    });
   }
 
   function normalizeInternationalPhoneNumber(rawPhoneNumber) {
@@ -658,7 +680,7 @@
       return "";
     }
     const compact = `+${trimmed.slice(1).replace(/\D/g, "")}`;
-    return /^\+\d{2,17}$/.test(compact) ? compact : "";
+    return /^\+\d{1,17}$/.test(compact) ? compact : "";
   }
 
   function findBestCountryForInternationalNumber(countries, normalizedPhoneNumber) {
@@ -685,6 +707,174 @@
     return normalizedPhoneNumber.slice(normalizedDialCode.length).replace(/\D/g, "");
   }
 
+  function findLeadingDialCodeTokenRange(rawPhoneNumber, getPicker) {
+    const value = typeof rawPhoneNumber === "string" ? rawPhoneNumber : "";
+    const picker = getPicker();
+    const normalizedPhoneNumber = normalizeInternationalPhoneNumber(value);
+    if (!picker || !normalizedPhoneNumber) {
+      return null;
+    }
+
+    const matchedCountry = findBestCountryForInternationalNumber(picker.allCountries, normalizedPhoneNumber);
+    const dialDigits = String(matchedCountry?.dialCode || "").replace(/\D/g, "");
+    if (!dialDigits) {
+      return null;
+    }
+
+    const leadingWhitespaceLength = value.match(/^\s*/)?.[0]?.length || 0;
+    let index = leadingWhitespaceLength;
+    if (value.charAt(index) !== "+") {
+      return null;
+    }
+
+    index += 1;
+    let matchedDigitCount = 0;
+    while (index < value.length && matchedDigitCount < dialDigits.length) {
+      const char = value.charAt(index);
+      if (/\d/.test(char)) {
+        if (char !== dialDigits.charAt(matchedDigitCount)) {
+          return null;
+        }
+        matchedDigitCount += 1;
+      } else if (!/[\s().-]/.test(char)) {
+        return null;
+      }
+      index += 1;
+    }
+
+    if (matchedDigitCount !== dialDigits.length) {
+      return null;
+    }
+
+    const dialEnd = index;
+    while (index < value.length && /\s/.test(value.charAt(index))) {
+      index += 1;
+    }
+
+    return {
+      start: leadingWhitespaceLength,
+      dialEnd,
+      end: index
+    };
+  }
+
+  function handleAtomicDialCodeDelete(event, input, getPicker) {
+    if (event.key !== "Backspace" && event.key !== "Delete") {
+      return false;
+    }
+
+    const value = input.value || "";
+    const tokenRange = findLeadingDialCodeTokenRange(value, getPicker);
+    if (!tokenRange) {
+      return false;
+    }
+
+    const selectionStart = input.selectionStart ?? 0;
+    const selectionEnd = input.selectionEnd ?? selectionStart;
+    let deleteStart = tokenRange.start;
+    let deleteEnd = tokenRange.end;
+
+    if (selectionStart !== selectionEnd) {
+      const intersectsDialCode = selectionStart < tokenRange.dialEnd && selectionEnd > tokenRange.start;
+      if (!intersectsDialCode) {
+        return false;
+      }
+      deleteStart = Math.min(selectionStart, tokenRange.start);
+      deleteEnd = Math.max(selectionEnd, tokenRange.end);
+    } else if (event.key === "Backspace") {
+      if (selectionStart <= tokenRange.start || selectionStart > tokenRange.end) {
+        return false;
+      }
+    } else if (selectionStart < tokenRange.start || selectionStart >= tokenRange.end) {
+      return false;
+    }
+
+    event.preventDefault();
+    const nextValue = `${value.slice(0, deleteStart)}${value.slice(deleteEnd)}`;
+    input.value = nextValue;
+    input.setSelectionRange(deleteStart, deleteStart);
+
+    if (!nextValue.trim()) {
+      restorePreferredCountry(getPicker);
+    } else if (nextValue.trim().startsWith("+")) {
+      applyInternationalPhoneNumber(input.id, getPicker);
+    } else {
+      restorePreferredCountry(getPicker);
+    }
+
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  function sanitizePhoneInput(input) {
+    const value = input.value || "";
+    const hasLeadingPlus = value.trimStart().startsWith("+");
+    const sanitized = `${hasLeadingPlus ? "+" : ""}${value.replace(/\D/g, "").slice(0, 15)}`;
+    if (value === sanitized) {
+      return false;
+    }
+
+    const selectionStart = input.selectionStart ?? value.length;
+    const originalPrefix = value.slice(0, selectionStart);
+    const digitsBeforeCursor = originalPrefix.replace(/\D/g, "").length;
+    const plusBeforeCursor = hasLeadingPlus && /\+/.test(originalPrefix);
+    input.value = sanitized;
+    const nextCursor = Math.min(digitsBeforeCursor + (plusBeforeCursor ? 1 : 0), sanitized.length);
+    input.setSelectionRange(nextCursor, nextCursor);
+    return true;
+  }
+
+  function applyInternationalPhoneNumber(inputId, getPicker, options = {}) {
+    const input = document.getElementById(inputId);
+    const picker = getPicker();
+    if (!picker || !input || !input.value.trim().startsWith("+")) {
+      return null;
+    }
+    const result = picker.selectCountryForInternationalNumber(input.value, { silent: Boolean(options.silent) });
+    if (!result) {
+      return null;
+    }
+    if (options.mutateInput === true && result.nationalNumber) {
+      input.value = result.nationalNumber;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return result;
+  }
+
+  function resolvePhoneSubmissionParts(inputId, dialCodeInputId, getPicker, options = {}) {
+    const input = document.getElementById(inputId);
+    const rawValue = input ? input.value.trim() : "";
+    const dialCodeInput = document.getElementById(dialCodeInputId);
+    const selectedDialCode = (dialCodeInput?.value || "").trim();
+
+    if (rawValue.startsWith("+")) {
+      const result = applyInternationalPhoneNumber(inputId, getPicker, {
+        silent: Boolean(options.silent)
+      });
+      if (result) {
+        return {
+          dialCode: result.dialCode,
+          phoneNumber: result.nationalNumber,
+          rawPhoneNumber: rawValue,
+          isInternational: true
+        };
+      }
+      return {
+        dialCode: selectedDialCode,
+        phoneNumber: rawValue.replace(/\D/g, ""),
+        rawPhoneNumber: rawValue,
+        isInternational: true
+      };
+    }
+
+    return {
+      dialCode: selectedDialCode,
+      phoneNumber: rawValue.replace(/\D/g, ""),
+      rawPhoneNumber: rawValue,
+      isInternational: false
+    };
+  }
+
   function bindInternationalPhoneInput(inputId, getPicker) {
     const input = document.getElementById(inputId);
     if (!input || input.dataset.internationalPhoneBound === "true") {
@@ -692,23 +882,42 @@
     }
     input.dataset.internationalPhoneBound = "true";
 
-    const applyInternationalNumber = () => {
-      const picker = getPicker();
-      if (!picker || !input.value.trim().startsWith("+")) {
-        return;
-      }
-      const result = picker.selectCountryForInternationalNumber(input.value, { silent: false });
-      if (!result || !result.nationalNumber) {
-        return;
-      }
-      input.value = result.nationalNumber;
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    };
+    input.setAttribute("inputmode", "tel");
+    input.setAttribute("pattern", "\\+?[0-9]*");
+    input.setAttribute("maxlength", "16");
 
-    input.addEventListener("blur", applyInternationalNumber);
-    input.addEventListener("change", applyInternationalNumber);
+    input.addEventListener("beforeinput", (event) => {
+      const data = event.data || "";
+      if (event.inputType !== "insertText" || !data) {
+        return;
+      }
+      const selectionStart = input.selectionStart ?? 0;
+      const selectionEnd = input.selectionEnd ?? selectionStart;
+      const nextValue = `${input.value.slice(0, selectionStart)}${data}${input.value.slice(selectionEnd)}`;
+      if (!/^\+?\d*$/.test(nextValue)) {
+        event.preventDefault();
+      }
+    });
+    input.addEventListener("keydown", (event) => {
+      handleAtomicDialCodeDelete(event, input, getPicker);
+    });
+    input.addEventListener("input", () => {
+      sanitizePhoneInput(input);
+      if (!input.value.trim()) {
+        restorePreferredCountry(getPicker);
+        return;
+      }
+      applyInternationalPhoneNumber(inputId, getPicker);
+    });
     input.addEventListener("paste", () => {
-      setTimeout(applyInternationalNumber, 0);
+      setTimeout(() => {
+        sanitizePhoneInput(input);
+        if (!input.value.trim()) {
+          restorePreferredCountry(getPicker);
+          return;
+        }
+        applyInternationalPhoneNumber(inputId, getPicker);
+      }, 0);
     });
     return true;
   }
@@ -794,12 +1003,43 @@
     setCountryIso2ForAvailablePickers(detectedCountryCode);
   }
 
+  function applyPhoneInternationalNumber(options = {}) {
+    return applyInternationalPhoneNumber("phone-number", () => phoneCountryPicker, options);
+  }
+
+  function applyRegisterPhoneRequiredInternationalNumber(options = {}) {
+    return applyInternationalPhoneNumber("register-phone-required-input", () => registerPhoneRequiredCountryPicker, options);
+  }
+
+  function resolvePhoneNumberForSubmit(options = {}) {
+    return resolvePhoneSubmissionParts(
+      "phone-number",
+      "phone-country-code",
+      () => phoneCountryPicker,
+      options
+    );
+  }
+
+  function resolveRegisterPhoneRequiredForSubmit(options = {}) {
+    return resolvePhoneSubmissionParts(
+      "register-phone-required-input",
+      "register-phone-country-code",
+      () => registerPhoneRequiredCountryPicker,
+      options
+    );
+  }
+
   const publicApi = {
     DEFAULT_PHONE_COUNTRY_CODE,
     initPhoneCountryPicker,
     initRegisterPhoneRequiredCountryPicker,
     bindInternationalPhoneInputs,
-    autoDetectPhoneCountryCode
+    autoDetectPhoneCountryCode,
+    applyPhoneInternationalNumber,
+    applyRegisterPhoneInternationalNumber: applyPhoneInternationalNumber,
+    applyRegisterPhoneRequiredInternationalNumber,
+    resolvePhoneNumberForSubmit,
+    resolveRegisterPhoneRequiredForSubmit
   };
 
   if (typeof module !== "undefined" && module.exports) {
