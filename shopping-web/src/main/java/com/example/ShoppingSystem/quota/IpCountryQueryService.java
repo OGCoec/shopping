@@ -9,18 +9,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * IP 国家查询多级链路：
- * 本地缓存 -> Redis -> DB -> BIN。
+ * IP geo query chain: local Caffeine -> Redis -> DB -> BIN.
  * <p>
- * 回写规则：
- * 1) DB 命中：回写本地缓存 + Redis；
- * 2) BIN 命中：只回写本地缓存 + Redis，不回写 DB。
+ * The Redis key keeps the existing prefix {@code register:ip:country:} for compatibility,
+ * but the value is now a geo JSON payload instead of only a country code.
  */
 @Service
 public class IpCountryQueryService {
@@ -64,65 +63,86 @@ public class IpCountryQueryService {
     }
 
     public CountryQueryResult queryCountry(String publicIp) {
+        GeoQueryResult result = queryGeo(publicIp);
+        if (result.success() && result.geo() != null && result.geo().hasCountry()) {
+            return CountryQueryResult.success(result.geo().country(), result.source());
+        }
+        return CountryQueryResult.failed(result.source(), result.reason());
+    }
+
+    public GeoQueryResult queryGeo(String publicIp) {
         if (!enabled) {
-            return CountryQueryResult.failed(SOURCE_NONE, "country_cache_disabled");
+            return GeoQueryResult.failed(SOURCE_NONE, "country_cache_disabled");
         }
         if (isBlank(publicIp)) {
-            return CountryQueryResult.failed(SOURCE_NONE, "invalid_ip");
+            return GeoQueryResult.failed(SOURCE_NONE, "invalid_ip");
         }
 
         String ip = publicIp.trim();
 
-        String localCountry = localCacheStore.getCountry(ip);
-        if (localCountry != null) {
-            return CountryQueryResult.success(localCountry, SOURCE_CAFFEINE);
+        IpGeoSnapshot localGeo = localCacheStore.getGeo(ip);
+        if (isUsableGeo(localGeo)) {
+            return GeoQueryResult.success(localGeo, SOURCE_CAFFEINE);
         }
 
-        String redisCountry = readCountryFromRedis(ip);
-        if (redisCountry != null) {
-            localCacheStore.putCountry(ip, redisCountry);
-            return CountryQueryResult.success(redisCountry, SOURCE_REDIS);
+        IpGeoSnapshot redisGeo = readGeoFromRedis(ip);
+        if (isUsableGeo(redisGeo)) {
+            localCacheStore.putGeo(ip, redisGeo);
+            return GeoQueryResult.success(redisGeo, SOURCE_REDIS);
         }
 
-        String dbCountry = readCountryFromDb(ip);
-        if (dbCountry != null) {
-            writeCountryToCache(ip, dbCountry, SOURCE_DB);
-            return CountryQueryResult.success(dbCountry, SOURCE_DB);
+        IpGeoSnapshot dbGeo = readGeoFromDb(ip);
+        if (isUsableGeo(dbGeo)) {
+            writeGeoToCache(ip, dbGeo, SOURCE_DB);
+            return GeoQueryResult.success(dbGeo, SOURCE_DB);
         }
 
-        String binCountry = ip2LocationBinCountryService.queryCountryCode(ip);
-        if (binCountry != null) {
-            // BIN 命中只回写缓存，不回写 DB。
-            writeCountryToCache(ip, binCountry, SOURCE_BIN);
-            return CountryQueryResult.success(binCountry, SOURCE_BIN);
+        IpGeoSnapshot binGeo = ip2LocationBinCountryService.queryGeo(ip);
+        if (isUsableGeo(binGeo)) {
+            // BIN hits are cached locally and in Redis, but not written back to DB.
+            writeGeoToCache(ip, binGeo, SOURCE_BIN);
+            return GeoQueryResult.success(binGeo, SOURCE_BIN);
         }
 
-        return CountryQueryResult.failed(SOURCE_BIN, "country_not_found");
+        return GeoQueryResult.failed(SOURCE_BIN, "geo_not_found");
     }
 
-    private String readCountryFromRedis(String ip) {
+    private IpGeoSnapshot readGeoFromRedis(String ip) {
         try {
             String value = stringRedisTemplate.opsForValue().get(redisKey(ip));
             if (isBlank(value)) {
                 return null;
             }
             String trimmed = value.trim();
-            if (trimmed.startsWith("{")) {
-                JsonNode root = objectMapper.readTree(trimmed);
-                String country = normalizeCountryCode(readTextNode(root, "country"));
-                if (country == null) {
-                    country = normalizeCountryCode(readTextNode(root, "countryCode"));
-                }
-                return country;
+            if (!trimmed.startsWith("{")) {
+                return new IpGeoSnapshot(normalizeCountryCode(trimmed), null, null, null, null);
             }
-            return normalizeCountryCode(trimmed);
+
+            JsonNode root = objectMapper.readTree(trimmed);
+            return new IpGeoSnapshot(
+                    firstCountry(root),
+                    firstText(
+                            readTextNode(root, "region"),
+                            readTextNode(root, "regionName"),
+                            readTextNode(root, "region_name"),
+                            readTextNode(root, "province"),
+                            readTextNode(root, "state")
+                    ),
+                    firstText(
+                            readTextNode(root, "city"),
+                            readTextNode(root, "cityName"),
+                            readTextNode(root, "city_name")
+                    ),
+                    firstDecimal(root, "latitude", "lat"),
+                    firstDecimal(root, "longitude", "lon", "lng")
+            );
         } catch (Exception e) {
-            log.debug("IP 国家 Redis 读取失败：ip={}，reason={}", ip, e.getMessage());
+            log.debug("IP geo Redis read failed, ip={}, reason={}", ip, e.getMessage());
             return null;
         }
     }
 
-    private String readCountryFromDb(String ip) {
+    private IpGeoSnapshot readGeoFromDb(String ip) {
         try {
             Map<String, Object> row = ip.contains(":")
                     ? ipReputationProfileMapper.findIpv6RiskCacheByIp(ip)
@@ -130,30 +150,72 @@ public class IpCountryQueryService {
             if (row == null || row.isEmpty()) {
                 return null;
             }
-            return normalizeCountryCode(toStringValue(row.get("country")));
+
+            JsonNode raw = parseRawJson(toStringValue(row.get("raw_json_text")));
+            String country = firstText(
+                    normalizeCountryCode(toStringValue(row.get("country"))),
+                    firstCountry(raw)
+            );
+            String region = firstText(
+                    normalizeNullableText(toStringValue(row.get("region"))),
+                    readTextNode(raw, "region"),
+                    readTextNode(raw, "regionName"),
+                    readTextNode(raw, "region_name"),
+                    readTextNode(raw, "province"),
+                    readTextNode(raw, "state"),
+                    nestedText(raw, "location", "region"),
+                    nestedText(raw, "location", "province"),
+                    nestedText(raw, "location", "state")
+            );
+            String city = firstText(
+                    normalizeNullableText(toStringValue(row.get("city"))),
+                    readTextNode(raw, "city"),
+                    readTextNode(raw, "cityName"),
+                    readTextNode(raw, "city_name"),
+                    nestedText(raw, "location", "city")
+            );
+            BigDecimal latitude = firstDecimal(
+                    toBigDecimal(row.get("latitude")),
+                    firstDecimal(raw, "latitude", "lat"),
+                    nestedDecimal(raw, "location", "latitude"),
+                    nestedDecimal(raw, "location", "lat")
+            );
+            BigDecimal longitude = firstDecimal(
+                    toBigDecimal(row.get("longitude")),
+                    firstDecimal(raw, "longitude", "lon", "lng"),
+                    nestedDecimal(raw, "location", "longitude"),
+                    nestedDecimal(raw, "location", "lon"),
+                    nestedDecimal(raw, "location", "lng")
+            );
+            return new IpGeoSnapshot(country, region, city, latitude, longitude);
         } catch (Exception e) {
-            log.debug("IP 国家 DB 读取失败：ip={}，reason={}", ip, e.getMessage());
+            log.debug("IP geo DB read failed, ip={}, reason={}", ip, e.getMessage());
             return null;
         }
     }
 
-    private void writeCountryToCache(String ip, String country, String source) {
-        if (isBlank(ip) || isBlank(country)) {
+    private void writeGeoToCache(String ip, IpGeoSnapshot geo, String source) {
+        if (isBlank(ip) || !isUsableGeo(geo)) {
             return;
         }
-        String normalizedCountry = normalizeCountryCode(country);
-        if (normalizedCountry == null) {
+        IpGeoSnapshot normalized = normalizeGeo(geo);
+        if (normalized == null || !normalized.hasAnyGeo()) {
             return;
         }
-
-        localCacheStore.putCountry(ip, normalizedCountry);
+        localCacheStore.putGeo(ip, normalized);
 
         try {
-            String jsonValue = objectMapper.writeValueAsString(
-                    new RedisCountryCacheValue(normalizedCountry, source, System.currentTimeMillis()));
+            String jsonValue = objectMapper.writeValueAsString(new RedisIpGeoCacheValue(
+                    normalized.country(),
+                    normalized.region(),
+                    normalized.city(),
+                    normalized.latitude(),
+                    normalized.longitude(),
+                    source,
+                    System.currentTimeMillis()));
             stringRedisTemplate.opsForValue().set(redisKey(ip), jsonValue, Duration.ofMinutes(computeRedisTtlMinutes()));
         } catch (Exception e) {
-            log.debug("IP 国家 Redis 回写失败：ip={}，country={}，reason={}", ip, normalizedCountry, e.getMessage());
+            log.debug("IP geo Redis write failed, ip={}, country={}, reason={}", ip, normalized.country(), e.getMessage());
         }
     }
 
@@ -170,6 +232,46 @@ public class IpCountryQueryService {
         return redisKeyPrefix + ip;
     }
 
+    private JsonNode parseRawJson(String rawJson) {
+        if (isBlank(rawJson)) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(rawJson);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String firstCountry(JsonNode root) {
+        if (root == null) {
+            return null;
+        }
+        return firstText(
+                normalizeCountryCode(readTextNode(root, "country")),
+                normalizeCountryCode(readTextNode(root, "countryCode")),
+                normalizeCountryCode(readTextNode(root, "country_code")),
+                normalizeCountryCode(nestedText(root, "country", "code"))
+        );
+    }
+
+    private BigDecimal firstDecimal(JsonNode root, String... fields) {
+        if (root == null || fields == null) {
+            return null;
+        }
+        for (String field : fields) {
+            BigDecimal parsed = toBigDecimal(readTextNode(root, field));
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal nestedDecimal(JsonNode root, String objectName, String fieldName) {
+        return toBigDecimal(nestedText(root, objectName, fieldName));
+    }
+
     private String readTextNode(JsonNode root, String field) {
         if (root == null || field == null) {
             return null;
@@ -181,6 +283,34 @@ public class IpCountryQueryService {
         return node.asText();
     }
 
+    private String nestedText(JsonNode root, String objectName, String fieldName) {
+        if (root == null || objectName == null || fieldName == null) {
+            return null;
+        }
+        JsonNode objectNode = root.get(objectName);
+        if (objectNode == null || objectNode.isNull()) {
+            return null;
+        }
+        JsonNode valueNode = objectNode.get(fieldName);
+        if (valueNode == null || valueNode.isNull()) {
+            return null;
+        }
+        return valueNode.asText();
+    }
+
+    private IpGeoSnapshot normalizeGeo(IpGeoSnapshot geo) {
+        if (geo == null) {
+            return null;
+        }
+        return new IpGeoSnapshot(
+                normalizeCountryCode(geo.country()),
+                normalizeNullableText(geo.region()),
+                normalizeNullableText(geo.city()),
+                geo.latitude(),
+                geo.longitude()
+        );
+    }
+
     private String normalizeCountryCode(String countryCode) {
         if (isBlank(countryCode)) {
             return null;
@@ -190,6 +320,70 @@ public class IpCountryQueryService {
             return null;
         }
         return normalized;
+    }
+
+    private String normalizeNullableText(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()
+                || "-".equals(normalized)
+                || "N/A".equalsIgnoreCase(normalized)
+                || normalized.toLowerCase(Locale.ROOT).contains("not supported")) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private String firstText(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            String normalized = normalizeNullableText(value);
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal firstDecimal(BigDecimal... values) {
+        if (values == null) {
+            return null;
+        }
+        for (BigDecimal value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        String text = value.toString();
+        if (isBlank(text) || "-".equals(text.trim())) {
+            return null;
+        }
+        try {
+            return new BigDecimal(text.trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private boolean isUsableGeo(IpGeoSnapshot geo) {
+        return geo != null && geo.hasAnyGeo();
     }
 
     private String toStringValue(Object value) {
@@ -213,8 +407,25 @@ public class IpCountryQueryService {
         }
     }
 
-    private record RedisCountryCacheValue(String country,
-                                          String source,
-                                          long updatedAtEpochMillis) {
+    public record GeoQueryResult(boolean success,
+                                 IpGeoSnapshot geo,
+                                 String source,
+                                 String reason) {
+        public static GeoQueryResult success(IpGeoSnapshot geo, String source) {
+            return new GeoQueryResult(true, geo, source, "ok");
+        }
+
+        public static GeoQueryResult failed(String source, String reason) {
+            return new GeoQueryResult(false, null, source, reason);
+        }
+    }
+
+    private record RedisIpGeoCacheValue(String country,
+                                        String region,
+                                        String city,
+                                        BigDecimal latitude,
+                                        BigDecimal longitude,
+                                        String source,
+                                        long updatedAtEpochMillis) {
     }
 }

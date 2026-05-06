@@ -248,6 +248,12 @@
               <input type="tel" id="phone-number" class="phone-pill-field" placeholder="手机号码" autocomplete="tel" inputmode="tel" pattern="\\+?[0-9]*" maxlength="16" />
             </div>
 
+            <div class="form-group phone-field-group" id="phone-login-code-group" hidden>
+              <label id="phone-login-code-label" for="phone-login-code-input">短信验证码</label>
+              <input type="text" inputmode="numeric" pattern="[0-9]*" id="phone-login-code-input" class="phone-pill-field"
+                placeholder="6 位验证码" autocomplete="one-time-code" maxlength="6" />
+            </div>
+
             <div class="error-msg" id="phone-error-msg"></div>
 
             <button type="submit" class="btn-login" id="btn-phone-continue">
@@ -322,7 +328,7 @@
             <div class="form-group otp-field-group">
               <label id="otp-code-label" for="otp-code-input">验证码</label>
               <input type="text" id="otp-code-input" class="otp-code-input" placeholder="请输入验证码" inputmode="numeric"
-                autocomplete="one-time-code" />
+                pattern="[0-9]*" autocomplete="one-time-code" maxlength="8" />
             </div>
 
             <div class="error-msg" id="otp-error-msg"></div>
@@ -391,7 +397,7 @@
             <div class="form-group phone-field-group" id="register-phone-required-code-group" hidden>
               <label id="register-phone-required-code-label" for="register-phone-required-code-input">短信验证码</label>
               <div class="sms-code-row">
-                <input type="text" inputmode="numeric" id="register-phone-required-code-input" class="phone-pill-field"
+                <input type="text" inputmode="numeric" pattern="[0-9]*" id="register-phone-required-code-input" class="phone-pill-field"
                   placeholder="6 位验证码" autocomplete="one-time-code" maxlength="6" />
                 <button type="button" class="otp-resend-btn sms-code-send-btn" id="register-phone-required-send-code">发送验证码</button>
               </div>
@@ -426,12 +432,14 @@
             </div>
             <h2 class="auth-terminal-title" id="session-ended-title">&#20320;&#30340;&#20250;&#35805;&#24050;&#32467;&#26463;</h2>
             <p class="auth-terminal-copy" id="session-ended-message">&#30331;&#24405;&#20197;&#32487;&#32493;&#65292;&#25110;&#32773;&#37325;&#26032;&#24320;&#22987;&#27880;&#20876;&#12290;</p>
-            <a href="/shopping/user/log-in" class="auth-terminal-button" id="session-ended-primary-action" data-spa-route>
-              <span>&#30331;&#24405;</span>
-            </a>
-            <a href="/shopping/user/create-account" class="auth-terminal-secondary" id="session-ended-secondary-action" data-spa-route>
-              &#37325;&#26032;&#24320;&#22987;&#27880;&#20876;
-            </a>
+            <div class="auth-terminal-actions">
+              <a href="/shopping/user/create-account" class="auth-terminal-button" id="session-ended-primary-action" data-spa-route>
+                <span>&#37325;&#26032;&#27880;&#20876;</span>
+              </a>
+              <a href="/shopping/user/log-in" class="auth-terminal-button auth-terminal-button-secondary" id="session-ended-secondary-action" data-spa-route>
+                <span>&#30331;&#24405;</span>
+              </a>
+            </div>
             <div class="auth-terminal-links">
               <a href="#">&#20351;&#29992;&#26465;&#27454;</a>
               <span aria-hidden="true">|</span>

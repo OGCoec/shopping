@@ -179,6 +179,10 @@ public class IpReputationMultiLevelQueryService {
             }
             int score = clamp(dbScore, SCORE_MIN, SCORE_MAX);
             String country = normalizeCountryCode(toStringValue(row.get("country")));
+            String region = normalizeNullableText(toStringValue(row.get("region")));
+            String city = normalizeNullableText(toStringValue(row.get("city")));
+            BigDecimal latitude = toBigDecimal(row.get("latitude"));
+            BigDecimal longitude = toBigDecimal(row.get("longitude"));
 
             Long expiresAtEpochMillis = toLong(row.get("expires_at_epoch_millis"));
             if (expiresAtEpochMillis == null || expiresAtEpochMillis <= now) {
@@ -187,22 +191,41 @@ public class IpReputationMultiLevelQueryService {
 
             String rawJson = toStringValue(row.get("raw_json_text"));
             if (isBlank(rawJson)) {
-                IpRiskCachedPayload payload = buildDbMinimalPayload(score, country, expiresAtEpochMillis, now);
+                IpRiskCachedPayload payload = buildDbMinimalPayload(
+                        score,
+                        country,
+                        region,
+                        city,
+                        latitude,
+                        longitude,
+                        expiresAtEpochMillis,
+                        now);
                 return new DbHit(score, null, payload, country);
             }
 
             try {
                 JsonNode rawNode = objectMapper.readTree(rawJson);
                 IpRiskCachedPayload payload = objectMapper.treeToValue(rawNode, IpRiskCachedPayload.class);
-                if (payload.country() == null && country != null) {
-                    payload = payload.withCountry(country);
-                }
+                payload = payload.withGeo(
+                        normalizeCountryCode(firstText(payload.country(), country)),
+                        firstText(payload.region(), region),
+                        firstText(payload.city(), city),
+                        firstDecimal(payload.latitude(), latitude),
+                        firstDecimal(payload.longitude(), longitude));
                 int recalculatedScore = calculateScore(normalize(payload));
                 payload = payload.withCurrentScore(recalculatedScore);
                 return new DbHit(recalculatedScore, toEvidence(payload), payload, payload.country());
             } catch (Exception parseException) {
                 log.debug("IP risk DB payload parse failed, ip={}, reason={}", ip, parseException.getMessage());
-                IpRiskCachedPayload payload = buildDbMinimalPayload(score, country, expiresAtEpochMillis, now);
+                IpRiskCachedPayload payload = buildDbMinimalPayload(
+                        score,
+                        country,
+                        region,
+                        city,
+                        latitude,
+                        longitude,
+                        expiresAtEpochMillis,
+                        now);
                 return new DbHit(score, null, payload, country);
             }
         } catch (Exception e) {
@@ -263,6 +286,8 @@ public class IpReputationMultiLevelQueryService {
                 normalized.asn(),
                 normalized.providerName(),
                 normalized.country(),
+                normalized.region(),
+                normalized.city(),
                 normalized.latitude(),
                 normalized.longitude(),
                 expiresAt,
@@ -301,6 +326,10 @@ public class IpReputationMultiLevelQueryService {
 
     private IpRiskCachedPayload buildDbMinimalPayload(int score,
                                                       String country,
+                                                      String region,
+                                                      String city,
+                                                      BigDecimal latitude,
+                                                      BigDecimal longitude,
                                                       Long expiresAtEpochMillis,
                                                       long now) {
         long safeExpiresAt = (expiresAtEpochMillis != null && expiresAtEpochMillis > now)
@@ -325,8 +354,10 @@ public class IpReputationMultiLevelQueryService {
                 null,
                 null,
                 country,
-                null,
-                null,
+                region,
+                city,
+                latitude,
+                longitude,
                 safeExpiresAt,
                 now,
                 SOURCE_DB
@@ -382,6 +413,8 @@ public class IpReputationMultiLevelQueryService {
                 normalizeToken(fields.asn()),
                 normalizeNullableText(fields.providerName()),
                 normalizeCountryCode(fields.countryCode()),
+                normalizeNullableText(fields.region()),
+                normalizeNullableText(fields.city()),
                 parseDecimal(fields.latitude()),
                 parseDecimal(fields.longitude()),
                 isProxy,
@@ -416,6 +449,8 @@ public class IpReputationMultiLevelQueryService {
                 normalizeToken(payload.asn()),
                 normalizeNullableText(payload.providerName()),
                 normalizeCountryCode(payload.country()),
+                normalizeNullableText(payload.region()),
+                normalizeNullableText(payload.city()),
                 payload.latitude(),
                 payload.longitude(),
                 payload.isProxy(),
@@ -593,6 +628,20 @@ public class IpReputationMultiLevelQueryService {
         return normalized;
     }
 
+    private String firstText(String first, String second) {
+        if (!isBlank(first)) {
+            return first.trim();
+        }
+        if (!isBlank(second)) {
+            return second.trim();
+        }
+        return null;
+    }
+
+    private BigDecimal firstDecimal(BigDecimal first, BigDecimal second) {
+        return first != null ? first : second;
+    }
+
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -633,6 +682,23 @@ public class IpReputationMultiLevelQueryService {
         return value == null ? null : value.toString();
     }
 
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        try {
+            return new BigDecimal(value.toString());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     public record MultiLevelQueryResult(boolean success,
                                         String source,
                                         String reason,
@@ -665,6 +731,8 @@ public class IpReputationMultiLevelQueryService {
                                   String asn,
                                   String providerName,
                                   String country,
+                                  String region,
+                                  String city,
                                   BigDecimal latitude,
                                   BigDecimal longitude,
                                   boolean isProxy,

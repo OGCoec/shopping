@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS user_login_success_record (
     user_agent VARCHAR(512),
 
     -- 设备指纹，可为空
-    device_fingerprint VARCHAR(255),
+    device_fingerprint TEXT,
 
     -- 登录成功时间
     login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

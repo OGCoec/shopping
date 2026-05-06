@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS user_login_fail_record (
     user_agent VARCHAR(512),
 
     -- 设备指纹，可为空
-    device_fingerprint VARCHAR(255),
+    device_fingerprint TEXT,
 
     -- 扩展上下文，例如风控规则、手机号识别结果等
     extra_json JSONB,

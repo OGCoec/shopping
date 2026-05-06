@@ -283,6 +283,44 @@ body.auth-route-pending .form-container {
   pointer-events: none;
 }
 
+.password-strength {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 16px;
+  margin: -8px 0 20px;
+  font-size: 13px;
+  color: rgba(26, 26, 46, 0.7);
+}
+
+.password-strength-label {
+  flex: 0 0 auto;
+}
+
+.password-strength-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 80px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(26, 26, 46, 0.15);
+}
+
+.password-strength-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: transparent;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.password-strength-text {
+  flex: 0 0 48px;
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* Remember & Forgot */
 .form-options {
   display: flex;
@@ -810,6 +848,25 @@ input.phone-pill-field {
   padding: 4px;
 }
 
+.password-visibility-btn:hover,
+.password-visibility-btn:focus-visible,
+.password-visibility-btn.is-visible {
+  color: #5b21b6;
+}
+
+.password-visibility-btn:focus-visible {
+  outline: 2px solid rgba(91, 33, 182, 0.24);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.password-visibility-btn svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  pointer-events: none;
+}
+
 .password-forgot-link {
   display: inline-block;
   margin: 2px 0 18px;
@@ -1032,6 +1089,12 @@ input.otp-code-input {
   color: rgba(26, 26, 46, 0.72);
 }
 
+.auth-terminal-actions {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
 .auth-terminal-button {
   display: flex;
   align-items: center;
@@ -1049,11 +1112,23 @@ input.otp-code-input {
   transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
+.auth-terminal-button-secondary {
+  background: #1a1a2e;
+  color: #ffffff;
+  border-color: #1a1a2e;
+}
+
 .auth-terminal-button:hover,
 .auth-terminal-button:focus-visible {
   background: #ffffff;
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(17, 24, 39, 0.12);
+}
+
+.auth-terminal-button-secondary:hover,
+.auth-terminal-button-secondary:focus-visible {
+  background: #111827;
+  color: #ffffff;
 }
 
 .auth-terminal-secondary {

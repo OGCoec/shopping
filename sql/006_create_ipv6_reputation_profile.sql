@@ -10,8 +10,11 @@
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS ipv6_reputation_profile (
-    -- 直接用 IPv6 字符串作为主键
-    ip VARCHAR(128) PRIMARY KEY,
+    -- 自增主键，避免用 IPv6 字符串直接作为主键
+    id BIGSERIAL PRIMARY KEY,
+
+    -- IPv6 字符串仍然作为业务唯一键，供 ON CONFLICT (ip) 使用
+    ip VARCHAR(128) NOT NULL UNIQUE,
 
     -- IP 类型：RESIDENTIAL / DATACENTER / MOBILE / BUSINESS / UNKNOWN
     ip_type VARCHAR(32) NOT NULL DEFAULT 'UNKNOWN',
@@ -30,6 +33,12 @@ CREATE TABLE IF NOT EXISTS ipv6_reputation_profile (
 
     -- 国家代码，建议使用 ISO 3166-1 alpha-2（如 US/CN/CA）
     country VARCHAR(8),
+
+    -- 一级行政区 / 州 / 省，例如 California / Guangdong
+    region VARCHAR(128),
+
+    -- 城市名称，例如 Los Angeles / Shenzhen
+    city VARCHAR(128),
 
     -- 是否机房 IP
     is_datacenter BOOLEAN NOT NULL DEFAULT FALSE,
@@ -77,6 +86,10 @@ CREATE TABLE IF NOT EXISTS ipv6_reputation_profile (
         CHECK (ip_type IN ('RESIDENTIAL', 'DATACENTER', 'MOBILE', 'BUSINESS', 'UNKNOWN'))
 );
 
+ALTER TABLE ipv6_reputation_profile
+    ADD COLUMN IF NOT EXISTS region VARCHAR(128),
+    ADD COLUMN IF NOT EXISTS city VARCHAR(128);
+
 CREATE INDEX IF NOT EXISTS idx_ipv6_reputation_profile_current_score
     ON ipv6_reputation_profile (current_score);
 
@@ -93,13 +106,16 @@ CREATE INDEX IF NOT EXISTS idx_ipv6_reputation_profile_country
     ON ipv6_reputation_profile (country);
 
 COMMENT ON TABLE ipv6_reputation_profile IS 'IPv6 信誉画像最小版表：记录第三方 API 基础情报与系统内动态分数';
-COMMENT ON COLUMN ipv6_reputation_profile.ip IS 'IPv6 地址，作为主键';
+COMMENT ON COLUMN ipv6_reputation_profile.id IS '自增主键';
+COMMENT ON COLUMN ipv6_reputation_profile.ip IS 'IPv6 地址，业务唯一键';
 COMMENT ON COLUMN ipv6_reputation_profile.ip_type IS 'IP 类型：RESIDENTIAL / DATACENTER / MOBILE / BUSINESS / UNKNOWN';
 COMMENT ON COLUMN ipv6_reputation_profile.asn IS 'ASN 编号，例如 AS12345';
 COMMENT ON COLUMN ipv6_reputation_profile.provider_name IS '运营商 / 组织名称';
 COMMENT ON COLUMN ipv6_reputation_profile.latitude IS '纬度';
 COMMENT ON COLUMN ipv6_reputation_profile.longitude IS '经度';
 COMMENT ON COLUMN ipv6_reputation_profile.country IS '国家代码，建议使用 ISO 3166-1 alpha-2（如 US/CN/CA）';
+COMMENT ON COLUMN ipv6_reputation_profile.region IS '一级行政区 / 州 / 省，例如 California / Guangdong';
+COMMENT ON COLUMN ipv6_reputation_profile.city IS '城市名称，例如 Los Angeles / Shenzhen';
 COMMENT ON COLUMN ipv6_reputation_profile.is_datacenter IS '是否机房 IP';
 COMMENT ON COLUMN ipv6_reputation_profile.is_vpn IS '是否 VPN';
 COMMENT ON COLUMN ipv6_reputation_profile.is_proxy IS '是否代理';

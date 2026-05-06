@@ -61,7 +61,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
     private static final String LOGIN_TOTP_VERIFICATION_PATH = "/shopping/user/totp-verification?mode=login";
     private static final String LOGIN_ADD_PHONE_PATH = "/shopping/user/add-phone?mode=login";
     private static final String SESSION_ENDED_PATH = "/shopping/user/session-ended";
-    private static final String AUTHENTICATED_PATH = "/";
+    private static final String AUTHENTICATED_PATH = "/shopping/user/console";
     private static final String ERROR_INVALID_STATE = "INVALID_STATE";
     private static final String ERROR_PHONE_LOGIN_INVALID_PHONE = "PHONE_LOGIN_INVALID_PHONE";
     private static final String ERROR_PHONE_LOGIN_BLOOM_MISS = "PHONE_LOGIN_BLOOM_MISS";
@@ -121,7 +121,8 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
 
     @Override
     @Transactional
-    public LoginFlowStartResult startFlow(String email,
+    public LoginFlowStartResult startFlow(String reusableFlowId,
+                                          String email,
                                           String deviceFingerprint,
                                           String preAuthToken,
                                           String riskLevel,
@@ -155,6 +156,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
 
         LoginFlowSession session = loginFlowSessionService.startFlow(
+                reusableFlowId,
                 normalizedEmail,
                 null,
                 normalizedRiskLevel,
@@ -329,12 +331,13 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             return phoneValidationResult;
         }
         String normalizedPhone = normalizeVerifiedPhone(dialCode, phoneNumber);
+        String effectiveRiskLevel = effectiveRiskLevel(session.getRiskLevel(), riskLevel);
         PhoneSmsRiskGateResult gateResult = phoneSmsRiskGateService.checkOrVerify(
                 PhoneSmsRiskGateService.SCENE_BIND_PHONE_SMS,
                 normalizedPhone,
                 preAuthToken,
                 deviceFingerprint,
-                riskLevel,
+                effectiveRiskLevel,
                 clientIp,
                 captchaUuid,
                 captchaCode
@@ -398,6 +401,39 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .message(sendResult.getMessage())
                 .riskLevel(loginChallengePolicy.normalizeRiskLevel(riskLevel))
                 .authenticated(false)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public LoginVerificationResult verifyPhoneLoginCode(String dialCode,
+                                                        String phoneNumber,
+                                                        String smsCode,
+                                                        String riskLevel) {
+        SmsCodeVerifyResult verifyResult = smsCodeService.verifyBindPhoneCode(dialCode, phoneNumber, smsCode);
+        if (!verifyResult.isSuccess()) {
+            return verifyFail(verifyResult.getReasonCode(), verifyResult.getMessage());
+        }
+        String normalizedPhone = verifyResult.getNormalizedE164();
+        if (StrUtil.isBlank(normalizedPhone)) {
+            return verifyFail(ERROR_PHONE_LOGIN_INVALID_PHONE, "Phone number validation failed.");
+        }
+
+        UserLoginIdentity identity = userLoginIdentityMapper.findVerifiedByPhone(normalizedPhone);
+        if (identity == null || !isActive(identity)) {
+            return verifyFail(ERROR_PHONE_LOGIN_DB_MISS, "Phone number was not found in verified login identities.");
+        }
+        phoneBoundCountingBloomService.addVerifiedPhoneAsync(normalizedPhone);
+        userLoginIdentityMapper.updateLastLoginAtByUserId(identity.getUserId());
+        return LoginVerificationResult.builder()
+                .success(true)
+                .message("Login completed.")
+                .userId(identity.getUserId())
+                .email(identity.getEmail())
+                .riskLevel(loginChallengePolicy.normalizeRiskLevel(riskLevel))
+                .step(LoginFlowStep.DONE)
+                .redirectPath(pathForStep(LoginFlowStep.DONE))
+                .authenticated(true)
                 .build();
     }
 
@@ -473,9 +509,12 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             }
         }
 
-        ChallengeSelection challengeSelection = pendingSelection != null
-                ? pendingSelection
-                : loginChallengePolicy.resolveChallengeSelection(riskLevel, email, deviceFingerprint);
+        ChallengeSelection riskBasedSelection = loginChallengePolicy.resolveChallengeSelection(riskLevel, email, deviceFingerprint);
+        ChallengeSelection challengeSelection = resolveChallengeSelectionForCurrentRisk(
+                pendingSelection,
+                riskBasedSelection,
+                email,
+                deviceFingerprint);
         String challengeType = challengeSelection == null ? null : challengeSelection.type();
         String challengeSubType = challengeSelection == null ? null : challengeSelection.subType();
         if (StrUtil.isBlank(challengeType)) {
@@ -521,6 +560,36 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
 
         return null;
+    }
+
+    private ChallengeSelection resolveChallengeSelectionForCurrentRisk(ChallengeSelection pendingSelection,
+                                                                       ChallengeSelection riskBasedSelection,
+                                                                       String email,
+                                                                       String deviceFingerprint) {
+        if (pendingSelection == null) {
+            return riskBasedSelection;
+        }
+        if (isCompatiblePendingChallenge(pendingSelection, riskBasedSelection)) {
+            return pendingSelection;
+        }
+        loginChallengeSessionService.clearPendingChallengeSelection(email, deviceFingerprint);
+        return riskBasedSelection;
+    }
+
+    private boolean isCompatiblePendingChallenge(ChallengeSelection pendingSelection,
+                                                 ChallengeSelection riskBasedSelection) {
+        if (pendingSelection == null || riskBasedSelection == null) {
+            return false;
+        }
+        if (!StrUtil.equals(pendingSelection.type(), riskBasedSelection.type())) {
+            return false;
+        }
+        if (CHALLENGE_TIANAI.equals(pendingSelection.type())) {
+            return true;
+        }
+        return StrUtil.equals(
+                StrUtil.nullToEmpty(pendingSelection.subType()),
+                StrUtil.nullToEmpty(riskBasedSelection.subType()));
     }
 
     private LoginVerificationResult completeFactor(LoginFlowSession session,
@@ -782,6 +851,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .message(message)
                 .flowId(session.getFlowId())
                 .userId(session.getUserId())
+                .riskLevel(session.getRiskLevel())
                 .step(session.getStep())
                 .redirectPath(pathForStep(session.getStep()))
                 .availableFactors(session.getAvailableFactors())
@@ -857,6 +927,24 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String effectiveRiskLevel(String primaryRiskLevel, String fallbackRiskLevel) {
+        String primary = loginChallengePolicy.normalizeRiskLevel(primaryRiskLevel);
+        String fallback = loginChallengePolicy.normalizeRiskLevel(fallbackRiskLevel);
+        return riskRank(fallback) > riskRank(primary) ? fallback : primary;
+    }
+
+    private int riskRank(String riskLevel) {
+        return switch (loginChallengePolicy.normalizeRiskLevel(riskLevel)) {
+            case "L1" -> 1;
+            case "L2" -> 2;
+            case "L3" -> 3;
+            case "L4" -> 4;
+            case "L5" -> 5;
+            case "L6" -> 6;
+            default -> 0;
+        };
     }
 
     private record ResolvedLoginSession(LoginFlowSession session, UserLoginIdentity identity) {

@@ -57,16 +57,10 @@
   }
 
   function buildRegisterDeviceFingerprint() {
-    const userAgent = typeof navigator !== "undefined" ? navigator.userAgent || "unknown" : "unknown";
-    const language = typeof navigator !== "undefined" ? navigator.language || "unknown" : "unknown";
-    const platform = typeof navigator !== "undefined" ? navigator.platform || "unknown" : "unknown";
-    const screenWidth = typeof screen !== "undefined" ? String(screen.width || 0) : "0";
-    const screenHeight = typeof screen !== "undefined" ? String(screen.height || 0) : "0";
-    const timeZone = typeof Intl !== "undefined"
-      ? Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown"
-      : "unknown";
-
-    return [userAgent, language, platform, screenWidth, screenHeight, timeZone].join("|");
+    if (preAuthClientApi && typeof preAuthClientApi.buildDeviceFingerprint === "function") {
+      return preAuthClientApi.buildDeviceFingerprint();
+    }
+    return "v2/unknown/unknown/unknown/unknown/unknown/0x0/0x0/0x0/0/0/0/unknown/unknown";
   }
 
   function resolveOperationTimeoutRemainingMs(payload) {

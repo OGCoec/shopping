@@ -13,6 +13,28 @@
   const WAF_PENDING_KEY = "shopping.password-reset.waf.pending";
   const WAF_RESUME_COOKIE = "PASSWORD_RESET_WAF_RESUME";
   const WAF_RESUME_HEADER = "X-Password-Reset-Waf-Resume";
+  const PASSWORD_STRENGTH_COLORS = ["#ccc", "#ef4444", "#f97316", "#84cc16", "#16a34a"];
+  const PASSWORD_STRENGTH_LABELS = [
+    "\u592a\u77ed",
+    "\u5f31",
+    "\u4e2d\u7b49",
+    "\u5f3a",
+    "\u5f88\u5f3a"
+  ];
+  const PASSWORD_HIDDEN_ICON = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7c2.1 0 4 .55 5.62 1.47"></path>
+      <path d="M22 12s-3.6 7-10 7c-2.1 0-4-.55-5.62-1.47"></path>
+      <path d="M3 3l18 18"></path>
+      <path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-.88"></path>
+    </svg>
+  `;
+  const PASSWORD_VISIBLE_ICON = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+  `;
 
   let initialized = false;
   let cooldownTimer = null;
@@ -27,18 +49,23 @@
     bindSendButton("btn-reset-code", options);
     bindVerifyCode(options);
     bindResetByLink(options);
+    bindResetPasswordStrength();
+    bindPasswordVisibilityToggle("reset-link-password-toggle", "reset-link-password", "Show password", "Hide password");
+    bindPasswordVisibilityToggle("reset-link-confirm-toggle", "reset-link-confirm", "Show confirm password", "Hide confirm password");
     syncMode();
     resumeAfterWaf(options);
   }
 
   function syncMode() {
     const token = currentResetToken();
+    const resetPage = isResetPasswordPage();
     const requestPanel = document.getElementById("password-reset-request-panel");
     const linkPanel = document.getElementById("password-reset-link-panel");
-    if (requestPanel) requestPanel.style.display = token ? "none" : "";
-    if (linkPanel) linkPanel.style.display = token ? "" : "none";
-    if (token) {
+    if (requestPanel) requestPanel.style.display = resetPage ? "none" : "";
+    if (linkPanel) linkPanel.style.display = resetPage ? "" : "none";
+    if (resetPage) {
       document.getElementById("reset-link-password")?.focus();
+      updateResetPasswordStrengthDisplay(document.getElementById("reset-link-password")?.value || "");
     }
   }
 
@@ -94,8 +121,91 @@
       const password = document.getElementById("reset-link-password")?.value || "";
       const confirmPassword = document.getElementById("reset-link-confirm")?.value || "";
       const resetPath = currentResetMode() === "code" ? RESET_BY_CODE_PATH : RESET_BY_LINK_PATH;
-      await submitReset(resetPath, { token }, password, confirmPassword, showLinkMessage, options);
+      const identity = currentResetMode() === "code" ? {} : { token };
+      await submitReset(resetPath, identity, password, confirmPassword, showLinkMessage, options);
     });
+  }
+
+  function bindResetPasswordStrength() {
+    const passwordInput = document.getElementById("reset-link-password");
+    if (!passwordInput || passwordInput.dataset.passwordStrengthBound === "true") return;
+    passwordInput.dataset.passwordStrengthBound = "true";
+    passwordInput.addEventListener("input", (event) => {
+      updateResetPasswordStrengthDisplay(event.target.value || "");
+    });
+    updateResetPasswordStrengthDisplay(passwordInput.value || "");
+  }
+
+  function updatePasswordVisibilityToggle(button, input, showLabel, hideLabel) {
+    const visible = input?.type === "text";
+    button.innerHTML = visible ? PASSWORD_VISIBLE_ICON : PASSWORD_HIDDEN_ICON;
+    button.classList.toggle("is-visible", visible);
+    button.setAttribute("aria-label", visible ? hideLabel : showLabel);
+    button.setAttribute("title", visible ? hideLabel : showLabel);
+  }
+
+  function bindPasswordVisibilityToggle(buttonId, inputId, showLabel, hideLabel) {
+    const button = document.getElementById(buttonId);
+    const input = document.getElementById(inputId);
+    if (!button || !input) return;
+
+    updatePasswordVisibilityToggle(button, input, showLabel, hideLabel);
+
+    if (button.dataset.passwordVisibilityBound === "true") return;
+    button.dataset.passwordVisibilityBound = "true";
+    button.addEventListener("click", () => {
+      input.type = input.type === "password" ? "text" : "password";
+      updatePasswordVisibilityToggle(button, input, showLabel, hideLabel);
+      input.focus({ preventScroll: true });
+      try {
+        const caretPosition = typeof input.value === "string" ? input.value.length : 0;
+        input.setSelectionRange(caretPosition, caretPosition);
+      } catch (_) {
+      }
+      globalThis.ShoppingLoginVisuals?.applyFocusModeFromActiveElement?.();
+    });
+  }
+
+  function updateResetPasswordStrengthDisplay(password) {
+    const passwordStrengthBar = document.getElementById("resetPasswordStrengthBar");
+    const passwordStrengthText = document.getElementById("resetPasswordStrengthText");
+    if (!passwordStrengthBar || !passwordStrengthText) return;
+
+    if (!password) {
+      passwordStrengthBar.style.width = "0";
+      passwordStrengthBar.style.background = "transparent";
+      passwordStrengthText.textContent = "";
+      passwordStrengthText.style.color = "";
+      return;
+    }
+
+    const level = checkPasswordStrength(password);
+    const color = PASSWORD_STRENGTH_COLORS[level] || PASSWORD_STRENGTH_COLORS[0];
+    passwordStrengthBar.style.width = `${level === 0 ? 20 : 20 + level * 20}%`;
+    passwordStrengthBar.style.background = color;
+    passwordStrengthText.textContent = PASSWORD_STRENGTH_LABELS[level] || "";
+    passwordStrengthText.style.color = color;
+  }
+
+  function checkPasswordStrength(password) {
+    if (!password || password.length <= 6) return 0;
+
+    const isSingleCharacterTypePassword =
+      /^[0-9]{7,}$/.test(password) || /^[a-z]{7,}$/.test(password) || /^[A-Z]{7,}$/.test(password);
+
+    if (isSingleCharacterTypePassword) {
+      return 1;
+    }
+
+    let score = 0;
+    if (/[a-z]/.test(password)) score += 1;
+    if (/[A-Z]/.test(password)) score += 1;
+    if (/[0-9]/.test(password)) score += 1;
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) score += 1;
+
+    if (password.length >= 9 && score === 4) return 4;
+    if (password.length >= 9 && score === 3) return 3;
+    return 2;
   }
 
   async function sendResetEmail(email, options, wafResume) {
@@ -261,6 +371,16 @@
       return pathname === "/shopping/user/reset-password-code" ? "code" : "url";
     } catch (_) {
       return "url";
+    }
+  }
+
+  function isResetPasswordPage() {
+    try {
+      const pathname = new URL(window.location.href).pathname;
+      return pathname === "/shopping/user/reset-password-code"
+          || pathname === "/shopping/user/reset-password-url";
+    } catch (_) {
+      return Boolean(currentResetToken());
     }
   }
 

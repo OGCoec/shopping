@@ -10,6 +10,7 @@ import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSele
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RiskSnapshot;
+import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -64,6 +65,22 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                                                                     String rawPassword,
                                                                     String deviceFingerprint,
                                                                     String publicIp) {
+        return resolveRegisterEmailCodeChallenge(
+                email,
+                username,
+                rawPassword,
+                deviceFingerprint,
+                publicIp,
+                null);
+    }
+
+    @Override
+    public RegisterPrecheckResult resolveRegisterEmailCodeChallenge(String email,
+                                                                    String username,
+                                                                    String rawPassword,
+                                                                    String deviceFingerprint,
+                                                                    String publicIp,
+                                                                    AuthRiskSnapshot riskSnapshotOverride) {
         RegisterPrecheckResult validationFailure = validateRegisterInput(email, username, rawPassword, deviceFingerprint);
         if (validationFailure != null) {
             return validationFailure;
@@ -74,7 +91,11 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 deviceFingerprint,
                 challengeSessionService.readPendingChallengeSelection(email, deviceFingerprint));
 
-        RiskSnapshot riskSnapshot = riskSnapshotService.buildRiskSnapshot(publicIp, pendingChallengeSelection);
+        RiskSnapshot riskSnapshot = riskSnapshotService.buildRiskSnapshot(
+                publicIp,
+                deviceFingerprint,
+                pendingChallengeSelection,
+                riskSnapshotOverride);
         ChallengeSelection challengeSelection = riskSnapshot.challengeSelection();
         if (challengeSelection.type() != null) {
             challengeSessionService.savePendingChallengeSelection(email, deviceFingerprint, challengeSelection);
@@ -108,6 +129,30 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                                                                     String publicIp,
                                                                     String captchaUuid,
                                                                     String captchaCode) {
+        return sendRegisterEmailCodeAfterCaptcha(
+                flowId,
+                allowPassedChallengeReuse,
+                email,
+                username,
+                rawPassword,
+                deviceFingerprint,
+                publicIp,
+                captchaUuid,
+                captchaCode,
+                null);
+    }
+
+    @Override
+    public RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String flowId,
+                                                                    boolean allowPassedChallengeReuse,
+                                                                    String email,
+                                                                    String username,
+                                                                    String rawPassword,
+                                                                    String deviceFingerprint,
+                                                                    String publicIp,
+                                                                    String captchaUuid,
+                                                                    String captchaCode,
+                                                                    AuthRiskSnapshot riskSnapshotOverride) {
         RegisterPrecheckResult validationFailure = validateRegisterInput(email, username, rawPassword, deviceFingerprint);
         if (validationFailure != null) {
             return validationFailure;
@@ -118,7 +163,11 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 deviceFingerprint,
                 challengeSessionService.readPendingChallengeSelection(email, deviceFingerprint));
 
-        RiskSnapshot riskSnapshot = riskSnapshotService.buildRiskSnapshot(publicIp, pendingChallengeSelection);
+        RiskSnapshot riskSnapshot = riskSnapshotService.buildRiskSnapshot(
+                publicIp,
+                deviceFingerprint,
+                pendingChallengeSelection,
+                riskSnapshotOverride);
         ChallengeSelection challengeSelection = challengeSessionService.resolveChallengeSelectionForCurrentAttempt(
                 pendingChallengeSelection,
                 riskSnapshot.challengeSelection());

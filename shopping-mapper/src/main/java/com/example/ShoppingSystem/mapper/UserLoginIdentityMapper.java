@@ -45,9 +45,12 @@ public interface UserLoginIdentityMapper {
                                          @Param("emailPasswordHash") String emailPasswordHash,
                                          @Param("tokenVersion") String tokenVersion);
 
-    int savePendingTotpSecret(@Param("id") Long id, @Param("secretEncrypted") String secretEncrypted);
+    int updateTokenVersionByUserId(@Param("userId") Long userId,
+                                    @Param("tokenVersion") String tokenVersion);
 
-    int enableTotpById(@Param("id") Long id);
+    int activateTotpSecret(@Param("id") Long id,
+                            @Param("secretEncrypted") String secretEncrypted,
+                            @Param("timeStep") Long timeStep);
 
     int updateTotpLastUsedStep(@Param("id") Long id, @Param("timeStep") Long timeStep);
 

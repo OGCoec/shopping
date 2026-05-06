@@ -12,6 +12,7 @@
   const WAF_REQUIRED_ERROR_CODE = "PREAUTH_IP_CHANGED_WAF_REQUIRED";
   const WAF_PENDING_REQUEST_KEY = "shopping.preauth.waf.pending-request";
   const WAF_REPLAY_EVENT_NAME = "shopping:preauth:waf-request-replayed";
+  const DEVICE_SEED_KEY = "shopping.preauth.device-seed";
 
   const PREAUTH_BOOTSTRAP_URL = "/shopping/auth/preauth/bootstrap";
 
@@ -26,6 +27,7 @@
   let bootstrapTask = null;
   let bootstrapped = false;
   let lastBootstrapPayload = null;
+  let inMemoryDeviceSeed = null;
 
   function getNativeFetch() {
     if (typeof fetch !== "function") {
@@ -35,15 +37,102 @@
   }
 
   function buildDeviceFingerprint() {
-    const userAgent = typeof navigator !== "undefined" ? navigator.userAgent || "unknown" : "unknown";
-    const language = typeof navigator !== "undefined" ? navigator.language || "unknown" : "unknown";
-    const platform = typeof navigator !== "undefined" ? navigator.platform || "unknown" : "unknown";
-    const screenWidth = typeof screen !== "undefined" ? String(screen.width || 0) : "0";
-    const screenHeight = typeof screen !== "undefined" ? String(screen.height || 0) : "0";
-    const timeZone = typeof Intl !== "undefined"
-      ? Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown"
-      : "unknown";
-    return [userAgent, language, platform, screenWidth, screenHeight, timeZone].join("|");
+    const nav = typeof navigator !== "undefined" ? navigator : null;
+    const screenInfo = typeof screen !== "undefined" ? screen : null;
+    const parts = [
+      "v3",
+      readOrCreateDeviceSeed(),
+      buildLanguageFingerprint(nav),
+      buildTimeZoneFingerprint(),
+      String(screenInfo?.colorDepth || 0),
+      String(nav?.hardwareConcurrency || 0),
+      String(nav?.deviceMemory || "unknown"),
+      buildWebglRendererFingerprint()
+    ];
+    return parts.map(encodeFingerprintPart).join("/");
+  }
+
+  function readOrCreateDeviceSeed() {
+    if (inMemoryDeviceSeed) {
+      return inMemoryDeviceSeed;
+    }
+    if (isBrowserRuntime() && typeof localStorage !== "undefined") {
+      try {
+        const existing = localStorage.getItem(DEVICE_SEED_KEY);
+        if (existing) {
+          inMemoryDeviceSeed = existing;
+          return existing;
+        }
+        inMemoryDeviceSeed = createDeviceSeed();
+        localStorage.setItem(DEVICE_SEED_KEY, inMemoryDeviceSeed);
+        return inMemoryDeviceSeed;
+      } catch (_) {
+      }
+    }
+    inMemoryDeviceSeed = createDeviceSeed();
+    return inMemoryDeviceSeed;
+  }
+
+  function createDeviceSeed() {
+    const cryptoApi = globalThis?.crypto;
+    if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+      return cryptoApi.randomUUID();
+    }
+    if (cryptoApi && typeof cryptoApi.getRandomValues === "function") {
+      const bytes = new Uint8Array(16);
+      cryptoApi.getRandomValues(bytes);
+      return Array.from(bytes, (item) => item.toString(16).padStart(2, "0")).join("");
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function buildLanguageFingerprint(nav) {
+    if (!nav) {
+      return "unknown";
+    }
+    const primary = nav.language || "unknown";
+    const languages = Array.isArray(nav.languages) && nav.languages.length > 0
+      ? nav.languages.join(",")
+      : primary;
+    return `${primary};${languages}`;
+  }
+
+  function buildTimeZoneFingerprint() {
+    try {
+      return typeof Intl !== "undefined"
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown"
+        : "unknown";
+    } catch (_) {
+      return "unknown";
+    }
+  }
+
+  function buildWebglRendererFingerprint() {
+    if (typeof document === "undefined") {
+      return "unknown";
+    }
+    try {
+      const canvas = document.createElement("canvas");
+      const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+      if (!gl) {
+        return "unknown";
+      }
+      const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+      if (debugInfo) {
+        const unmaskedRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        if (unmaskedRenderer) {
+          return String(unmaskedRenderer);
+        }
+      }
+      const renderer = gl.getParameter(gl.RENDERER);
+      return renderer ? String(renderer) : "unknown";
+    } catch (_) {
+      return "unknown";
+    }
+  }
+
+  function encodeFingerprintPart(value) {
+    return encodeURIComponent(String(value ?? "unknown"));
   }
 
   async function parseJsonSafely(response) {

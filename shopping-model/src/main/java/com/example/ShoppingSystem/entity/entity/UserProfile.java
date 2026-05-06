@@ -21,6 +21,7 @@ public class UserProfile {
     private Long id;
     private String firstName;
     private String lastName;
+    private String avatar;
     private String username;
 
     private String gender;

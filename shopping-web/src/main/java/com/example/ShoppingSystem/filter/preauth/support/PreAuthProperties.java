@@ -18,7 +18,7 @@ public class PreAuthProperties {
     /** Redis 中保存完整绑定对象的 key 前缀。 */
     private String redisKeyPrefix = "register:preauth:bind:";
     /** 预登录绑定的基础 TTL，单位分钟。 */
-    private int ttlMinutes = 60;
+    private int ttlMinutes = 180;
     /** recentIps 最多保留多少个 IP。 */
     private int recentIpLimit = 3;
     /** PREAUTH_TOKEN 的 Cookie 名。 */

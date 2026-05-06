@@ -5,19 +5,20 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 /**
- * IP -> country 本地缓存（Caffeine）。
+ * IP -> geo local Caffeine cache.
  * <p>
- * 只缓存国家代码，避免缓存体积膨胀。
+ * Stores country/region/city/coordinates so risk checks do not repeatedly hit DB.
  */
 @Service
 public class IpCountryLocalCacheStore {
 
-    private final Cache<String, LocalCountryEntry> cache;
+    private final Cache<String, LocalGeoEntry> cache;
     private final int localTtlMinMinutes;
     private final int localTtlMaxMinutes;
 
@@ -34,10 +35,15 @@ public class IpCountryLocalCacheStore {
     }
 
     public String getCountry(String ip) {
+        IpGeoSnapshot snapshot = getGeo(ip);
+        return snapshot == null ? null : snapshot.country();
+    }
+
+    public IpGeoSnapshot getGeo(String ip) {
         if (ip == null || ip.isBlank()) {
             return null;
         }
-        LocalCountryEntry entry = cache.getIfPresent(ip);
+        LocalGeoEntry entry = cache.getIfPresent(ip);
         if (entry == null) {
             return null;
         }
@@ -45,11 +51,25 @@ public class IpCountryLocalCacheStore {
             cache.invalidate(ip);
             return null;
         }
-        return entry.country();
+        return new IpGeoSnapshot(
+                entry.country(),
+                entry.region(),
+                entry.city(),
+                entry.latitude(),
+                entry.longitude()
+        );
     }
 
     public void putCountry(String ip, String country) {
-        if (ip == null || ip.isBlank() || country == null || country.isBlank()) {
+        putGeo(ip, new IpGeoSnapshot(country, null, null, null, null));
+    }
+
+    public void putGeo(String ip, IpGeoSnapshot geo) {
+        if (ip == null || ip.isBlank()) {
+            return;
+        }
+        IpGeoSnapshot normalized = normalizeGeo(geo);
+        if (normalized == null || !normalized.hasAnyGeo()) {
             return;
         }
         int ttlRange = localTtlMaxMinutes - localTtlMinMinutes;
@@ -57,16 +77,59 @@ public class IpCountryLocalCacheStore {
                 ? localTtlMinMinutes
                 : localTtlMinMinutes + ThreadLocalRandom.current().nextInt(ttlRange + 1);
         long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(ttl);
-        cache.put(ip, new LocalCountryEntry(normalizeCountryCode(country), expiresAt));
+        cache.put(ip, new LocalGeoEntry(
+                normalized.country(),
+                normalized.region(),
+                normalized.city(),
+                normalized.latitude(),
+                normalized.longitude(),
+                expiresAt
+        ));
+    }
+
+    private IpGeoSnapshot normalizeGeo(IpGeoSnapshot geo) {
+        if (geo == null) {
+            return null;
+        }
+        return new IpGeoSnapshot(
+                normalizeCountryCode(geo.country()),
+                normalizeNullableText(geo.region()),
+                normalizeNullableText(geo.city()),
+                geo.latitude(),
+                geo.longitude()
+        );
     }
 
     private String normalizeCountryCode(String country) {
         if (country == null || country.isBlank()) {
             return null;
         }
-        return country.trim().toUpperCase(Locale.ROOT);
+        String normalized = country.trim().toUpperCase(Locale.ROOT);
+        if (normalized.isEmpty() || "-".equals(normalized)) {
+            return null;
+        }
+        return normalized;
     }
 
-    private record LocalCountryEntry(String country, long expiresAtEpochMillis) {
+    private String normalizeNullableText(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()
+                || "-".equals(normalized)
+                || "N/A".equalsIgnoreCase(normalized)
+                || normalized.toLowerCase(Locale.ROOT).contains("not supported")) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private record LocalGeoEntry(String country,
+                                 String region,
+                                 String city,
+                                 BigDecimal latitude,
+                                 BigDecimal longitude,
+                                 long expiresAtEpochMillis) {
     }
 }

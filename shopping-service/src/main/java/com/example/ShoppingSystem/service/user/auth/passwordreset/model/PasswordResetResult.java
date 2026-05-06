@@ -8,26 +8,31 @@ public record PasswordResetResult(boolean success,
                                   String verifyUrl,
                                   String redirectPath,
                                   long retryAfterMs,
-                                  PasswordResetCryptoKey passwordCrypto) {
+                                  PasswordResetCryptoKey passwordCrypto,
+                                  String internalToken) {
 
     public static PasswordResetResult ok(String message) {
-        return new PasswordResetResult(true, message, "", "", "", "", "", 0L, null);
+        return new PasswordResetResult(true, message, "", "", "", "", "", 0L, null, "");
     }
 
     public static PasswordResetResult okWithRetryAfter(String message, long retryAfterMs) {
-        return new PasswordResetResult(true, message, "", "", "", "", "", retryAfterMs, null);
+        return new PasswordResetResult(true, message, "", "", "", "", "", retryAfterMs, null, "");
     }
 
     public static PasswordResetResult verified(String message, String redirectPath) {
-        return new PasswordResetResult(true, message, "", "", "", "", redirectPath, 0L, null);
+        return verified(message, redirectPath, "");
+    }
+
+    public static PasswordResetResult verified(String message, String redirectPath, String internalToken) {
+        return new PasswordResetResult(true, message, "", "", "", "", redirectPath, 0L, null, internalToken);
     }
 
     public static PasswordResetResult cryptoKey(PasswordResetCryptoKey key) {
-        return new PasswordResetResult(true, "ok", "", "", "", "", "", 0L, key);
+        return new PasswordResetResult(true, "ok", "", "", "", "", "", 0L, key, "");
     }
 
     public static PasswordResetResult fail(String error, String message) {
-        return new PasswordResetResult(false, message, error, "", "", "", "", 0L, null);
+        return new PasswordResetResult(false, message, error, "", "", "", "", 0L, null, "");
     }
 
     public static PasswordResetResult rateLimited(long retryAfterMs) {
@@ -40,11 +45,12 @@ public record PasswordResetResult(boolean success,
                 "",
                 "",
                 retryAfterMs,
-                null);
+                null,
+                "");
     }
 
     public static PasswordResetResult blocked(String riskLevel, String message) {
-        return new PasswordResetResult(false, message, "PASSWORD_RESET_BLOCKED", riskLevel, "", "", "", 0L, null);
+        return new PasswordResetResult(false, message, "PASSWORD_RESET_BLOCKED", riskLevel, "", "", "", 0L, null, "");
     }
 
     public static PasswordResetResult wafRequired(String riskLevel, String verifyUrl) {
@@ -57,6 +63,7 @@ public record PasswordResetResult(boolean success,
                 verifyUrl,
                 "",
                 0L,
-                null);
+                null,
+                "");
     }
 }

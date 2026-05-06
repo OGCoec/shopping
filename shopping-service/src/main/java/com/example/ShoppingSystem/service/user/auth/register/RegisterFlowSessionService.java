@@ -9,7 +9,8 @@ import com.example.ShoppingSystem.service.user.auth.register.model.RegisterFlowV
  */
 public interface RegisterFlowSessionService {
 
-    RegisterFlowSession startFlow(String email,
+    RegisterFlowSession startFlow(String reusableFlowId,
+                                  String email,
                                   String deviceFingerprint,
                                   String preAuthToken);
 
@@ -26,4 +27,8 @@ public interface RegisterFlowSessionService {
                                    String riskLevel,
                                    boolean requirePhoneBinding,
                                    boolean completed);
+
+    RegisterFlowSession updateRiskLevel(String flowId,
+                                        String riskLevel,
+                                        boolean requirePhoneBinding);
 }

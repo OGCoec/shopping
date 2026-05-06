@@ -1,0 +1,373 @@
+IP 变化扣设备分实现设计
+============================================================
+
+目标
+------------------------------------------------------------
+同一个设备指纹在业务层请求、注册、登录、预登录链路中发生 IP 变化时，根据 IP 地理变化、变化频率、IP 风险等级、移动速度是否触发“不可能的旅行”，降低设备风险分。
+
+扣分对象：
+- device_risk_profile.current_score
+
+不要直接扣 IP 分：
+- IP 分表示这个 IP 本身是否高风险。
+- IP 变化、跨城市、跨国家、短时高速移动表示的是设备行为异常，应该扣设备分。
+
+设备初始分
+------------------------------------------------------------
+当前业务可以把设备第一次出现初始化为 6666 分。
+
+后续分数随着设备行为变化而变化：
+- IP 短时频繁切换，扣设备分。
+- 当前 IP 风险等级高，扣设备分。
+- IP 地理位置变化过快，触发不可能旅行，扣设备分。
+- 通过验证、稳定使用、正常行为恢复，可以再考虑加分或降级风控。
+
+一、数据来源
+------------------------------------------------------------
+
+1. 短时判断
+
+短时变化使用 Redis 预登录绑定键：
+
+register:preauth:bind:{token}
+
+这个键还存在时，说明当前浏览器/设备上下文仍在一个短时连续会话内。业务层大多数请求都会经过预登录过滤器，因此可以在 IP 变化时做短时风控。
+
+短时 Redis binding 里建议保存：
+- currentIp
+- currentIpSeenAt
+- currentCountry
+- currentRegion
+- currentCity
+- currentLatitude
+- currentLongitude
+- ipChangeCount
+- sameCityIpChangeCount
+- lastPenalizedIpTransition
+- lastPenaltyAt
+- lastPenaltyScore
+- lastPenaltyReason
+
+说明：
+- 不一定需要 previousIp / previousCity / previousLatitude 这类字段。
+- 每次请求拿当前 IP 的 country/region/city/latitude/longitude，与 Redis binding 里保存的 currentIp 画像比较即可。
+- 如果 IP 没变，只刷新必要时间。
+- 如果 IP 变了，就用 Redis 里的 currentIp 作为 oldIp，用本次 IP 作为 newIp，计算变化类型、速度和扣分。
+- 扣分判断完成后，把 Redis binding 里的 currentIp 画像覆盖成本次 IP 画像。
+
+2. 长效判断
+
+如果 register:preauth:bind:{token} 不存在，说明短时会话已过期。这时使用 DB 里的设备画像作为历史依据：
+
+device_risk_profile
+
+长效逻辑核心字段：
+- last_login_ip
+- last_ip_seen_at
+- last_penalized_ip_transition
+- last_penalty_at
+- last_penalty_score
+- last_penalty_reason
+- recent_ip_switch_count
+- current_score
+- risk_level
+- last_seen_at
+- updated_at
+
+不需要在 device_risk_profile 里重复保存：
+- last_country
+- last_region
+- last_city
+- last_latitude
+- last_longitude
+
+原因：
+- device_risk_profile 已有 last_login_ip。
+- 上次 IP 的国家、地区、城市、经纬度可以根据 last_login_ip 去 ipv4_reputation_profile / ipv6_reputation_profile 子查询。
+- 当前 IP 的国家、地区、城市、经纬度走现有 IP geo 查询链路。
+- 避免把同一份 IP 地理信息重复存到多个表，后续修正 IP 库时也更容易维护。
+
+3. IP 地理信息
+
+IP geo 查询链路：
+- Caffeine 本地缓存
+- Redis: register:ip:country:{ip}
+- DB: ipv4_reputation_profile / ipv6_reputation_profile
+- BIN fallback
+
+register:ip:country:{ip} 建议保存 JSON：
+
+{
+  "country": "US",
+  "region": "California",
+  "city": "Los Angeles",
+  "latitude": 34.0522,
+  "longitude": -118.2437,
+  "source": "DB",
+  "updatedAtEpochMillis": 1710000000000
+}
+
+二、device_risk_profile 需要新增的字段
+------------------------------------------------------------
+
+已经直接加到 sql/008_create_device_risk_profile.sql：
+
+last_ip_seen_at TIMESTAMPTZ
+- last_login_ip 的记录时间。
+- 长效 IP 变化时，用它和本次时间计算移动速度。
+
+last_penalized_ip_transition TEXT
+- 最近一次已扣分的 IP 变化链路。
+- 格式示例：oldIp->newIp。
+- 用于避免同一个 IP transition 在多个业务请求里重复扣分。
+
+last_penalty_at TIMESTAMPTZ
+- 最近一次 IP 变化导致设备分扣分的时间。
+
+last_penalty_score INT NOT NULL DEFAULT 0
+- 最近一次 IP 变化扣了多少设备分。
+
+last_penalty_reason VARCHAR(128)
+- 最近一次 IP 变化扣分原因。
+- 示例：SAME_CITY_IP_SWITCH_5、SAME_COUNTRY_CITY_CHANGED、COUNTRY_CHANGED、IMPOSSIBLE_TRAVEL_SHORT、IMPOSSIBLE_TRAVEL_LONG。
+
+索引：
+- idx_device_risk_profile_last_ip_seen_at(last_ip_seen_at)
+
+三、短时 IP 变化扣分规则
+------------------------------------------------------------
+
+短时定义：
+- register:preauth:bind:{token} 存在。
+- 当前请求 IP 与 binding.currentIp 不一致。
+
+1. IP 变化，但 country 相同、city 相同
+
+说明：
+- 可能是运营商 NAT、移动网络出口、同城代理出口池。
+- 风险低，不应该每次都扣。
+
+规则：
+- 容忍 5 次。
+- 每累计 5 次同 city IP 变化，扣 100 分。
+
+示例：
+- 第 1 到第 4 次：不扣。
+- 第 5 次：扣 100。
+- 第 10 次：再扣 100。
+
+2. IP 变化，country 相同，但 city 不同
+
+说明：
+- 同国家跨城市，风险中等。
+- 先扣基础分，再看是否触发不可能旅行。
+
+规则：
+- 基础扣 50。
+- 如果能计算速度，并触发不可能旅行，再追加速度扣分。
+
+3. IP 变化，country 不同
+
+说明：
+- 跨国家变化，风险高于跨城市。
+- 先扣基础分，再看是否触发不可能旅行。
+
+规则：
+- 基础扣 150。
+- 如果能计算速度，并触发不可能旅行，再追加速度扣分。
+
+四、短时不可能旅行速度扣分
+------------------------------------------------------------
+
+速度计算：
+
+distanceKm = Haversine(oldLat, oldLon, currentLat, currentLon)
+hours = max((currentSeenAt - oldSeenAt) / 3600000, 1 分钟)
+speedKmh = distanceKm / hours
+
+数据齐全才计算速度：
+- oldLatitude
+- oldLongitude
+- oldSeenAt
+- currentLatitude
+- currentLongitude
+- currentSeenAt
+
+短时速度扣分：
+- speedKmh >= 900 且 < 1500：追加扣 300
+- speedKmh >= 1500 且 < 3000：追加扣 600
+- speedKmh >= 3000：追加扣 900
+
+如果坐标或时间缺失：
+- 不计算速度。
+- 只执行基础扣分。
+
+五、长效 IP 变化扣分规则
+------------------------------------------------------------
+
+长效定义：
+- register:preauth:bind:{token} 不存在，或者旧 binding 已过期。
+- 当前请求需要根据 device_risk_profile 的历史登录 IP 判断。
+
+判断步骤：
+1. 根据 deviceFingerprint 查询 device_risk_profile。
+2. 如果没有设备画像，初始化设备分，不扣 IP 变化分。
+3. 如果 last_login_ip 为空，不扣 IP 变化分，只写入当前 IP 和 last_ip_seen_at。
+4. 如果当前 IP 与 last_login_ip 相同，不扣 IP 变化分，只刷新 last_seen_at / updated_at。
+5. 如果当前 IP 与 last_login_ip 不同：
+   - 用 last_login_ip 子查询旧 IP geo。
+   - 查询当前 IP geo。
+   - 根据当前 IP 风险等级扣基础分。
+   - 如果坐标和时间齐全，继续计算长效速度。
+
+当前 IP 风险等级基础扣分：
+- 当前 IP 风险等级 L4：扣 50
+- 当前 IP 风险等级 L5：扣 150
+- 当前 IP 风险等级 L6：不只是扣分，应该强验证、WAF、MFA 或临时阻断
+
+说明：
+- 长效跨国家不一定危险，因为用户可能真实出行。
+- 长效不要因为国家变化本身重扣。
+- 长效主要看当前 IP 风险等级和移动速度是否不合理。
+
+六、长效不可能旅行速度扣分
+------------------------------------------------------------
+
+长效也可以计算速度，但权重低于短时。
+
+长效速度基础扣分：
+- speedKmh >= 900 且 < 1500：追加扣 100
+- speedKmh >= 1500 且 < 3000：追加扣 250
+- speedKmh >= 3000：追加扣 450
+
+再根据时间差做衰减：
+- 时间差 <= 6 小时：扣分 * 1.0
+- 时间差 > 6 小时 且 <= 24 小时：扣分 * 0.7
+- 时间差 > 24 小时 且 <= 72 小时：扣分 * 0.4
+- 时间差 > 72 小时：不按不可能旅行扣分，只看当前 IP 风险等级
+
+七、防重复扣分
+------------------------------------------------------------
+
+每次 IP 变化只允许对同一个 transition 扣一次。
+
+transition 标识：
+
+oldIp + "->" + newIp
+
+短时：
+- 在 register:preauth:bind:{token} 中保存 lastPenalizedIpTransition。
+- 如果本次 transition 与 lastPenalizedIpTransition 相同，不重复扣。
+
+长效：
+- 在 device_risk_profile.last_penalized_ip_transition 保存最近一次已扣分 transition。
+- 如果本次 transition 与 last_penalized_ip_transition 相同，并且 last_penalty_at 仍在防重复窗口内，不重复扣。
+- 防重复窗口建议 1 小时到 24 小时，具体看业务请求频率。
+
+八、扣分后的更新
+------------------------------------------------------------
+
+1. device_risk_profile
+
+扣分后更新：
+- current_score = max(0, current_score - penalty)
+- risk_level = ChallengePolicy.resolveRiskLevel(current_score)
+- last_login_ip = currentIp
+- last_ip_seen_at = now
+- last_penalized_ip_transition = oldIp + "->" + currentIp
+- last_penalty_at = now
+- last_penalty_score = penalty
+- last_penalty_reason = reason
+- recent_ip_switch_count += 1
+- last_seen_at = now
+- updated_at = now
+
+没有扣分但 IP 已经确认切换时，也建议更新：
+- last_login_ip = currentIp
+- last_ip_seen_at = now
+- last_seen_at = now
+- updated_at = now
+
+2. Redis 设备分缓存
+
+需要失效或更新：
+
+register:device:risk:v2:{fingerprintHash}
+
+否则 DB 已扣分，但 Redis 仍可能返回旧设备分。
+
+3. Caffeine 设备分缓存
+
+需要失效或更新 DeviceRiskLocalCacheStore 中对应 fingerprintHash 的值。
+
+4. 可选：user_risk_profile
+
+如果当前请求已经识别出 userId，可以同步轻微影响 user_risk_profile。但主扣分对象仍然是 device_risk_profile。
+
+九、推荐执行位置
+------------------------------------------------------------
+
+短时：
+- PreAuthBindingService.validateAndTouch
+- 或 PreAuthInterceptor 检测到 IP_CHANGED_WAF_REQUIRED 时调用设备风险扣分服务
+
+长效：
+- 设备画像初始化/刷新时
+- 登录成功发 token 时
+- 注册完成时
+- 密码重置成功时
+
+建议抽象一个服务，而不是工具类：
+
+DeviceIpChangeRiskService
+
+职责：
+- 读取旧 IP geo
+- 读取当前 IP geo
+- 判断短时/长效
+- 在服务私有方法里用 Haversine 计算距离和速度
+- 计算扣分
+- 更新 device_risk_profile
+- 更新或失效 Redis 和 Caffeine 缓存
+
+不要把扣分逻辑写进工具类。后续如果需要 Haversine，直接写在服务 private 方法里即可。
+
+十、最终规则汇总
+------------------------------------------------------------
+
+短时：
+
+country 相同，city 相同：
+- 每 5 次扣 100
+
+country 相同，city 不同：
+- 基础扣 50
+- 短时速度追加扣 300 / 600 / 900
+
+country 不同：
+- 基础扣 150
+- 短时速度追加扣 300 / 600 / 900
+
+长效：
+
+IP 变化：
+- 当前 IP L4 扣 50
+- 当前 IP L5 扣 150
+- 当前 IP L6 强验证或阻断
+- 长效速度追加扣 100 / 250 / 450，并按时间差衰减
+
+超过 72 小时：
+- 不按不可能旅行扣分
+- 只看当前 IP 风险等级
+
+十一、注意事项
+------------------------------------------------------------
+
+1. IP 变化扣设备分，不扣 IP 分。
+2. 不可能旅行必须依赖距离和时间，不能只看国家变化。
+3. 短时比长效更敏感。
+4. 同 city IP 变化要容忍，避免误伤运营商 NAT 和移动网络。
+5. 必须防重复扣分。
+6. 扣分后必须同步或失效 Redis/Caffeine 中的设备分缓存。
+7. 如果无法计算速度，只扣基础分，不要伪造速度。
+8. device_risk_profile 只保存 last_login_ip 和 last_ip_seen_at，地理信息通过 IP 表和缓存查询。

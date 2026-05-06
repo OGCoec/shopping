@@ -143,6 +143,9 @@
       if (isRegister || isRegisterPassword || isForgotPassword) {
         await ensureRouteFragmentLoaded(view);
       }
+      if (isForgotPassword && typeof initializeRouteFragment === "function") {
+        initializeRouteFragment(view);
+      }
 
       emailLoginView.classList.toggle("is-hidden", !isEmail);
       emailLoginView.classList.toggle("is-active", isEmail);

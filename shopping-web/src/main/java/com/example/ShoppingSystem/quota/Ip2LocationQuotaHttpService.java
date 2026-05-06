@@ -175,6 +175,8 @@ public class Ip2LocationQuotaHttpService {
                 text(payload, "asn"),
                 pickProviderName(payload),
                 pickCountryCode(payload),
+                pickRegionName(payload),
+                pickCityName(payload),
                 text(payload, "latitude"),
                 text(payload, "longitude"),
                 nestedText(payload, "proxy", "proxy_type"),
@@ -201,6 +203,8 @@ public class Ip2LocationQuotaHttpService {
                 + ", asn=" + fields.asn()
                 + ", providerName=" + fields.providerName()
                 + ", countryCode=" + fields.countryCode()
+                + ", region=" + fields.region()
+                + ", city=" + fields.city()
                 + ", latitude=" + fields.latitude()
                 + ", longitude=" + fields.longitude()
                 + ", proxyType=" + fields.proxyType()
@@ -294,6 +298,40 @@ public class Ip2LocationQuotaHttpService {
         return null;
     }
 
+    private String pickRegionName(JsonNode payload) {
+        return firstText(
+                text(payload, "region"),
+                text(payload, "region_name"),
+                text(payload, "regionName"),
+                text(payload, "state"),
+                text(payload, "province"),
+                nestedText(payload, "location", "region"),
+                nestedText(payload, "location", "state"),
+                nestedText(payload, "location", "province")
+        );
+    }
+
+    private String pickCityName(JsonNode payload) {
+        return firstText(
+                text(payload, "city"),
+                text(payload, "city_name"),
+                text(payload, "cityName"),
+                nestedText(payload, "location", "city")
+        );
+    }
+
+    private String firstText(String... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (String candidate : candidates) {
+            if (!isBlank(candidate)) {
+                return candidate.trim();
+            }
+        }
+        return null;
+    }
+
     private String normalizeCountryCode(String countryCode) {
         if (isBlank(countryCode)) {
             return null;
@@ -375,6 +413,8 @@ public class Ip2LocationQuotaHttpService {
                                      String asn,
                                      String providerName,
                                      String countryCode,
+                                     String region,
+                                     String city,
                                      String latitude,
                                      String longitude,
                                      String proxyType,

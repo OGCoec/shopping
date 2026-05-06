@@ -88,6 +88,20 @@ const AUTH_PATHS = authRoutesApi?.PATHS || {
   RESET_PASSWORD_URL: "/shopping/user/reset-password-url",
   RESET_PASSWORD_CODE: "/shopping/user/reset-password-code"
 };
+const LOGIN_PASSWORD_HIDDEN_ICON = `
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M2 12s3.6-7 10-7c2.1 0 4 .55 5.62 1.47"></path>
+    <path d="M22 12s-3.6 7-10 7c-2.1 0-4-.55-5.62-1.47"></path>
+    <path d="M3 3l18 18"></path>
+    <path d="M9.88 9.88A3 3 0 0 0 12 15a3 3 0 0 0 2.12-.88"></path>
+  </svg>
+`;
+const LOGIN_PASSWORD_VISIBLE_ICON = `
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path>
+    <circle cx="12" cy="12" r="3"></circle>
+  </svg>
+`;
 
 if (!loginVisualsApi || !loginCountryPickerApi || !loginShellModule || !loginOtpModule
     || !loginOtpResendModule || !loginRouteNoticeModule || !loginSubmitHandlersModule
@@ -134,6 +148,14 @@ const { createRegisterCaptchaCoordinator } = registerCaptchaCoordinatorModule;
 const { initializePasswordResetFragment } = passwordResetModule;
 
 let lastIdentifierView = "email";
+
+function updateLoginPasswordToggle(button, input) {
+  const visible = input?.type === "text";
+  button.innerHTML = visible ? LOGIN_PASSWORD_VISIBLE_ICON : LOGIN_PASSWORD_HIDDEN_ICON;
+  button.classList.toggle("is-visible", visible);
+  button.setAttribute("aria-label", visible ? "Hide password" : "Show password");
+  button.setAttribute("title", visible ? "Hide password" : "Show password");
+}
 
 const shellApi = createLoginShell({
   emailLoginView,
@@ -227,9 +249,16 @@ if (editIdentifierBtn) {
 }
 
 if (togglePasswordVisibilityBtn && passwordInput) {
+  updateLoginPasswordToggle(togglePasswordVisibilityBtn, passwordInput);
   togglePasswordVisibilityBtn.addEventListener("click", () => {
     passwordInput.type = passwordInput.type === "password" ? "text" : "password";
+    updateLoginPasswordToggle(togglePasswordVisibilityBtn, passwordInput);
     passwordInput.focus({ preventScroll: true });
+    try {
+      const caretPosition = typeof passwordInput.value === "string" ? passwordInput.value.length : 0;
+      passwordInput.setSelectionRange(caretPosition, caretPosition);
+    } catch (_) {
+    }
     applyFocusModeFromActiveElement();
   });
 }
@@ -271,6 +300,9 @@ async function restoreAuthRouteState(routeTarget) {
 
 const phoneErrorMessage = document.getElementById("phone-error-msg");
 const phoneNumberLabel = document.getElementById("phone-number-label");
+const phoneLoginCodeGroup = document.getElementById("phone-login-code-group");
+const phoneLoginCodeInput = document.getElementById("phone-login-code-input");
+const phoneContinueButton = document.getElementById("btn-phone-continue");
 const registerPhoneRequiredInput = document.getElementById("register-phone-required-input");
 const registerPhoneRequiredLabel = document.getElementById("register-phone-required-label");
 const registerPhoneRequiredCodeGroup = document.getElementById("register-phone-required-code-group");
@@ -278,6 +310,56 @@ const registerPhoneRequiredCodeInput = document.getElementById("register-phone-r
 const registerPhoneRequiredSendCodeButton = document.getElementById("register-phone-required-send-code");
 const registerPhoneRequiredErrorMessage = document.getElementById("register-phone-required-error-msg");
 const loginForm = document.getElementById("login-form");
+
+function bindSixDigitNumericInput(input) {
+  if (!input || input.dataset.sixDigitNumericBound === "true") {
+    return;
+  }
+  input.dataset.sixDigitNumericBound = "true";
+  input.setAttribute("inputmode", "numeric");
+  input.setAttribute("pattern", "[0-9]*");
+  input.setAttribute("maxlength", "6");
+
+  const digitsOnly = (value) => String(value || "").replace(/\D/g, "").slice(0, 6);
+  const sanitize = () => {
+    const sanitized = digitsOnly(input.value);
+    if (input.value !== sanitized) {
+      input.value = sanitized;
+    }
+  };
+  const insertDigits = (rawText) => {
+    const digits = digitsOnly(rawText);
+    const start = typeof input.selectionStart === "number" ? input.selectionStart : input.value.length;
+    const end = typeof input.selectionEnd === "number" ? input.selectionEnd : start;
+    const nextValue = digitsOnly(input.value.slice(0, start) + digits + input.value.slice(end));
+    input.value = nextValue;
+    const nextCaret = Math.min(start + digits.length, nextValue.length);
+    if (typeof input.setSelectionRange === "function") {
+      input.setSelectionRange(nextCaret, nextCaret);
+    }
+  };
+
+  input.addEventListener("beforeinput", (event) => {
+    if (!event.data || event.inputType?.startsWith("delete")) {
+      return;
+    }
+    if (/\D/.test(event.data)) {
+      event.preventDefault();
+    }
+  });
+  input.addEventListener("input", sanitize);
+  input.addEventListener("paste", (event) => {
+    event.preventDefault();
+    insertDigits(event.clipboardData?.getData("text") || "");
+  });
+  input.addEventListener("drop", (event) => {
+    event.preventDefault();
+    insertDigits(event.dataTransfer?.getData("text") || "");
+  });
+}
+
+bindSixDigitNumericInput(phoneLoginCodeInput);
+bindSixDigitNumericInput(registerPhoneRequiredCodeInput);
 
 const loginSubmitHandlersApi = createLoginSubmitHandlers({
   shellApi,
@@ -292,6 +374,9 @@ const loginSubmitHandlersApi = createLoginSubmitHandlers({
   otpCodeInput,
   phoneErrorMessage,
   phoneNumberLabel,
+  phoneLoginCodeGroup,
+  phoneLoginCodeInput,
+  phoneContinueButton,
   identifierLabel,
   identifierValue,
   setLastIdentifierView(view) {

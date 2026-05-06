@@ -1,0 +1,67 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: #ffffff;
+  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+.console-avatar-link {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 50%;
+  background: #e2e8f0;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  text-decoration: none;
+}
+
+.console-avatar-link:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 4px;
+}
+
+#console-avatar-image,
+#console-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+#console-avatar-image {
+  object-fit: cover;
+}
+
+#console-avatar-fallback {
+  display: block;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.92), transparent 0.22rem),
+    linear-gradient(135deg, #60a5fa, #1d4ed8);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .console-avatar-link {
+    top: 16px;
+    right: 16px;
+    width: 48px;
+    height: 48px;
+  }
+}

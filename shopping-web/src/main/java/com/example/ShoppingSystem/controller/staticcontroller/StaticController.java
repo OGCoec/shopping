@@ -77,6 +77,16 @@ public class StaticController {
      * 找回密码页面路由。
      * 统一返回 SPA 容器页 login.html，由前端路由决定右侧显示内容。
      */
+    @GetMapping("/shopping/user/profile")
+    public ResponseEntity<Resource> profilePage() {
+        return htmlPage("profile.html");
+    }
+
+    @GetMapping("/shopping/user/console")
+    public ResponseEntity<Resource> consolePage() {
+        return htmlPage("console.html");
+    }
+
     @GetMapping("/shopping/user/forgot-password")
     public ResponseEntity<Resource> forgotPasswordPage() {
         return htmlPage("login.html");

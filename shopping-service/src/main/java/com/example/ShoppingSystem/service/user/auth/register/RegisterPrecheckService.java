@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.service.user.auth.register;
 
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
+import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
 
 /**
  * 注册前置校验服务接口。
@@ -13,6 +14,13 @@ public interface RegisterPrecheckService {
                                                              String deviceFingerprint,
                                                              String publicIp);
 
+    RegisterPrecheckResult resolveRegisterEmailCodeChallenge(String email,
+                                                             String username,
+                                                             String rawPassword,
+                                                             String deviceFingerprint,
+                                                             String publicIp,
+                                                             AuthRiskSnapshot riskSnapshotOverride);
+
     RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String flowId,
                                                              boolean allowPassedChallengeReuse,
                                                              String email,
@@ -22,6 +30,17 @@ public interface RegisterPrecheckService {
                                                              String publicIp,
                                                              String captchaUuid,
                                                              String captchaCode);
+
+    RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String flowId,
+                                                             boolean allowPassedChallengeReuse,
+                                                             String email,
+                                                             String username,
+                                                             String rawPassword,
+                                                             String deviceFingerprint,
+                                                             String publicIp,
+                                                             String captchaUuid,
+                                                             String captchaCode,
+                                                             AuthRiskSnapshot riskSnapshotOverride);
 
     boolean refreshPendingChallengeSelection(String email,
                                             String deviceFingerprint,

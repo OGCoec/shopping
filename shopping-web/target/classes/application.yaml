@@ -116,6 +116,18 @@ app:
       max-concurrency: 10
       prefetch: 1
       max-retry-count: 2
+    user-avatar:
+      exchange: ${USER_AVATAR_EXCHANGE:user.avatar.exchange}
+      queue: ${USER_AVATAR_QUEUE:user.avatar.queue}
+      retry-queue: ${USER_AVATAR_RETRY_QUEUE:user.avatar.retry.queue}
+      dead-letter-queue: ${USER_AVATAR_DLQ:user.avatar.dlq}
+      routing-key: ${USER_AVATAR_ROUTING_KEY:user.avatar.upload}
+      retry-routing-key: ${USER_AVATAR_RETRY_ROUTING_KEY:user.avatar.retry}
+      dead-routing-key: ${USER_AVATAR_DEAD_ROUTING_KEY:user.avatar.dead}
+      concurrency: 1
+      max-concurrency: 4
+      prefetch: 1
+      max-retry-count: 2
     sms-code:
       exchange: ${SMS_CODE_EXCHANGE:sms.code.exchange}
       queue: ${SMS_CODE_QUEUE:sms.code.queue}
@@ -206,13 +218,14 @@ register:
   pre-auth:
     enabled: true
     redis-key-prefix: "register:preauth:bind:"
-    ttl-minutes: 60
+    ttl-minutes: 180
     recent-ip-limit: 3
     cookie-name: "PREAUTH_TOKEN"
     cookie-path: "/"
     cookie-http-only: true
     cookie-secure: false
     cookie-same-site: "Lax"
+
   flow:
     redis-key-prefix: "auth:register:flow:"
     ttl-minutes: 15
@@ -243,7 +256,6 @@ register:
     page-size: 2000
     ipv4-key: "register:ip:l6:cbf:ipv4"
     ipv6-key: "register:ip:l6:cbf:ipv6"
-    member-key-prefix: "register:ip:l6:member:"
   ip-risk-multi-level:
     enabled: true
     redis-key-prefix: "register:ip:risk:v2:"
@@ -253,6 +265,8 @@ register:
     local-max-size: 100000
     local-ttl-min-minutes: 10
     local-ttl-max-minutes: 50
+  device-risk-multi-level:
+    redis-key-prefix: "register:device:risk:v2:"
   ip-country-cache:
     enabled: true
     redis-key-prefix: "register:ip:country:"
@@ -275,6 +289,21 @@ register:
       REDIS: ""
       CAFFEINE: ""
       NONE: ""
+
+shopping:
+  auth-token:
+    access-ttl-seconds: 600
+    access-cookie-ttl-seconds: 10800
+    refresh-ttl-seconds: 10800
+    user-context-ttl-seconds: 11100
+    access-cookie-name: "ACCESS_TOKEN"
+    refresh-cookie-name: "REFRESH_TOKEN"
+    access-cookie-path: "/"
+    refresh-cookie-path: "/"
+    cookie-secure: false
+    cookie-same-site: "Lax"
+    refresh-redis-key-prefix: "auth:user:refresh:"
+    user-context-redis-key-prefix: "auth:user:context:"
 
 iping:
   api:

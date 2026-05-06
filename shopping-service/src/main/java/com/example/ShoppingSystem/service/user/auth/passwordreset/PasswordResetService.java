@@ -9,25 +9,35 @@ public interface PasswordResetService {
 
     PasswordResetResult sendResetLink(String email,
                                       String preAuthToken,
+                                      String deviceFingerprint,
                                       String riskLevel,
                                       boolean wafResumeRequest,
                                       String baseUrl);
 
     PasswordResetResult sendEmailCode(String email,
                                       String preAuthToken,
+                                      String deviceFingerprint,
                                       String riskLevel,
                                       boolean wafResumeRequest,
                                       String baseUrl);
 
     PasswordResetResult resetByLink(String token,
+                                    String deviceFingerprint,
+                                    String clientIp,
                                     String kid,
                                     String payloadCipher,
                                     String nonce,
                                     Long timestamp);
 
-    PasswordResetResult verifyEmailCode(String email, String code);
+    PasswordResetResult verifyEmailCode(String email,
+                                        String code,
+                                        String preAuthToken,
+                                        String deviceFingerprint);
 
     PasswordResetResult resetByVerifiedCode(String token,
+                                            String preAuthToken,
+                                            String deviceFingerprint,
+                                            String clientIp,
                                             String kid,
                                             String payloadCipher,
                                             String nonce,
@@ -39,5 +49,5 @@ public interface PasswordResetService {
 
     boolean isResetLinkTokenUsable(String token);
 
-    boolean isVerifiedCodeTokenUsable(String token);
+    boolean isVerifiedCodeTokenUsable(String token, String preAuthToken);
 }

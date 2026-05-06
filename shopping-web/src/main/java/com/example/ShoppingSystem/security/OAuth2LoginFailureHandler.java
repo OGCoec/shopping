@@ -17,13 +17,13 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
-    private static final String LOGIN_PAGE_URL = "https://localhost:6655/shopping/user/log-in";
+    private static final String LOGIN_PAGE_PATH = "/shopping/user/log-in";
 
     @Override
     public void onAuthenticationFailure(HttpServletRequest request,
                                         HttpServletResponse response,
                                         AuthenticationException exception) throws IOException, ServletException {
         String message = URLEncoder.encode("oauth_failed", StandardCharsets.UTF_8);
-        response.sendRedirect(LOGIN_PAGE_URL + "?oauth=failed&msg=" + message);
+        response.sendRedirect(LOGIN_PAGE_PATH + "?oauth=failed&msg=" + message);
     }
 }

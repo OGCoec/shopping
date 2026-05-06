@@ -4,7 +4,7 @@ import java.security.SecureRandom;
 
 public final class TotpSecretGenerator {
 
-    public static final int DEFAULT_SECRET_BITS = 256;
+    public static final int DEFAULT_SECRET_BITS = 160;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final char[] BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".toCharArray();

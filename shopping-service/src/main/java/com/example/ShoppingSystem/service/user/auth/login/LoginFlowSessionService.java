@@ -9,7 +9,8 @@ import java.util.Set;
 
 public interface LoginFlowSessionService {
 
-    LoginFlowSession startFlow(String email,
+    LoginFlowSession startFlow(String reusableFlowId,
+                               String email,
                                Long userId,
                                String riskLevel,
                                Set<LoginFactor> availableFactors,
@@ -29,6 +30,11 @@ public interface LoginFlowSessionService {
                                 Set<LoginFactor> completedFactors,
                                 boolean requirePhoneBinding,
                                 boolean completed);
+
+    LoginFlowSession updateRiskLevel(String flowId,
+                                     String riskLevel,
+                                     int requiredFactorCount,
+                                     boolean requirePhoneBinding);
 
     LoginFlowSession resolveIdentity(String flowId,
                                      Long userId,

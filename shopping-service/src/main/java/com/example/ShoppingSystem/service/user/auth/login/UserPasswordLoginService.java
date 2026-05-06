@@ -5,7 +5,8 @@ import com.example.ShoppingSystem.service.user.auth.login.model.LoginVerificatio
 
 public interface UserPasswordLoginService {
 
-    LoginFlowStartResult startFlow(String email,
+    LoginFlowStartResult startFlow(String reusableFlowId,
+                                   String email,
                                    String deviceFingerprint,
                                    String preAuthToken,
                                    String riskLevel,
@@ -50,6 +51,11 @@ public interface UserPasswordLoginService {
                                                String deviceFingerprint,
                                                String captchaUuid,
                                                String captchaCode);
+
+    LoginVerificationResult verifyPhoneLoginCode(String dialCode,
+                                                 String phoneNumber,
+                                                 String smsCode,
+                                                 String riskLevel);
 
     boolean refreshPendingChallengeSelection(String email,
                                              String deviceFingerprint,

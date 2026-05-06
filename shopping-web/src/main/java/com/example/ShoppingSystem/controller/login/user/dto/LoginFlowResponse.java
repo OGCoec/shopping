@@ -169,7 +169,7 @@ public record LoginFlowResponse(boolean success,
             case EMAIL_VERIFICATION -> "/shopping/user/email-verification";
             case TOTP_VERIFICATION -> "/shopping/user/totp-verification";
             case ADD_PHONE -> "/shopping/user/add-phone";
-            case DONE -> "/";
+            case DONE -> "/shopping/user/console";
             case BLOCKED, OPERATION_TIMEOUT -> "/shopping/user/log-in";
         };
     }

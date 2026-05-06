@@ -309,34 +309,80 @@
       const tpl = document.getElementById(getDomId("tianai-slider-tpl"));
       const bg = document.getElementById(getDomId("tianai-slider-bg"));
 
+      if (!btn || !prog || !tpl || !bg || !btn.parentNode) {
+        return;
+      }
+
       let isDragging = false;
       let startX = 0;
+      let startY = 0;
+      let activePointerId = null;
 
       const newBtn = btn.cloneNode(true);
       btn.parentNode.replaceChild(newBtn, btn);
+      const track = newBtn.parentNode;
+      track.style.touchAction = "none";
+      track.style.msTouchAction = "none";
+      track.style.userSelect = "none";
+      track.style.webkitUserSelect = "none";
+      newBtn.style.touchAction = "none";
+      newBtn.style.msTouchAction = "none";
+      newBtn.style.userSelect = "none";
+      newBtn.style.webkitUserSelect = "none";
 
-      newBtn.addEventListener("mousedown", (event) => {
-        isDragging = true;
-        startX = event.clientX;
-        startTime = Date.now();
-        trackList = [{ x: 0, y: 0, type: "DOWN", t: 0 }];
-      });
+      function getClientPoint(event) {
+        const source = event.touches && event.touches.length > 0
+          ? event.touches[0]
+          : (event.changedTouches && event.changedTouches.length > 0 ? event.changedTouches[0] : event);
+        if (!source || !Number.isFinite(source.clientX)) {
+          return null;
+        }
+        return {
+          x: source.clientX,
+          y: Number.isFinite(source.clientY) ? source.clientY : 0
+        };
+      }
 
-      document.addEventListener("mousemove", (event) => {
-        if (!isDragging || !tianaiActive) return;
+      function preventNativeDrag(event) {
+        if (event && event.cancelable) {
+          event.preventDefault();
+        }
+      }
 
-        let diffX = event.clientX - startX;
-        const maxOffset = newBtn.parentNode.offsetWidth - newBtn.offsetWidth;
-        if (diffX < 0) diffX = 0;
-        if (diffX > maxOffset) diffX = maxOffset;
+      function getMaxOffset() {
+        return Math.max(0, track.offsetWidth - newBtn.offsetWidth);
+      }
 
-        newBtn.style.left = `${diffX}px`;
-        prog.style.width = `${diffX + 20}px`;
+      function clampOffset(offset, maxOffset) {
+        if (!Number.isFinite(offset)) {
+          return 0;
+        }
+        if (offset < 0) {
+          return 0;
+        }
+        if (offset > maxOffset) {
+          return maxOffset;
+        }
+        return offset;
+      }
 
-        trackList.push({ x: diffX, y: 0, type: "MOVE", t: Date.now() - startTime });
+      function updateSlider(diffX, diffY) {
+        const maxOffset = getMaxOffset();
+        const offsetX = clampOffset(diffX, maxOffset);
+        const progressLead = Math.round((track.offsetHeight || 40) / 2);
+
+        newBtn.style.left = `${offsetX}px`;
+        prog.style.width = `${offsetX + progressLead}px`;
+
+        trackList.push({
+          x: Math.round(offsetX),
+          y: Math.round(diffY),
+          type: "MOVE",
+          t: Date.now() - startTime
+        });
 
         if (currentTianaiSubType === "ROTATE") {
-          const angle = normalizeTianaiRotateProgress(diffX, maxOffset) * 360;
+          const angle = normalizeTianaiRotateProgress(offsetX, maxOffset) * 360;
           tpl.style.transform = `rotate(${angle}deg)`;
           return;
         }
@@ -349,23 +395,84 @@
           const movingSlice = document.getElementById(movingLayer === "BOTTOM" ? getConcatBottomId() : getConcatTopId());
           const fixedSlice = document.getElementById(movingLayer === "BOTTOM" ? getConcatTopId() : getConcatBottomId());
           if (fixedSlice) fixedSlice.style.backgroundPosition = "0px 0px";
-          if (movingSlice) movingSlice.style.backgroundPosition = `${diffX}px 0px`;
+          if (movingSlice) movingSlice.style.backgroundPosition = `${offsetX}px 0px`;
           return;
         }
 
-        tpl.style.left = `${diffX}px`;
-      });
+        tpl.style.left = `${offsetX}px`;
+      }
 
-      document.addEventListener("mouseup", () => {
+      function startDrag(event) {
+        if (!tianaiActive) return;
+        const point = getClientPoint(event);
+        if (!point) return;
+        preventNativeDrag(event);
+
+        isDragging = true;
+        activePointerId = Number.isFinite(event.pointerId) ? event.pointerId : null;
+        startX = point.x;
+        startY = point.y;
+        startTime = Date.now();
+        trackList = [{ x: 0, y: 0, type: "DOWN", t: 0 }];
+        newBtn.style.cursor = "grabbing";
+        if (newBtn.setPointerCapture && activePointerId !== null) {
+          try {
+            newBtn.setPointerCapture(activePointerId);
+          } catch (_) {
+            // The pointer may already be released on some mobile browsers.
+          }
+        }
+      }
+
+      function moveDrag(event) {
         if (!isDragging || !tianaiActive) return;
-        isDragging = false;
+        if (
+          activePointerId !== null
+          && Number.isFinite(event.pointerId)
+          && event.pointerId !== activePointerId
+        ) {
+          return;
+        }
 
-        const diffX = parseInt(newBtn.style.left, 10);
-        const maxOffset = newBtn.parentNode.offsetWidth - newBtn.offsetWidth;
-        trackList.push({ x: diffX, y: 0, type: "UP", t: Date.now() - startTime });
+        const point = getClientPoint(event);
+        if (!point) return;
+        preventNativeDrag(event);
+        updateSlider(point.x - startX, point.y - startY);
+      }
+
+      function stopDrag(event) {
+        if (!isDragging || !tianaiActive) return;
+        if (
+          activePointerId !== null
+          && Number.isFinite(event.pointerId)
+          && event.pointerId !== activePointerId
+        ) {
+          return;
+        }
+
+        preventNativeDrag(event);
+        isDragging = false;
+        newBtn.style.cursor = "grab";
+
+        if (newBtn.releasePointerCapture && activePointerId !== null) {
+          try {
+            newBtn.releasePointerCapture(activePointerId);
+          } catch (_) {
+            // Ignore release races after pointer cancellation.
+          }
+        }
+
+        const point = getClientPoint(event);
+        const diffX = Number.parseInt(newBtn.style.left, 10);
+        const finalOffsetX = Number.isFinite(diffX) ? diffX : 0;
+        const finalOffsetY = point ? Math.round(point.y - startY) : 0;
+        const maxOffset = getMaxOffset();
+        activePointerId = null;
+
+        trackList.push({ x: finalOffsetX, y: finalOffsetY, type: "UP", t: Date.now() - startTime });
 
         if (currentTianaiSubType === "ROTATE") {
-          tianaiTrackData = buildTianaiRotatePercentage(diffX, maxOffset);
+          tianaiTrackData = buildTianaiRotatePercentage(finalOffsetX, maxOffset);
           continueRegisterWithTianai();
           return;
         }
@@ -383,12 +490,35 @@
           startTime,
           stopTime: Date.now(),
           trackList,
-          left: diffX,
+          left: finalOffsetX,
           top: 0
         }));
 
         continueRegisterWithTianai();
-      });
+      }
+
+      function cancelDrag(event) {
+        if (!isDragging) return;
+        preventNativeDrag(event);
+        isDragging = false;
+        activePointerId = null;
+        newBtn.style.cursor = "grab";
+      }
+
+      if (window.PointerEvent) {
+        newBtn.addEventListener("pointerdown", startDrag);
+        document.addEventListener("pointermove", moveDrag);
+        document.addEventListener("pointerup", stopDrag);
+        document.addEventListener("pointercancel", cancelDrag);
+      } else {
+        newBtn.addEventListener("mousedown", startDrag);
+        document.addEventListener("mousemove", moveDrag);
+        document.addEventListener("mouseup", stopDrag);
+        newBtn.addEventListener("touchstart", startDrag, { passive: false });
+        document.addEventListener("touchmove", moveDrag, { passive: false });
+        document.addEventListener("touchend", stopDrag, { passive: false });
+        document.addEventListener("touchcancel", cancelDrag, { passive: false });
+      }
     }
 
     function setupClickTracking() {

@@ -180,25 +180,25 @@
           AND email IS NOT NULL
     </update>
 
-    <update id="savePendingTotpSecret">
+    <update id="updateTokenVersionByUserId">
         UPDATE user_login_identity
-        SET totp_enabled = FALSE,
-            totp_secret_encrypted = #{secretEncrypted},
-            totp_confirmed_at = NULL,
-            totp_enabled_at = NULL,
-            totp_last_used_step = NULL,
+        SET token_version = #{tokenVersion},
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = #{id}
+        WHERE user_id = #{userId}
     </update>
 
-    <update id="enableTotpById">
+    <update id="activateTotpSecret">
         UPDATE user_login_identity
         SET totp_enabled = TRUE,
+            totp_secret_encrypted = #{secretEncrypted},
             totp_confirmed_at = CURRENT_TIMESTAMP,
-            totp_enabled_at = CURRENT_TIMESTAMP,
+            totp_enabled_at = CASE
+                WHEN totp_enabled = TRUE AND totp_enabled_at IS NOT NULL THEN totp_enabled_at
+                ELSE CURRENT_TIMESTAMP
+            END,
+            totp_last_used_step = #{timeStep},
             updated_at = CURRENT_TIMESTAMP
         WHERE id = #{id}
-          AND totp_secret_encrypted IS NOT NULL
     </update>
 
     <update id="updateTotpLastUsedStep">

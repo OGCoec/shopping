@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>用户详情 - Shopping System</title>
+  <link rel="stylesheet" href="/css/profile.css" />
+</head>
+<body>
+  <main class="profile-shell">
+    <section class="profile-panel">
+      <header class="profile-header">
+        <div>
+          <p class="eyebrow">当前登录用户</p>
+          <h1 id="profile-title">用户详情</h1>
+        </div>
+        <div class="profile-actions">
+          <button type="button" id="reload-profile">刷新</button>
+          <button type="button" id="logout-current">退出当前设备</button>
+          <button type="button" id="logout-all" class="danger">退出全部设备</button>
+        </div>
+      </header>
+
+      <div id="profile-status" class="profile-status">正在读取用户信息...</div>
+
+      <section class="avatar-panel" aria-labelledby="avatar-title">
+        <div class="avatar-frame">
+          <img id="profile-avatar-image" alt="用户头像" hidden />
+          <div id="profile-avatar-fallback" class="avatar-fallback">头像</div>
+          <button type="button" id="avatar-upload-trigger" class="avatar-plus" aria-label="上传头像">+</button>
+          <input
+            id="avatar-file-input"
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+            hidden
+          />
+        </div>
+        <div class="avatar-copy">
+          <p class="eyebrow">个人头像</p>
+          <h2 id="avatar-title">未上传头像</h2>
+          <p class="avatar-hint">一次只能上传一张图片，新头像上传成功后会删除 OSS 里的旧头像。</p>
+          <div class="avatar-actions">
+            <button type="button" id="avatar-change-button">选择头像</button>
+            <button type="button" id="avatar-delete-button" class="danger" hidden>删除当前头像</button>
+          </div>
+        </div>
+      </section>
+
+      <dl class="profile-grid" id="profile-grid" hidden>
+        <div>
+          <dt>用户 ID</dt>
+          <dd id="field-user-id">-</dd>
+        </div>
+        <div>
+          <dt>用户名</dt>
+          <dd id="field-username">-</dd>
+        </div>
+        <div>
+          <dt>姓名</dt>
+          <dd id="field-name">-</dd>
+        </div>
+        <div>
+          <dt>账号</dt>
+          <dd id="field-account">-</dd>
+        </div>
+        <div>
+          <dt>邮箱</dt>
+          <dd id="field-email">-</dd>
+        </div>
+        <div>
+          <dt>手机号</dt>
+          <dd id="field-phone">-</dd>
+        </div>
+        <div>
+          <dt>状态</dt>
+          <dd id="field-status">-</dd>
+        </div>
+        <div>
+          <dt>性别</dt>
+          <dd id="field-gender">-</dd>
+        </div>
+        <div>
+          <dt>风险等级</dt>
+          <dd id="field-risk-level">-</dd>
+        </div>
+        <div>
+          <dt>角色</dt>
+          <dd id="field-roles">-</dd>
+        </div>
+      </dl>
+
+      <section class="totp-panel" aria-labelledby="totp-title">
+        <div>
+          <p class="eyebrow">身份验证器</p>
+          <h2 id="totp-title">登录保护</h2>
+          <p id="totp-status" class="totp-status-text">正在读取状态...</p>
+        </div>
+        <button type="button" id="totp-action">启用身份验证器</button>
+      </section>
+    </section>
+  </main>
+
+  <div class="totp-modal" id="totp-modal" hidden>
+    <div class="totp-dialog" role="dialog" aria-modal="true" aria-labelledby="totp-modal-title">
+      <button type="button" class="totp-close" id="totp-close" aria-label="关闭">×</button>
+      <h2 id="totp-modal-title">启用身份验证器</h2>
+      <p class="totp-modal-copy">使用 Google Authenticator 或 Microsoft Authenticator 扫描二维码。</p>
+      <div class="totp-qr" id="totp-qr" aria-label="身份验证器二维码"></div>
+      <button type="button" class="link-button" id="totp-manual-toggle">无法扫码？</button>
+      <div class="totp-manual" id="totp-manual" hidden>
+        <span>手动输入密钥</span>
+        <code id="totp-secret">-</code>
+      </div>
+      <form id="totp-confirm-form" class="totp-confirm-form">
+        <label for="totp-code">输入 6 位验证码</label>
+        <div class="totp-code-row">
+          <input id="totp-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" />
+          <span id="totp-countdown">30s</span>
+        </div>
+        <p id="totp-modal-status" class="profile-status inline-status"></p>
+        <button type="submit" id="totp-confirm">验证并启用</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/user/auth/shared/preauth-client.js"></script>
+  <script src="/js/user/auth/shared/auth-client.js"></script>
+  <script src="/js/user/auth/profile/local-qr.js"></script>
+  <script src="/js/user/auth/profile/profile-page.js"></script>
+</body>
+</html>

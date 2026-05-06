@@ -32,7 +32,8 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
     }
 
     @Override
-    public LoginFlowSession startFlow(String email,
+    public LoginFlowSession startFlow(String reusableFlowId,
+                                      String email,
                                       Long userId,
                                       String riskLevel,
                                       Set<LoginFactor> availableFactors,
@@ -46,8 +47,14 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
         if (StrUtil.hasBlank(normalizedEmail, normalizedDeviceFingerprint, normalizedPreAuthToken)) {
             throw new IllegalArgumentException("Login flow requires email, device fingerprint, and preauth token.");
         }
+        String resolvedFlowId = resolveReusableFlowId(
+                reusableFlowId,
+                normalizedEmail,
+                normalizedDeviceFingerprint,
+                normalizedPreAuthToken
+        );
         LoginFlowSession session = LoginFlowSession.builder()
-                .flowId(IdUtil.nanoId(48))
+                .flowId(resolvedFlowId)
                 .preAuthToken(normalizedPreAuthToken)
                 .deviceFingerprint(normalizedDeviceFingerprint)
                 .email(normalizedEmail)
@@ -70,7 +77,7 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
         if (normalizedFlowId == null) {
             return null;
         }
-        return deserialize(stringRedisTemplate.opsForValue().get(flowKey(normalizedFlowId)));
+        return deserialize(normalizedFlowId, stringRedisTemplate.opsForValue().get(flowKey(normalizedFlowId)));
     }
 
     @Override
@@ -106,6 +113,33 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
                 .requiredFactorCount(existing.getRequiredFactorCount())
                 .requirePhoneBinding(requirePhoneBinding)
                 .completed(completed)
+                .build();
+        save(updated);
+        return updated;
+    }
+
+    @Override
+    public LoginFlowSession updateRiskLevel(String flowId,
+                                            String riskLevel,
+                                            int requiredFactorCount,
+                                            boolean requirePhoneBinding) {
+        LoginFlowSession existing = readFlow(flowId);
+        if (existing == null) {
+            return null;
+        }
+        LoginFlowSession updated = LoginFlowSession.builder()
+                .flowId(existing.getFlowId())
+                .preAuthToken(existing.getPreAuthToken())
+                .deviceFingerprint(existing.getDeviceFingerprint())
+                .email(existing.getEmail())
+                .userId(existing.getUserId())
+                .riskLevel(normalizeRiskLevel(riskLevel))
+                .step(existing.getStep())
+                .availableFactors(existing.getAvailableFactors())
+                .completedFactors(existing.getCompletedFactors())
+                .requiredFactorCount(Math.max(1, requiredFactorCount))
+                .requirePhoneBinding(requirePhoneBinding)
+                .completed(existing.isCompleted())
                 .build();
         save(updated);
         return updated;
@@ -184,7 +218,6 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
 
     private String serialize(LoginFlowSession session) {
         JSONObject json = JSONUtil.createObj();
-        json.set("flowId", session.getFlowId());
         json.set("preAuthToken", session.getPreAuthToken());
         json.set("deviceFingerprint", session.getDeviceFingerprint());
         json.set("email", session.getEmail());
@@ -199,7 +232,7 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
         return json.toString();
     }
 
-    private LoginFlowSession deserialize(String json) {
+    private LoginFlowSession deserialize(String flowId, String json) {
         if (StrUtil.isBlank(json)) {
             return null;
         }
@@ -210,7 +243,7 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
                 return null;
             }
             return LoginFlowSession.builder()
-                    .flowId(normalizeText(object.getStr("flowId")))
+                    .flowId(flowId)
                     .preAuthToken(normalizeText(object.getStr("preAuthToken")))
                     .deviceFingerprint(normalizeText(object.getStr("deviceFingerprint")))
                     .email(normalizeEmail(object.getStr("email")))
@@ -226,6 +259,23 @@ public class LoginFlowSessionServiceImpl implements LoginFlowSessionService {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private String resolveReusableFlowId(String reusableFlowId,
+                                         String email,
+                                         String deviceFingerprint,
+                                         String preAuthToken) {
+        String normalizedReusableFlowId = normalizeText(reusableFlowId);
+        LoginFlowSession existing = readFlow(normalizedReusableFlowId);
+        if (existing != null
+                && !existing.isCompleted()
+                && existing.getStep() != LoginFlowStep.DONE
+                && StrUtil.equals(existing.getEmail(), email)
+                && StrUtil.equals(existing.getDeviceFingerprint(), deviceFingerprint)
+                && StrUtil.equals(existing.getPreAuthToken(), preAuthToken)) {
+            return existing.getFlowId();
+        }
+        return IdUtil.nanoId(48);
     }
 
     private JSONArray factorsToArray(Set<LoginFactor> factors) {

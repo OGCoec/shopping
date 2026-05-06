@@ -4,6 +4,7 @@ import com.example.ShoppingSystem.controller.user.totp.dto.TotpSetupConfirmReque
 import com.example.ShoppingSystem.controller.user.totp.dto.TotpSetupStartResponse;
 import com.example.ShoppingSystem.controller.user.totp.dto.TotpVerifyRequest;
 import com.example.ShoppingSystem.controller.user.totp.dto.TotpVerifyResponse;
+import com.example.ShoppingSystem.security.token.AuthUserContext;
 import com.example.ShoppingSystem.service.user.auth.totp.UserTotpService;
 import com.example.ShoppingSystem.service.user.auth.totp.model.TotpSetupStartResult;
 import com.example.ShoppingSystem.service.user.auth.totp.model.TotpVerificationResult;
@@ -13,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +31,13 @@ public class UserTotpController {
 
     public UserTotpController(UserTotpService userTotpService) {
         this.userTotpService = userTotpService;
+    }
+
+    @GetMapping("/status")
+    public ResponseEntity<TotpStatusResponse> status(Authentication authentication,
+                                                     HttpServletRequest request) {
+        Long userId = requireCurrentUserId(authentication, request);
+        return ResponseEntity.ok(new TotpStatusResponse(true, userTotpService.isEnabled(userId)));
     }
 
     @PostMapping("/setup")
@@ -68,12 +77,20 @@ public class UserTotpController {
     }
 
     private Long requireCurrentUserId(Authentication authentication, HttpServletRequest request) {
+        Long requestUserId = resolveRequestUserId(request);
+        if (requestUserId != null) {
+            return requestUserId;
+        }
+
         Long sessionUserId = resolveSessionUserId(request);
         if (sessionUserId != null) {
             return sessionUserId;
         }
 
         if (authentication != null && authentication.isAuthenticated()) {
+            if (authentication.getPrincipal() instanceof AuthUserContext context && context.userId() != null) {
+                return context.userId();
+            }
             Long authenticationNameUserId = parseUserId(authentication.getName());
             if (authenticationNameUserId != null) {
                 return authenticationNameUserId;
@@ -81,6 +98,17 @@ public class UserTotpController {
         }
 
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current user is not authenticated.");
+    }
+
+    private Long resolveRequestUserId(HttpServletRequest request) {
+        Object value = request == null ? null : request.getAttribute("authUserId");
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text) {
+            return parseUserId(text);
+        }
+        return null;
     }
 
     private Long resolveSessionUserId(HttpServletRequest request) {
@@ -107,5 +135,8 @@ public class UserTotpController {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    public record TotpStatusResponse(boolean success, boolean enabled) {
     }
 }

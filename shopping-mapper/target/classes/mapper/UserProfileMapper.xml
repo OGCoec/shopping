@@ -4,6 +4,26 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.ShoppingSystem.mapper.UserProfileMapper">
 
+    <select id="findById" resultType="com.example.ShoppingSystem.entity.entity.UserProfile">
+        SELECT
+            id,
+            first_name,
+            last_name,
+            avatar::text AS avatar,
+            username,
+            gender,
+            bio,
+            birthday,
+            country,
+            language,
+            timezone,
+            created_at,
+            updated_at
+        FROM user_profile
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
     <!-- 首次登录初始化 profile：不写 avatar/created_at/updated_at，走后续接口与数据库默认值 -->
     <insert id="insertUserProfile" parameterType="com.example.ShoppingSystem.entity.entity.UserProfile">
         INSERT INTO user_profile (
@@ -30,5 +50,32 @@
             #{timezone}
         )
     </insert>
+
+    <insert id="insertStubIfAbsent">
+        INSERT INTO user_profile (id)
+        VALUES (#{id})
+        ON CONFLICT (id) DO NOTHING
+    </insert>
+
+    <select id="findAvatarById" resultType="java.lang.String">
+        SELECT avatar::text
+        FROM user_profile
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <update id="updateAvatarById">
+        UPDATE user_profile
+        SET avatar = to_jsonb(CAST(#{avatar} AS text)),
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="clearAvatarById">
+        UPDATE user_profile
+        SET avatar = NULL,
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
 
 </mapper>

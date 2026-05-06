@@ -12,6 +12,7 @@ import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.redisdata.RegisterRedisKeys;
 import com.example.ShoppingSystem.service.user.auth.login.UserProfileService;
 import com.example.ShoppingSystem.service.user.auth.login.model.UserProfileDraft;
+import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterCompletionService;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterCompletionResult;
 import org.slf4j.Logger;
@@ -20,11 +21,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.ByteBuffer;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -41,17 +40,20 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
     private final UserProfileService userProfileService;
     private final RegisterRiskProfileMapper registerRiskProfileMapper;
     private final SnowflakeIdWorker snowflakeIdWorker;
+    private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
 
     public RegisterCompletionServiceImpl(StringRedisTemplate stringRedisTemplate,
-                                         UserLoginIdentityMapper userLoginIdentityMapper,
-                                         UserProfileService userProfileService,
-                                         RegisterRiskProfileMapper registerRiskProfileMapper,
-                                         SnowflakeIdWorker snowflakeIdWorker) {
+                                          UserLoginIdentityMapper userLoginIdentityMapper,
+                                          UserProfileService userProfileService,
+                                          RegisterRiskProfileMapper registerRiskProfileMapper,
+                                          SnowflakeIdWorker snowflakeIdWorker,
+                                          DeviceRiskProfileWriteService deviceRiskProfileWriteService) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.userProfileService = userProfileService;
         this.registerRiskProfileMapper = registerRiskProfileMapper;
         this.snowflakeIdWorker = snowflakeIdWorker;
+        this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
     }
 
     @Override
@@ -143,22 +145,12 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
                 now
         );
 
-        registerRiskProfileMapper.upsertDeviceRiskProfile(
-                resolvedDeviceFingerprint,
-                totalScore,
-                normalizeDeviceRiskLevel(riskLevelRaw),
-                now,
-                now,
-                resolvedRequestIp,
-                now
-        );
-        registerRiskProfileMapper.upsertDeviceUserRelation(
-                generateRelationId(),
-                resolvedDeviceFingerprint,
+        deviceRiskProfileWriteService.recordSuccess(
                 userId,
-                now
+                resolvedDeviceFingerprint,
+                resolvedRequestIp,
+                "REGISTER_SUCCESS"
         );
-        registerRiskProfileMapper.refreshDeviceLinkedUserCount(resolvedDeviceFingerprint, now);
 
         cleanupRegisterKeys(codeKey, metaKey);
 
@@ -245,25 +237,9 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
         };
     }
 
-    private String normalizeDeviceRiskLevel(String riskLevel) {
-        String normalized = normalizeRiskLevel(riskLevel);
-        return switch (normalized) {
-            case "L1", "L2", "L3", "L4", "L5", "L6" -> normalized;
-            default -> "L3";
-        };
-    }
-
     private boolean shouldRequirePhoneBinding(String riskLevel) {
         String normalized = normalizeRiskLevel(riskLevel);
         return "L3".equals(normalized) || "L4".equals(normalized) || "L5".equals(normalized);
-    }
-
-    private byte[] generateRelationId() {
-        UUID uuid = UUID.randomUUID();
-        return ByteBuffer.allocate(16)
-                .putLong(uuid.getMostSignificantBits())
-                .putLong(uuid.getLeastSignificantBits())
-                .array();
     }
 
     private int normalizeScore(Integer score, int fallback) {

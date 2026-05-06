@@ -31,7 +31,8 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
     }
 
     @Override
-    public RegisterFlowSession startFlow(String email,
+    public RegisterFlowSession startFlow(String reusableFlowId,
+                                         String email,
                                          String deviceFingerprint,
                                          String preAuthToken) {
         String normalizedEmail = normalizeEmail(email);
@@ -40,9 +41,15 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
         if (StrUtil.hasBlank(normalizedEmail, normalizedDeviceFingerprint, normalizedPreAuthToken)) {
             throw new IllegalArgumentException("Register flow start requires email, device fingerprint, and preauth token.");
         }
+        String resolvedFlowId = resolveReusableFlowId(
+                reusableFlowId,
+                normalizedEmail,
+                normalizedDeviceFingerprint,
+                normalizedPreAuthToken
+        );
 
         RegisterFlowSession session = RegisterFlowSession.builder()
-                .flowId(IdUtil.nanoId(48))
+                .flowId(resolvedFlowId)
                 .preAuthToken(normalizedPreAuthToken)
                 .deviceFingerprint(normalizedDeviceFingerprint)
                 .email(normalizedEmail)
@@ -73,7 +80,7 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
         if (normalizedFlowId == null) {
             return null;
         }
-        return deserialize(stringRedisTemplate.opsForValue().get(flowKey(normalizedFlowId)));
+        return deserialize(normalizedFlowId, stringRedisTemplate.opsForValue().get(flowKey(normalizedFlowId)));
     }
 
     @Override
@@ -95,6 +102,28 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
                 .riskLevel(normalizeRiskLevel(riskLevel))
                 .requirePhoneBinding(requirePhoneBinding)
                 .completed(completed)
+                .build();
+        save(updated);
+        return updated;
+    }
+
+    @Override
+    public RegisterFlowSession updateRiskLevel(String flowId,
+                                               String riskLevel,
+                                               boolean requirePhoneBinding) {
+        RegisterFlowSession existing = readFlow(flowId);
+        if (existing == null) {
+            return null;
+        }
+        RegisterFlowSession updated = RegisterFlowSession.builder()
+                .flowId(existing.getFlowId())
+                .preAuthToken(existing.getPreAuthToken())
+                .deviceFingerprint(existing.getDeviceFingerprint())
+                .email(existing.getEmail())
+                .step(existing.getStep())
+                .riskLevel(normalizeRiskLevel(riskLevel))
+                .requirePhoneBinding(requirePhoneBinding)
+                .completed(existing.isCompleted())
                 .build();
         save(updated);
         return updated;
@@ -155,7 +184,6 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
 
     private String serialize(RegisterFlowSession session) {
         JSONObject json = JSONUtil.createObj();
-        json.set("flowId", session.getFlowId());
         json.set("preAuthToken", session.getPreAuthToken());
         json.set("deviceFingerprint", session.getDeviceFingerprint());
         json.set("email", session.getEmail());
@@ -166,7 +194,7 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
         return json.toString();
     }
 
-    private RegisterFlowSession deserialize(String json) {
+    private RegisterFlowSession deserialize(String flowId, String json) {
         if (StrUtil.isBlank(json)) {
             return null;
         }
@@ -177,7 +205,7 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
                 return null;
             }
             return RegisterFlowSession.builder()
-                    .flowId(normalizeText(object.getStr("flowId")))
+                    .flowId(flowId)
                     .preAuthToken(normalizeText(object.getStr("preAuthToken")))
                     .deviceFingerprint(normalizeText(object.getStr("deviceFingerprint")))
                     .email(normalizeEmail(object.getStr("email")))
@@ -189,6 +217,23 @@ public class RegisterFlowSessionServiceImpl implements RegisterFlowSessionServic
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private String resolveReusableFlowId(String reusableFlowId,
+                                         String email,
+                                         String deviceFingerprint,
+                                         String preAuthToken) {
+        String normalizedReusableFlowId = normalizeText(reusableFlowId);
+        RegisterFlowSession existing = readFlow(normalizedReusableFlowId);
+        if (existing != null
+                && !existing.isCompleted()
+                && existing.getStep() != RegisterFlowStep.DONE
+                && StrUtil.equals(existing.getEmail(), email)
+                && StrUtil.equals(existing.getDeviceFingerprint(), deviceFingerprint)
+                && StrUtil.equals(existing.getPreAuthToken(), preAuthToken)) {
+            return existing.getFlowId();
+        }
+        return IdUtil.nanoId(48);
     }
 
     private long ttlMillis() {

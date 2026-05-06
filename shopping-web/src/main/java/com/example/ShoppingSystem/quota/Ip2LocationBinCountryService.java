@@ -8,15 +8,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Locale;
 
 /**
- * 基于本地 IP2Location BIN 的国家查询服务。
- * <p>
- * 只负责查询国家代码，不参与风险分计算。
+ * Local IP2Location BIN geo lookup service.
  */
 @Service
 public class Ip2LocationBinCountryService {
@@ -33,6 +32,11 @@ public class Ip2LocationBinCountryService {
     private String binPath;
 
     public String queryCountryCode(String ip) {
+        IpGeoSnapshot snapshot = queryGeo(ip);
+        return snapshot == null ? null : snapshot.country();
+    }
+
+    public IpGeoSnapshot queryGeo(String ip) {
         if (!enabled || isBlank(ip)) {
             return null;
         }
@@ -46,12 +50,19 @@ public class Ip2LocationBinCountryService {
                 return null;
             }
             if (!"OK".equalsIgnoreCase(safeText(result.getStatus()))) {
-                log.debug("BIN 查询未命中：ip={}，status={}", ip, result.getStatus());
+                log.debug("BIN geo query missed, ip={}, status={}", ip, result.getStatus());
                 return null;
             }
-            return normalizeCountryCode(result.getCountryShort());
+            IpGeoSnapshot snapshot = new IpGeoSnapshot(
+                    normalizeCountryCode(result.getCountryShort()),
+                    normalizeNullableText(result.getRegion()),
+                    normalizeNullableText(result.getCity()),
+                    toCoordinate(result.getLatitude()),
+                    toCoordinate(result.getLongitude())
+            );
+            return snapshot.hasAnyGeo() ? snapshot : null;
         } catch (Exception e) {
-            log.warn("BIN 查询异常：ip={}，reason={}", ip, e.getMessage());
+            log.warn("BIN geo query failed, ip={}, reason={}", ip, e.getMessage());
             return null;
         }
     }
@@ -68,17 +79,17 @@ public class Ip2LocationBinCountryService {
             }
             Path resolved = resolveBinPath(binPath);
             if (resolved == null || !Files.exists(resolved)) {
-                log.warn("BIN 文件不存在，跳过 BIN 查询：configuredPath={}，resolvedPath={}", binPath, resolved);
+                log.warn("BIN file not found, skip BIN geo query, configuredPath={}, resolvedPath={}", binPath, resolved);
                 return null;
             }
             try {
                 IP2Location created = new IP2Location();
                 created.Open(resolved.toString(), true);
                 client = created;
-                log.info("BIN 已加载：path={}", resolved);
+                log.info("BIN loaded, path={}", resolved);
                 return created;
             } catch (Exception e) {
-                log.warn("BIN 加载失败：path={}，reason={}", resolved, e.getMessage());
+                log.warn("BIN load failed, path={}, reason={}", resolved, e.getMessage());
                 return null;
             }
         }
@@ -113,6 +124,24 @@ public class Ip2LocationBinCountryService {
             return null;
         }
         return normalized;
+    }
+
+    private String normalizeNullableText(String value) {
+        if (isBlank(value)) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()
+                || "-".equals(normalized)
+                || "N/A".equalsIgnoreCase(normalized)
+                || normalized.toLowerCase(Locale.ROOT).contains("not supported")) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private BigDecimal toCoordinate(float value) {
+        return BigDecimal.valueOf(value);
     }
 
     private String safeText(String value) {

@@ -25,6 +25,75 @@
     let currentRegisterRiskLevel = "";
     let currentRegisterRequirePhoneBinding = false;
 
+    function digitsOnly(value) {
+      return String(value || "").replace(/\D/g, "").slice(0, 8);
+    }
+
+    function sanitizeOtpCodeInput() {
+      if (!otpCodeInput) {
+        return;
+      }
+      const sanitized = digitsOnly(otpCodeInput.value);
+      if (otpCodeInput.value !== sanitized) {
+        otpCodeInput.value = sanitized;
+      }
+    }
+
+    function insertOtpDigits(rawText) {
+      if (!otpCodeInput) {
+        return;
+      }
+      const digits = digitsOnly(rawText);
+      if (!digits) {
+        sanitizeOtpCodeInput();
+        return;
+      }
+      const start = typeof otpCodeInput.selectionStart === "number"
+        ? otpCodeInput.selectionStart
+        : otpCodeInput.value.length;
+      const end = typeof otpCodeInput.selectionEnd === "number"
+        ? otpCodeInput.selectionEnd
+        : start;
+      const before = otpCodeInput.value.slice(0, start);
+      const after = otpCodeInput.value.slice(end);
+      const nextValue = digitsOnly(before + digits + after);
+      otpCodeInput.value = nextValue;
+      const nextCaret = Math.min(before.length + digits.length, nextValue.length);
+      if (typeof otpCodeInput.setSelectionRange === "function") {
+        otpCodeInput.setSelectionRange(nextCaret, nextCaret);
+      }
+    }
+
+    function bindOtpCodeDigitOnlyInput() {
+      if (!otpCodeInput || otpCodeInput.dataset.digitOnlyBound === "true") {
+        return;
+      }
+      otpCodeInput.dataset.digitOnlyBound = "true";
+      otpCodeInput.setAttribute("inputmode", "numeric");
+      otpCodeInput.setAttribute("pattern", "[0-9]*");
+      otpCodeInput.setAttribute("maxlength", "8");
+
+      otpCodeInput.addEventListener("beforeinput", (event) => {
+        if (!event.data || event.inputType?.startsWith("delete")) {
+          return;
+        }
+        if (/\D/.test(event.data)) {
+          event.preventDefault();
+        }
+      });
+      otpCodeInput.addEventListener("input", sanitizeOtpCodeInput);
+      otpCodeInput.addEventListener("paste", (event) => {
+        event.preventDefault();
+        insertOtpDigits(event.clipboardData?.getData("text") || "");
+      });
+      otpCodeInput.addEventListener("drop", (event) => {
+        event.preventDefault();
+        insertOtpDigits(event.dataTransfer?.getData("text") || "");
+      });
+    }
+
+    bindOtpCodeDigitOnlyInput();
+
     function isRegisterEmailVerificationRoute() {
       if (typeof window === "undefined") {
         return false;

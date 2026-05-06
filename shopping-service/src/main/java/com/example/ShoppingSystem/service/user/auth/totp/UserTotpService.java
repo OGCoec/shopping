@@ -11,5 +11,7 @@ public interface UserTotpService {
 
     TotpVerificationResult verify(Long userId, String code);
 
+    boolean isEnabled(Long userId);
+
     boolean disable(Long userId);
 }

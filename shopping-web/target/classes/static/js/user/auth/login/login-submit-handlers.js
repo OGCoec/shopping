@@ -15,6 +15,7 @@
   const LOGIN_PHONE_CHECK_PATH = "/shopping/user/login/phone/check";
   const LOGIN_PHONE_CODE_PATH = "/shopping/user/login/phone/code";
   const LOGIN_PHONE_LOGIN_CODE_PATH = "/shopping/user/login/phone-login/code";
+  const LOGIN_PHONE_LOGIN_VERIFY_PATH = "/shopping/user/login/phone-login/verify";
   const LOGIN_PHONE_BIND_PATH = "/shopping/user/login/phone/bind";
   const REGISTER_PHONE_CODE_PATH = "/shopping/user/register/phone/code";
   const REGISTER_PHONE_BIND_PATH = "/shopping/user/register/phone/bind";
@@ -36,6 +37,9 @@
     const otpCodeInput = options.otpCodeInput || null;
     const phoneErrorMessage = options.phoneErrorMessage || null;
     const phoneNumberLabel = options.phoneNumberLabel || null;
+    const phoneLoginCodeGroup = options.phoneLoginCodeGroup || null;
+    const phoneLoginCodeInput = options.phoneLoginCodeInput || null;
+    const phoneContinueButton = options.phoneContinueButton || null;
     const identifierLabel = options.identifierLabel || null;
     const identifierValue = options.identifierValue || null;
     const authPaths = options.authPaths || {};
@@ -54,6 +58,7 @@
       : async () => false;
     let currentLoginFlow = null;
     let pendingLoginStartPayload = null;
+    let pendingPhoneLoginPayload = null;
     let loginEmailCodeRequestInFlight = false;
 
     function normalizeRoutePath(routeTarget) {
@@ -217,6 +222,41 @@
       if (phoneErrorMessage) phoneErrorMessage.style.display = "none";
       if (phoneNumberInput) phoneNumberInput.classList.remove("error");
       if (phoneNumberLabel) phoneNumberLabel.classList.remove("error-label");
+    }
+
+    function updatePhoneContinueText(text) {
+      if (!phoneContinueButton) {
+        return;
+      }
+      phoneContinueButton.querySelectorAll(".btn-text, .btn-hover-content span").forEach((node) => {
+        node.textContent = text;
+      });
+    }
+
+    function showPhoneLoginCodeStep(dialCode, phoneNumber) {
+      pendingPhoneLoginPayload = { dialCode, phoneNumber };
+      if (phoneLoginCodeGroup) {
+        phoneLoginCodeGroup.hidden = false;
+      }
+      updatePhoneContinueText("登录");
+      window.setTimeout(() => phoneLoginCodeInput?.focus?.(), 0);
+    }
+
+    function clearPhoneLoginCodeStep() {
+      pendingPhoneLoginPayload = null;
+      if (phoneLoginCodeGroup) {
+        phoneLoginCodeGroup.hidden = true;
+      }
+      if (phoneLoginCodeInput) {
+        phoneLoginCodeInput.value = "";
+      }
+      updatePhoneContinueText("继续");
+    }
+
+    function isPendingPhoneLogin(dialCode, phoneNumber) {
+      return pendingPhoneLoginPayload
+        && pendingPhoneLoginPayload.dialCode === dialCode
+        && pendingPhoneLoginPayload.phoneNumber === phoneNumber;
     }
 
     function showPhoneValidationError(message, input, label) {
@@ -676,14 +716,38 @@
       resetPhoneValidationState();
 
       if (!dialCode) {
+        clearPhoneLoginCodeStep();
         showPhoneValidationError("Please choose a country or region.", phoneNumberInput, phoneNumberLabel);
         return;
       }
 
       if (!/^\d{6,15}$/.test(rawPhone)) {
+        clearPhoneLoginCodeStep();
         showPhoneValidationError("Please enter a valid mobile phone number.", phoneNumberInput, phoneNumberLabel);
         return;
       }
+
+      if (isPendingPhoneLogin(dialCode, rawPhone)) {
+        const smsCode = phoneLoginCodeInput ? phoneLoginCodeInput.value.trim() : "";
+        if (!/^\d{6}$/.test(smsCode)) {
+          showPhoneValidationError("Please enter the 6-digit SMS code.", phoneLoginCodeInput || phoneNumberInput, phoneNumberLabel);
+          return;
+        }
+        const verifyResponse = await submitPhoneLoginVerification(dialCode, rawPhone, smsCode);
+        const verifyPayload = await parseJsonSafely(verifyResponse);
+        if (!verifyResponse.ok || !verifyPayload?.success) {
+          showPhoneValidationError(resolvePhoneValidationMessage(verifyPayload) || verifyPayload?.message || "SMS code verification failed.", phoneLoginCodeInput || phoneNumberInput, phoneNumberLabel);
+          return;
+        }
+        if (verifyPayload?.authenticated && verifyPayload?.redirectPath) {
+          window.location.assign(verifyPayload.redirectPath);
+          return;
+        }
+        window.location.assign("/shopping/user/console");
+        return;
+      }
+
+      clearPhoneLoginCodeStep();
 
       const phoneValidationResult = await validatePhoneNumberPolicy(dialCode, rawPhone);
       if (!phoneValidationResult.success) {
@@ -720,6 +784,7 @@
             },
             resolveChallengeSuccess(successPayload) {
               if (successPayload?.success) {
+                showPhoneLoginCodeStep(dialCode, rawPhone);
                 showPhoneValidationError(successPayload.message || "SMS code sent.", phoneNumberInput, phoneNumberLabel);
                 return true;
               }
@@ -733,6 +798,7 @@
         showPhoneValidationError(payload?.message || "Failed to send SMS code.", phoneNumberInput, phoneNumberLabel);
         return;
       }
+      showPhoneLoginCodeStep(dialCode, rawPhone);
       showPhoneValidationError(payload?.message || "SMS code sent.", phoneNumberInput, phoneNumberLabel);
     }
 
@@ -849,6 +915,20 @@
           phoneNumber: rawPhone,
           captchaUuid,
           captchaCode
+        })
+      });
+    }
+
+    async function submitPhoneLoginVerification(dialCode, rawPhone, smsCode) {
+      return getFetchWithPreAuth()(LOGIN_PHONE_LOGIN_VERIFY_PATH, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          dialCode,
+          phoneNumber: rawPhone,
+          smsCode
         })
       });
     }

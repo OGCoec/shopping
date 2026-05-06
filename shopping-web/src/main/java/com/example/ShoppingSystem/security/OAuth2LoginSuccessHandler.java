@@ -6,6 +6,7 @@ import com.example.ShoppingSystem.service.user.auth.login.GoogleAuthService;
 import com.example.ShoppingSystem.service.user.auth.login.MicrosoftAuthService;
 import com.example.ShoppingSystem.service.user.auth.login.UserProfileService;
 import com.example.ShoppingSystem.service.user.auth.login.model.UserProfileDraft;
+import com.example.ShoppingSystem.security.token.AuthTokenService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,7 +36,8 @@ import java.util.Map;
 @Component
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private static final String LOGIN_PAGE_URL = "https://localhost:6655/shopping/user/log-in";
+    private static final String LOGIN_PAGE_PATH = "/shopping/user/log-in";
+    private static final String CONSOLE_PAGE_URL = "/shopping/user/console";
     private static final String AUTH_USER_ID_SESSION_ATTRIBUTE = "AUTH_USER_ID";
 
     private final GithubAuthService githubAuthService;
@@ -43,18 +45,21 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final MicrosoftAuthService microsoftAuthService;
     private final UserProfileService userProfileService;
     private final OAuth2AuthorizedClientService authorizedClientService;
+    private final AuthTokenService authTokenService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     public OAuth2LoginSuccessHandler(GithubAuthService githubAuthService,
                                      GoogleAuthService googleAuthService,
                                      MicrosoftAuthService microsoftAuthService,
                                      UserProfileService userProfileService,
-                                     OAuth2AuthorizedClientService authorizedClientService) {
+                                     OAuth2AuthorizedClientService authorizedClientService,
+                                     AuthTokenService authTokenService) {
         this.githubAuthService = githubAuthService;
         this.googleAuthService = googleAuthService;
         this.microsoftAuthService = microsoftAuthService;
         this.userProfileService = userProfileService;
         this.authorizedClientService = authorizedClientService;
+        this.authTokenService = authTokenService;
     }
 
     @Override
@@ -98,7 +103,6 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                     AUTH_USER_ID_SESSION_ATTRIBUTE,
                     identity.getUserId()
             );
-
             try {
                 UserProfileDraft profileDraft = buildProfileDraft(registrationId, attrs);
                 userProfileService.initIfAbsent(identity.getUserId(), profileDraft);
@@ -107,7 +111,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 profileEx.printStackTrace();
             }
 
-            response.sendRedirect(LOGIN_PAGE_URL + "?" + registrationId + "=success");
+            authTokenService.issueLoginTokens(identity.getUserId(), "", request, response);
+            response.sendRedirect(CONSOLE_PAGE_URL);
         } catch (Exception ex) {
             response.sendRedirect(buildFailedUrl(registrationId, "sys_error"));
         }
@@ -156,7 +161,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private String buildFailedUrl(String registrationId, String reason) {
         String rid = (registrationId == null || registrationId.isBlank()) ? "oauth" : registrationId;
         String msg = URLEncoder.encode(reason, StandardCharsets.UTF_8);
-        return LOGIN_PAGE_URL + "?" + rid + "=failed&msg=" + msg;
+        return LOGIN_PAGE_PATH + "?" + rid + "=failed&msg=" + msg;
     }
 
     private String normalizeEmail(String email) {

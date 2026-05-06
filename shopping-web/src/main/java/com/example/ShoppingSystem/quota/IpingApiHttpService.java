@@ -126,6 +126,8 @@ public class IpingApiHttpService {
                 normalizeAsn(text(payload, "asn")),
                 pickProviderName(payload),
                 pickCountryCode(payload),
+                pickRegionName(payload),
+                pickCityName(payload),
                 text(payload, "latitude"),
                 text(payload, "longitude"),
                 proxyType,
@@ -222,6 +224,36 @@ public class IpingApiHttpService {
         return null;
     }
 
+    private String pickRegionName(JsonNode payload) {
+        return firstText(
+                text(payload, "region"),
+                text(payload, "province"),
+                text(payload, "state"),
+                text(payload, "region_name"),
+                text(payload, "regionName")
+        );
+    }
+
+    private String pickCityName(JsonNode payload) {
+        return firstText(
+                text(payload, "city"),
+                text(payload, "city_name"),
+                text(payload, "cityName")
+        );
+    }
+
+    private String firstText(String... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (String candidate : candidates) {
+            if (!isBlank(candidate)) {
+                return candidate.trim();
+            }
+        }
+        return null;
+    }
+
     private String normalizeCountryCode(String countryCode) {
         if (isBlank(countryCode)) {
             return null;
@@ -279,6 +311,8 @@ public class IpingApiHttpService {
                 + ", asn=" + fields.asn()
                 + ", providerName=" + fields.providerName()
                 + ", countryCode=" + fields.countryCode()
+                + ", region=" + fields.region()
+                + ", city=" + fields.city()
                 + ", latitude=" + fields.latitude()
                 + ", longitude=" + fields.longitude()
                 + ", proxyType=" + fields.proxyType()

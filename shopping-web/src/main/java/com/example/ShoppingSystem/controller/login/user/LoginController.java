@@ -14,6 +14,7 @@ import com.example.ShoppingSystem.controller.login.user.dto.TianaiSimpleCheckRes
 import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
 import com.example.ShoppingSystem.loginflow.LoginFlowCookieFactory;
 import com.example.ShoppingSystem.loginflow.LoginFlowWebSupport;
+import com.example.ShoppingSystem.security.token.AuthTokenService;
 import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
 import com.example.ShoppingSystem.service.captcha.hutool.model.HutoolCaptchaResult;
 import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
@@ -21,6 +22,7 @@ import com.example.ShoppingSystem.service.user.auth.login.LoginFlowSessionServic
 import com.example.ShoppingSystem.service.user.auth.login.UserPasswordLoginService;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowSession;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowValidationResult;
+import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshotService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -50,6 +52,7 @@ public class LoginController {
     private static final String TIANAI_SUBTYPE_WORD_IMAGE_CLICK = "WORD_IMAGE_CLICK";
     private static final String ERROR_INVALID_STATE = "INVALID_STATE";
     private static final String LOGIN_WAF_RESUME_HEADER = "X-Login-Waf-Resume";
+    private static final String SCENE_PHONE_LOGIN_SUCCESS = "PHONE_LOGIN_SUCCESS";
 
     private final UserPasswordLoginService userPasswordLoginService;
     private final LoginFlowSessionService loginFlowSessionService;
@@ -57,19 +60,25 @@ public class LoginController {
     private final PreAuthBindingService preAuthBindingService;
     private final HutoolCaptchaService hutoolCaptchaService;
     private final TianaiCaptchaService tianaiCaptchaService;
+    private final AuthTokenService authTokenService;
+    private final AuthRiskSnapshotService authRiskSnapshotService;
 
     public LoginController(UserPasswordLoginService userPasswordLoginService,
                            LoginFlowSessionService loginFlowSessionService,
                            LoginFlowCookieFactory loginFlowCookieFactory,
                            PreAuthBindingService preAuthBindingService,
                            HutoolCaptchaService hutoolCaptchaService,
-                           TianaiCaptchaService tianaiCaptchaService) {
+                           TianaiCaptchaService tianaiCaptchaService,
+                           AuthTokenService authTokenService,
+                           AuthRiskSnapshotService authRiskSnapshotService) {
         this.userPasswordLoginService = userPasswordLoginService;
         this.loginFlowSessionService = loginFlowSessionService;
         this.loginFlowCookieFactory = loginFlowCookieFactory;
         this.preAuthBindingService = preAuthBindingService;
         this.hutoolCaptchaService = hutoolCaptchaService;
         this.tianaiCaptchaService = tianaiCaptchaService;
+        this.authTokenService = authTokenService;
+        this.authRiskSnapshotService = authRiskSnapshotService;
     }
 
     @Operation(summary = "Start login flow after identifier entry and risk challenge resolution.")
@@ -77,7 +86,7 @@ public class LoginController {
     public ResponseEntity<LoginFlowResponse> startLoginFlow(@RequestBody LoginFlowStartRequest body,
                                                             HttpServletRequest request,
                                                             HttpServletResponse response) {
-        clearFlowCookie(response, request);
+        String reusableFlowId = loginFlowCookieFactory.resolveFlowId(request);
         String preAuthToken = resolvePreAuthToken(request);
         if (StrUtil.isBlank(preAuthToken)) {
             return invalidFlowResponse(HttpStatus.UNAUTHORIZED,
@@ -86,13 +95,16 @@ public class LoginController {
                     response);
         }
 
+        String clientIp = resolveClientIp(request);
+        String riskLevel = resolveAuthRiskLevel(request, clientIp, body.deviceFingerprint());
         LoginFlowResponse responseBody = LoginFlowResponse.fromStart(
                 userPasswordLoginService.startFlow(
+                        reusableFlowId,
                         body.email(),
                         body.deviceFingerprint(),
                         preAuthToken,
-                        resolveRiskLevel(request),
-                        resolveClientIp(request),
+                        riskLevel,
+                        clientIp,
                         body.captchaUuid(),
                         body.captchaCode(),
                         isLoginWafResumeRequest(request)
@@ -100,6 +112,8 @@ public class LoginController {
         );
         if (responseBody.success() && StrUtil.isNotBlank(responseBody.flowId())) {
             response.addHeader("Set-Cookie", loginFlowCookieFactory.buildFlowCookie(responseBody.flowId(), request).toString());
+        } else {
+            clearFlowCookie(response, request);
         }
         return ResponseEntity.ok(responseBody);
     }
@@ -261,15 +275,18 @@ public class LoginController {
         if (session == null) {
             return invalidFlowResponse(HttpStatus.GONE, "Login session expired, please restart.", request, response);
         }
+        String clientIp = resolveClientIp(request);
+        String deviceFingerprint = resolveDeviceFingerprint(request);
+        String riskLevel = resolveAuthRiskLevel(request, clientIp, deviceFingerprint);
         LoginFlowResponse responseBody = LoginFlowResponse.fromVerify(
                 userPasswordLoginService.sendPhoneBindCode(
                         session.getFlowId(),
                         resolvePreAuthToken(request),
                         body.dialCode(),
                         body.phoneNumber(),
-                        resolveClientIp(request),
-                        resolveRiskLevel(request),
-                        resolveDeviceFingerprint(request),
+                        clientIp,
+                        riskLevel,
+                        deviceFingerprint,
                         body.captchaUuid(),
                         body.captchaCode()
                 )
@@ -282,18 +299,50 @@ public class LoginController {
     @PostMapping("/phone-login/code")
     public ResponseEntity<LoginFlowResponse> sendPhoneLoginCode(@RequestBody LoginPhoneBindRequest body,
                                                                 HttpServletRequest request) {
+        String clientIp = resolveClientIp(request);
+        String deviceFingerprint = resolveDeviceFingerprint(request);
+        String riskLevel = resolveAuthRiskLevel(request, clientIp, deviceFingerprint);
         LoginFlowResponse responseBody = LoginFlowResponse.fromVerify(
                 userPasswordLoginService.sendPhoneLoginCode(
                         resolvePreAuthToken(request),
                         body.dialCode(),
                         body.phoneNumber(),
-                        resolveClientIp(request),
-                        resolveRiskLevel(request),
-                        resolveDeviceFingerprint(request),
+                        clientIp,
+                        riskLevel,
+                        deviceFingerprint,
                         body.captchaUuid(),
                         body.captchaCode()
                 )
         );
+        return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
+    }
+
+    @Operation(summary = "Verify phone-first login SMS code and issue login tokens.")
+    @PostMapping("/phone-login/verify")
+    public ResponseEntity<LoginFlowResponse> verifyPhoneLoginCode(@RequestBody LoginPhoneBindRequest body,
+                                                                  HttpServletRequest request,
+                                                                  HttpServletResponse response) {
+        String clientIp = resolveClientIp(request);
+        String deviceFingerprint = resolveDeviceFingerprint(request);
+        String riskLevel = resolveAuthRiskLevel(request, clientIp, deviceFingerprint);
+        LoginFlowResponse responseBody = LoginFlowResponse.fromVerify(
+                userPasswordLoginService.verifyPhoneLoginCode(
+                        body.dialCode(),
+                        body.phoneNumber(),
+                        body.smsCode(),
+                        riskLevel
+                )
+        );
+        if (responseBody.success() && responseBody.userId() != null) {
+            request.getSession(true).setAttribute(AUTH_USER_ID_SESSION_ATTRIBUTE, responseBody.userId());
+            authTokenService.issueLoginTokens(
+                    responseBody.userId(),
+                    resolvePreAuthToken(request),
+                    request,
+                    response,
+                    SCENE_PHONE_LOGIN_SUCCESS
+            );
+        }
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
@@ -349,6 +398,7 @@ public class LoginController {
         }
         HttpSession session = request.getSession(true);
         session.setAttribute(AUTH_USER_ID_SESSION_ATTRIBUTE, responseBody.userId());
+        authTokenService.issueLoginTokens(responseBody.userId(), resolvePreAuthToken(request), request, response);
         clearFlowCookie(response, request);
     }
 
@@ -385,12 +435,12 @@ public class LoginController {
         return preAuthBindingService.resolveIncomingToken(request);
     }
 
-    private String resolveRiskLevel(HttpServletRequest request) {
-        Object requestAttribute = request.getAttribute("preAuthRiskLevel");
+    private String resolveAuthRiskLevel(HttpServletRequest request, String clientIp, String deviceFingerprint) {
+        Object requestAttribute = request == null ? null : request.getAttribute("preAuthRiskLevel");
         if (requestAttribute instanceof String riskLevel && StrUtil.isNotBlank(riskLevel)) {
-            return riskLevel.trim();
+            return riskLevel.trim().toUpperCase();
         }
-        return "L1";
+        return authRiskSnapshotService.buildRiskSnapshot(clientIp, deviceFingerprint).riskLevel();
     }
 
     private String resolveDeviceFingerprint(HttpServletRequest request) {

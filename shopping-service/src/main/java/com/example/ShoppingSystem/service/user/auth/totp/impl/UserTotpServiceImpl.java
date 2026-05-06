@@ -9,9 +9,11 @@ import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.totp.UserTotpService;
 import com.example.ShoppingSystem.service.user.auth.totp.model.TotpSetupStartResult;
 import com.example.ShoppingSystem.service.user.auth.totp.model.TotpVerificationResult;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.OptionalLong;
 
@@ -19,11 +21,16 @@ import java.util.OptionalLong;
 public class UserTotpServiceImpl implements UserTotpService {
 
     private static final String ISSUER = "Shopping";
+    private static final String PENDING_SECRET_PREFIX = "auth:totp:pending:";
+    private static final Duration SETUP_TTL = Duration.ofMinutes(10);
 
     private final UserLoginIdentityMapper userLoginIdentityMapper;
+    private final StringRedisTemplate stringRedisTemplate;
 
-    public UserTotpServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper) {
+    public UserTotpServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
+                               StringRedisTemplate stringRedisTemplate) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
+        this.stringRedisTemplate = stringRedisTemplate;
     }
 
     @Override
@@ -31,7 +38,11 @@ public class UserTotpServiceImpl implements UserTotpService {
     public TotpSetupStartResult startSetup(Long userId) {
         UserLoginIdentity identity = requireIdentity(userId);
         String secret = TotpSecretGenerator.generateBase32Secret(TotpSecretGenerator.DEFAULT_SECRET_BITS);
-        userLoginIdentityMapper.savePendingTotpSecret(identity.getId(), encodeSecretForStorage(secret));
+        stringRedisTemplate.opsForValue().set(
+                pendingSecretKey(identity.getUserId()),
+                encodeSecretForStorage(secret),
+                SETUP_TTL
+        );
 
         String accountName = resolveAccountName(identity);
         String otpauthUri = OtpAuthUriUtils.buildTotpUri(ISSUER, accountName, secret);
@@ -50,7 +61,10 @@ public class UserTotpServiceImpl implements UserTotpService {
     @Transactional
     public TotpVerificationResult confirmSetup(Long userId, String code) {
         UserLoginIdentity identity = requireIdentity(userId);
-        String secret = decodeSecretFromStorage(identity.getTotpSecretEncrypted());
+        String secret = decodeSecretFromStorage(stringRedisTemplate.opsForValue().get(pendingSecretKey(identity.getUserId())));
+        if ((secret == null || secret.isBlank()) && !Boolean.TRUE.equals(identity.getTotpEnabled())) {
+            secret = decodeSecretFromStorage(identity.getTotpSecretEncrypted());
+        }
         if (secret == null || secret.isBlank()) {
             return fail("TOTP setup has not been started.");
         }
@@ -65,11 +79,15 @@ public class UserTotpServiceImpl implements UserTotpService {
             return fail("TOTP code is incorrect.");
         }
 
-        int enabledRows = userLoginIdentityMapper.enableTotpById(identity.getId());
+        int enabledRows = userLoginIdentityMapper.activateTotpSecret(
+                identity.getId(),
+                encodeSecretForStorage(secret),
+                matchedTimeStep.getAsLong()
+        );
         if (enabledRows <= 0) {
             return fail("Failed to enable TOTP.");
         }
-        userLoginIdentityMapper.updateTotpLastUsedStep(identity.getId(), matchedTimeStep.getAsLong());
+        stringRedisTemplate.delete(pendingSecretKey(identity.getUserId()));
         return success("TOTP enabled.", matchedTimeStep.getAsLong());
     }
 
@@ -104,9 +122,16 @@ public class UserTotpServiceImpl implements UserTotpService {
     }
 
     @Override
+    public boolean isEnabled(Long userId) {
+        UserLoginIdentity identity = requireIdentity(userId);
+        return Boolean.TRUE.equals(identity.getTotpEnabled());
+    }
+
+    @Override
     @Transactional
     public boolean disable(Long userId) {
         UserLoginIdentity identity = requireIdentity(userId);
+        stringRedisTemplate.delete(pendingSecretKey(identity.getUserId()));
         return userLoginIdentityMapper.disableTotpById(identity.getId()) > 0;
     }
 
@@ -114,7 +139,7 @@ public class UserTotpServiceImpl implements UserTotpService {
         if (userId == null) {
             throw new IllegalArgumentException("userId must not be null");
         }
-        UserLoginIdentity identity = userLoginIdentityMapper.findById(userId);
+        UserLoginIdentity identity = userLoginIdentityMapper.findByUserId(userId);
         if (identity == null) {
             throw new IllegalArgumentException("User login identity not found.");
         }
@@ -144,6 +169,13 @@ public class UserTotpServiceImpl implements UserTotpService {
                 .success(false)
                 .message(message)
                 .build();
+    }
+
+    private String pendingSecretKey(Long userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId must not be null");
+        }
+        return PENDING_SECRET_PREFIX + userId;
     }
 
     private String encodeSecretForStorage(String secret) {

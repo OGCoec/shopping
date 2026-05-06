@@ -225,12 +225,29 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
     }
 
     private String effectiveRiskLevel(RegisterFlowSession session, String fallbackRiskLevel) {
-        String sessionRiskLevel = session == null ? "" : StrUtil.blankToDefault(session.getRiskLevel(), "").trim().toUpperCase();
-        if (StrUtil.isNotBlank(sessionRiskLevel)) {
-            return sessionRiskLevel;
-        }
-        String fallback = StrUtil.blankToDefault(fallbackRiskLevel, "").trim().toUpperCase();
-        return StrUtil.blankToDefault(fallback, "L1");
+        String sessionRiskLevel = normalizeRiskLevel(session == null ? "" : session.getRiskLevel());
+        String fallback = normalizeRiskLevel(fallbackRiskLevel);
+        return riskRank(fallback) > riskRank(sessionRiskLevel) ? fallback : sessionRiskLevel;
+    }
+
+    private String normalizeRiskLevel(String riskLevel) {
+        String normalized = StrUtil.blankToDefault(riskLevel, "").trim().toUpperCase();
+        return switch (normalized) {
+            case "L1", "L2", "L3", "L4", "L5", "L6" -> normalized;
+            default -> "L1";
+        };
+    }
+
+    private int riskRank(String riskLevel) {
+        return switch (normalizeRiskLevel(riskLevel)) {
+            case "L1" -> 1;
+            case "L2" -> 2;
+            case "L3" -> 3;
+            case "L4" -> 4;
+            case "L5" -> 5;
+            case "L6" -> 6;
+            default -> 0;
+        };
     }
 
     private RegisterPhoneBindingResult fail(String message) {

@@ -3,7 +3,9 @@ package com.example.ShoppingSystem.filter.preauth;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthBindingFactory;
+import com.example.ShoppingSystem.filter.preauth.domain.PreAuthIpChangePenaltyService;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskService;
+import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskStateSyncService;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBinding;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBootstrapOutcome;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthRiskProfile;
@@ -53,6 +55,8 @@ public class PreAuthBindingService {
     private final PreAuthRiskService riskService;
     /** 绑定对象工厂，负责创建和刷新绑定对象。 */
     private final PreAuthBindingFactory bindingFactory;
+    private final PreAuthIpChangePenaltyService ipChangePenaltyService;
+    private final PreAuthRiskStateSyncService riskStateSyncService;
 
     /**
      * 注入 preauth 流程所需的全部依赖。
@@ -63,7 +67,9 @@ public class PreAuthBindingService {
                                  PreAuthHashingService hashingService,
                                  PreAuthBindingRepository bindingRepository,
                                  PreAuthRiskService riskService,
-                                 PreAuthBindingFactory bindingFactory) {
+                                 PreAuthBindingFactory bindingFactory,
+                                 PreAuthIpChangePenaltyService ipChangePenaltyService,
+                                 PreAuthRiskStateSyncService riskStateSyncService) {
         this.properties = properties;
         this.requestResolver = requestResolver;
         this.cookieFactory = cookieFactory;
@@ -71,6 +77,8 @@ public class PreAuthBindingService {
         this.bindingRepository = bindingRepository;
         this.riskService = riskService;
         this.bindingFactory = bindingFactory;
+        this.ipChangePenaltyService = ipChangePenaltyService;
+        this.riskStateSyncService = riskStateSyncService;
     }
 
     /**
@@ -92,7 +100,7 @@ public class PreAuthBindingService {
 
         if (!properties.isEnabled()) {
             // 功能关闭时不建立绑定关系，只给前端返回一个按当前 IP 计算出来的风险快照。
-            PreAuthRiskProfile fallbackRisk = riskService.resolveRiskProfile(ip);
+            PreAuthRiskProfile fallbackRisk = riskService.resolveRiskProfile(ip, normalizedFingerprint);
             long expiresAt = System.currentTimeMillis() + bindingFactory.bindingTtl().toMillis();
             return PreAuthBootstrapOutcome.allowed(new PreAuthSnapshot(
                     "",
@@ -110,6 +118,11 @@ public class PreAuthBindingService {
                 // 指纹和 UA 都一致时，说明还是同一个浏览器环境；接下来只需要判断 IP 是否漂移。
                 boolean ipChanged = !StrUtil.equals(existing.currentIp(), ip);
                 if (ipChanged) {
+                    PreAuthBinding penalized = ipChangePenaltyService.applyShortTermPenalty(existing, ip, normalizedFingerprint);
+                    if (penalized != null) {
+                        bindingRepository.save(penalized);
+                        riskStateSyncService.syncAfterBindingSaved(existing, penalized, request);
+                    }
                     logPreAuthDecision(
                             "bootstrap_ip_changed_waf_required",
                             incomingToken,
@@ -124,15 +137,22 @@ public class PreAuthBindingService {
                     return PreAuthBootstrapOutcome.blocked(PreAuthValidationError.IP_CHANGED_WAF_REQUIRED);
                 }
 
-                // 复用旧绑定时刷新上下文：续期、更新 lastSeen。
-                PreAuthBinding refreshed = bindingFactory.refreshExistingBinding(existing, ip);
+                // 复用旧绑定时刷新上下文并刷新 Redis TTL。
+                PreAuthBinding refreshed = bindingFactory.refreshExistingBinding(existing, ip, normalizedFingerprint);
                 bindingRepository.save(refreshed);
+                riskStateSyncService.syncAfterBindingSaved(existing, refreshed, request);
                 return PreAuthBootstrapOutcome.allowed(toSnapshot(refreshed));
             }
         }
 
         // 走到这里说明旧上下文不可复用，需要重新创建绑定。
-        PreAuthBinding created = bindingFactory.createNewBinding(IdUtil.nanoId(48), fpHash, uaHash, ip);
+        PreAuthBinding created = bindingFactory.createNewBinding(
+                IdUtil.nanoId(48),
+                fpHash,
+                uaHash,
+                ip,
+                normalizedFingerprint
+        );
         bindingRepository.save(created);
         return PreAuthBootstrapOutcome.allowed(toSnapshot(created));
     }
@@ -184,8 +204,8 @@ public class PreAuthBindingService {
                     false,
                     null
             );
-            // 指纹不匹配通常说明 token 被换到了别的浏览器环境中，直接删掉旧绑定。
-            bindingRepository.delete(existing.token());
+            // Do not delete the binding on mismatch; an attacker with a copied token
+            // should not be able to invalidate the legitimate browser's preauth state.
             return PreAuthValidationOutcome.invalid(PreAuthValidationError.FINGERPRINT_MISMATCH);
         }
 
@@ -201,8 +221,7 @@ public class PreAuthBindingService {
                     true,
                     false
             );
-            // UA 不匹配时同样清掉旧绑定，避免脏状态残留。
-            bindingRepository.delete(existing.token());
+            // Keep the old binding for the same reason as fingerprint mismatch.
             return PreAuthValidationOutcome.invalid(PreAuthValidationError.USER_AGENT_MISMATCH);
         }
 
@@ -210,6 +229,11 @@ public class PreAuthBindingService {
         String currentIp = requestResolver.resolveClientIp(request);
         boolean ipChanged = !StrUtil.equals(existing.currentIp(), currentIp);
         if (ipChanged) {
+            PreAuthBinding penalized = ipChangePenaltyService.applyShortTermPenalty(existing, currentIp, normalizedFingerprint);
+            if (penalized != null) {
+                bindingRepository.save(penalized);
+                riskStateSyncService.syncAfterBindingSaved(existing, penalized, request);
+            }
             logPreAuthDecision(
                     "validate_ip_changed_waf_required",
                     token,
@@ -225,8 +249,9 @@ public class PreAuthBindingService {
         }
 
         // 校验通过后刷新绑定并续期，确保活跃上下文保持最新。
-        PreAuthBinding updated = bindingFactory.refreshExistingBinding(existing, currentIp);
+        PreAuthBinding updated = bindingFactory.refreshExistingBinding(existing, currentIp, normalizedFingerprint);
         bindingRepository.save(updated);
+        riskStateSyncService.syncAfterBindingSaved(existing, updated, request);
         return PreAuthValidationOutcome.valid(updated);
     }
 
@@ -296,6 +321,7 @@ public class PreAuthBindingService {
         }
         PreAuthBinding refreshed = bindingFactory.refreshExistingBinding(existing, currentIp);
         bindingRepository.save(refreshed);
+        riskStateSyncService.syncAfterBindingSaved(existing, refreshed, request);
     }
 
     /**
@@ -316,12 +342,13 @@ public class PreAuthBindingService {
      * 把内部完整绑定对象压缩为给前端使用的轻量快照。
      */
     private PreAuthSnapshot toSnapshot(PreAuthBinding binding) {
+        long expiresAt = System.currentTimeMillis() + bindingFactory.bindingTtl().toMillis();
         return new PreAuthSnapshot(
                 binding.token(),
                 binding.riskLevel(),
                 riskService.isChallengeRequired(binding.riskLevel()),
                 riskService.isBlockedRisk(binding.riskLevel()),
-                binding.expiresAtEpochMillis()
+                expiresAt
         );
     }
 

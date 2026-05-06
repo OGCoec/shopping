@@ -33,6 +33,7 @@ import com.example.ShoppingSystem.service.user.auth.register.model.RegisterFlowS
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterFlowValidationResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPhoneBindingResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
+import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -125,7 +126,12 @@ public class RegisterController {
             );
         }
 
-        RegisterFlowSession session = registerFlowSessionService.startFlow(email, deviceFingerprint, preAuthToken);
+        RegisterFlowSession session = registerFlowSessionService.startFlow(
+                registerFlowCookieFactory.resolveFlowId(httpServletRequest),
+                email,
+                deviceFingerprint,
+                preAuthToken
+        );
         httpServletResponse.addHeader("Set-Cookie", registerFlowCookieFactory.buildFlowCookie(session.getFlowId(), httpServletRequest).toString());
         return ResponseEntity.ok(new RegisterFlowStartResponse(
                 true,
@@ -321,7 +327,8 @@ public class RegisterController {
                 request.getUsername(),
                 decryptOutcome.rawPassword(),
                 request.getDeviceFingerprint(),
-                clientIp
+                clientIp,
+                resolvePreAuthRiskSnapshot(httpServletRequest)
         );
         registerFlowSessionService.updateStep(
                 flowSession.getFlowId(),
@@ -372,7 +379,8 @@ public class RegisterController {
                 request.getDeviceFingerprint(),
                 clientIp,
                 request.getCaptchaUuid(),
-                request.getCaptchaCode()
+                request.getCaptchaCode(),
+                resolvePreAuthRiskSnapshot(httpServletRequest)
         );
 
         RegisterFlowStep nextStep = result.isSuccess() && result.isEmailCodeSent()
@@ -644,6 +652,35 @@ public class RegisterController {
             return riskLevel.trim();
         }
         return "L1";
+    }
+
+    private AuthRiskSnapshot resolvePreAuthRiskSnapshot(HttpServletRequest request) {
+        String riskLevel = resolveRiskLevel(request);
+        Integer ipScore = readIntegerAttribute(request, "preAuthIpScore");
+        Integer deviceScore = readIntegerAttribute(request, "preAuthDeviceScore");
+        Integer score = readIntegerAttribute(request, "preAuthScore");
+        if (StrUtil.isBlank(riskLevel) || ipScore == null || deviceScore == null || score == null) {
+            return null;
+        }
+        return new AuthRiskSnapshot(ipScore, deviceScore, score, riskLevel.trim().toUpperCase());
+    }
+
+    private Integer readIntegerAttribute(HttpServletRequest request, String name) {
+        if (request == null || StrUtil.isBlank(name)) {
+            return null;
+        }
+        Object value = request.getAttribute(name);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null || StrUtil.isBlank(value.toString())) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value.toString().trim());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private String resolveDeviceFingerprint(HttpServletRequest request) {

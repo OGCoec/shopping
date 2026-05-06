@@ -1,6 +1,8 @@
 com\example\ShoppingSystem\Utils\MailUtils.class
+com\example\ShoppingSystem\redisdata\PasswordResetRedisKeys.class
 com\example\ShoppingSystem\redisdata\RegisterRedisKeys.class
 com\example\ShoppingSystem\Utils\totp\TotpCodeGenerator.class
+com\example\ShoppingSystem\avatar\AvatarMetadataUtils.class
 com\example\ShoppingSystem\phone\PhoneNumberValidationService$ValidationResult.class
 com\example\ShoppingSystem\redisfilter\CountingBloomFilter.class
 com\example\ShoppingSystem\redisdata\Ip2LocationQuotaRedisKeys.class
@@ -29,5 +31,7 @@ com\example\ShoppingSystem\redisdata\GithubRedisKeys.class
 com\example\ShoppingSystem\Utils\SnowflakeIdWorker.class
 com\example\ShoppingSystem\Utils\totp\TotpSecretGenerator.class
 com\example\ShoppingSystem\Utils\totp\OtpAuthUriUtils.class
+com\example\ShoppingSystem\avatar\AvatarMetadata$AvatarMetadataBuilder.class
+com\example\ShoppingSystem\avatar\AvatarMetadata.class
 com\example\ShoppingSystem\Utils\Lock\RedisAsyncLock.class
 com\example\ShoppingSystem\redisdata\Ip2LocationQuotaRedisKeys$AccountType.class

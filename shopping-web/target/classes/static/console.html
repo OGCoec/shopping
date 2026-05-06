@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shopping Console</title>
+  <link rel="stylesheet" href="/css/console.css" />
+</head>
+<body>
+  <a class="console-avatar-link" id="console-avatar-link" href="/shopping/user/profile" aria-label="打开用户资料">
+    <img id="console-avatar-image" alt="用户头像" hidden />
+    <span id="console-avatar-fallback" aria-hidden="true"></span>
+  </a>
+
+  <script src="/js/user/auth/shared/preauth-client.js"></script>
+  <script src="/js/user/auth/shared/auth-client.js"></script>
+  <script src="/js/user/auth/console/console-page.js"></script>
+</body>
+</html>

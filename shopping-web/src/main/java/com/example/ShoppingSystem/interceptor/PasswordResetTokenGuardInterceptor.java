@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.interceptor;
 
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetService;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -11,7 +12,11 @@ public class PasswordResetTokenGuardInterceptor implements HandlerInterceptor {
 
     private static final String RESET_PASSWORD_URL_PATH = "/shopping/user/reset-password-url";
     private static final String RESET_PASSWORD_CODE_PATH = "/shopping/user/reset-password-code";
-    private static final String INVALID_LINK_LOCATION = "/shopping/user/forgot-password?notice=reset_link_invalid";
+    private static final String SESSION_ENDED_LOCATION = "/shopping/user/session-ended";
+    private static final String PASSWORD_RESET_CODE_TOKEN_COOKIE = "PASSWORD_RESET_CODE_TOKEN";
+    private static final String PASSWORD_RESET_COOKIE_PATH = "/shopping/user";
+    private static final String PREAUTH_TOKEN_ATTRIBUTE = "preAuthToken";
+    private static final String PREAUTH_TOKEN_COOKIE = "PREAUTH_TOKEN";
 
     private final PasswordResetService passwordResetService;
 
@@ -33,11 +38,44 @@ public class PasswordResetTokenGuardInterceptor implements HandlerInterceptor {
             return true;
         }
         if (RESET_PASSWORD_CODE_PATH.equals(requestPath)
-                && passwordResetService.isVerifiedCodeTokenUsable(token)) {
+                && passwordResetService.isVerifiedCodeTokenUsable(
+                resolveCookieValue(request, PASSWORD_RESET_CODE_TOKEN_COOKIE),
+                resolvePreAuthToken(request))) {
             return true;
         }
-        response.setStatus(HttpServletResponse.SC_FOUND);
-        response.setHeader("Location", INVALID_LINK_LOCATION);
+        redirectToSessionEnded(response);
         return false;
+    }
+
+    private void redirectToSessionEnded(HttpServletResponse response) {
+        if (response.isCommitted()) {
+            return;
+        }
+        response.addHeader("Set-Cookie", PASSWORD_RESET_CODE_TOKEN_COOKIE
+                + "=; Path=" + PASSWORD_RESET_COOKIE_PATH
+                + "; Max-Age=0; HttpOnly; Secure; SameSite=Lax");
+        response.setStatus(HttpServletResponse.SC_FOUND);
+        response.setHeader("Location", SESSION_ENDED_LOCATION);
+    }
+
+    private String resolveCookieValue(HttpServletRequest request, String name) {
+        Cookie[] cookies = request == null ? null : request.getCookies();
+        if (cookies == null) {
+            return "";
+        }
+        for (Cookie cookie : cookies) {
+            if (cookie != null && name.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+        return "";
+    }
+
+    private String resolvePreAuthToken(HttpServletRequest request) {
+        Object value = request == null ? null : request.getAttribute(PREAUTH_TOKEN_ATTRIBUTE);
+        if (value instanceof String token && !token.isBlank()) {
+            return token.trim();
+        }
+        return resolveCookieValue(request, PREAUTH_TOKEN_COOKIE);
     }
 }

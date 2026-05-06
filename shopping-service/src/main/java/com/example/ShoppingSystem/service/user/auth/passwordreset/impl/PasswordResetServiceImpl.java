@@ -12,6 +12,7 @@ import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetS
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetCryptoKey;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetDecryptOutcome;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetResult;
+import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -41,19 +42,22 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     private final PasswordResetCryptoService passwordResetCryptoService;
     private final PasswordResetMailSender passwordResetMailSender;
     private final ObjectMapper objectMapper;
+    private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
 
     public PasswordResetServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
                                     StringRedisTemplate stringRedisTemplate,
                                     PasswordEncoder passwordEncoder,
                                     PasswordResetCryptoService passwordResetCryptoService,
                                     PasswordResetMailSender passwordResetMailSender,
-                                    ObjectMapper objectMapper) {
+                                    ObjectMapper objectMapper,
+                                    DeviceRiskProfileWriteService deviceRiskProfileWriteService) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.stringRedisTemplate = stringRedisTemplate;
         this.passwordEncoder = passwordEncoder;
         this.passwordResetCryptoService = passwordResetCryptoService;
         this.passwordResetMailSender = passwordResetMailSender;
         this.objectMapper = objectMapper;
+        this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
     }
 
     @Override
@@ -65,6 +69,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     @Override
     public PasswordResetResult sendResetLink(String email,
                                              String preAuthToken,
+                                             String deviceFingerprint,
                                              String riskLevel,
                                              boolean wafResumeRequest,
                                              String baseUrl) {
@@ -84,6 +89,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
             Map<String, Object> linkPayload = new LinkedHashMap<>();
             linkPayload.put("email", normalizedEmail);
             linkPayload.put("userId", identity.getUserId());
+            addRequestFingerprintMetadata(linkPayload, preAuthToken, deviceFingerprint);
             stringRedisTemplate.opsForValue().set(
                     linkKey(token),
                     JSONUtil.toJsonStr(linkPayload),
@@ -103,6 +109,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     @Override
     public PasswordResetResult sendEmailCode(String email,
                                              String preAuthToken,
+                                             String deviceFingerprint,
                                              String riskLevel,
                                              boolean wafResumeRequest,
                                              String baseUrl) {
@@ -120,14 +127,20 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (identity != null) {
             String code = RandomUtil.randomNumbers(6);
             String token = IdUtil.nanoId(48);
+            Map<String, Object> codePayload = new LinkedHashMap<>();
+            codePayload.put("code", code);
+            codePayload.put("email", normalizedEmail);
+            codePayload.put("userId", identity.getUserId());
+            addDeviceBindingMetadata(codePayload, preAuthToken, deviceFingerprint);
             stringRedisTemplate.opsForValue().set(
                     emailCodeKey(normalizedEmail),
-                    code,
+                    JSONUtil.toJsonStr(codePayload),
                     Duration.ofMinutes(PasswordResetRedisKeys.EMAIL_CODE_TTL_MINUTES));
 
             Map<String, Object> linkPayload = new LinkedHashMap<>();
             linkPayload.put("email", normalizedEmail);
             linkPayload.put("userId", identity.getUserId());
+            addRequestFingerprintMetadata(linkPayload, preAuthToken, deviceFingerprint);
             stringRedisTemplate.opsForValue().set(
                     linkKey(token),
                     JSONUtil.toJsonStr(linkPayload),
@@ -150,6 +163,8 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     @Override
     @Transactional
     public PasswordResetResult resetByLink(String token,
+                                           String deviceFingerprint,
+                                           String clientIp,
                                            String kid,
                                            String payloadCipher,
                                            String nonce,
@@ -181,20 +196,42 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         }
         stringRedisTemplate.delete(linkKey(normalizedToken));
         stringRedisTemplate.delete(emailCodeKey(email));
+        deviceRiskProfileWriteService.recordSuccess(
+                userId,
+                deviceFingerprint,
+                clientIp,
+                "PASSWORD_RESET_SUCCESS"
+        );
         return PasswordResetResult.ok("Password has been reset.");
     }
 
     @Override
     @Transactional
-    public PasswordResetResult verifyEmailCode(String email, String code) {
+    public PasswordResetResult verifyEmailCode(String email,
+                                               String code,
+                                               String preAuthToken,
+                                               String deviceFingerprint) {
         String normalizedEmail = normalizeEmail(email);
         String normalizedCode = normalizeCode(code);
         if (StrUtil.hasBlank(normalizedEmail, normalizedCode)) {
             return PasswordResetResult.fail("PASSWORD_RESET_CODE_INVALID", "Verification code is incorrect or expired.");
         }
-        String cachedCode = stringRedisTemplate.opsForValue().get(emailCodeKey(normalizedEmail));
-        if (!StrUtil.equals(cachedCode, normalizedCode)) {
+        String rawCodePayload = stringRedisTemplate.opsForValue().get(emailCodeKey(normalizedEmail));
+        PasswordResetEmailCodePayload codePayload = parseEmailCodePayload(rawCodePayload, normalizedEmail);
+        if (codePayload == null || !StrUtil.equals(codePayload.code(), normalizedCode)) {
             return PasswordResetResult.fail("PASSWORD_RESET_CODE_INVALID", "Verification code is incorrect or expired.");
+        }
+        if (StrUtil.isNotBlank(codePayload.email()) && !StrUtil.equals(normalizedEmail, codePayload.email())) {
+            return PasswordResetResult.fail("PASSWORD_RESET_CODE_INVALID", "Verification code is incorrect or expired.");
+        }
+        PasswordResetResult bindingError = validateRequestBinding(
+                codePayload.preAuthHash(),
+                codePayload.fpHash(),
+                preAuthToken,
+                deviceFingerprint
+        );
+        if (bindingError != null) {
+            return bindingError;
         }
 
         UserLoginIdentity identity = findResettableIdentity(normalizedEmail);
@@ -203,17 +240,25 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         }
 
         String verifiedToken = IdUtil.nanoId(48);
+        Map<String, Object> verifiedPayload = new LinkedHashMap<>();
+        verifiedPayload.put("email", normalizedEmail);
+        verifiedPayload.put("userId", identity.getUserId());
+        verifiedPayload.put("preAuthHash", codePayload.preAuthHash());
+        verifiedPayload.put("fpHash", codePayload.fpHash());
         stringRedisTemplate.opsForValue().set(
                 verifiedKey(verifiedToken),
-                normalizedEmail,
+                JSONUtil.toJsonStr(verifiedPayload),
                 Duration.ofMinutes(PasswordResetRedisKeys.VERIFIED_TTL_MINUTES));
         stringRedisTemplate.delete(emailCodeKey(normalizedEmail));
-        return PasswordResetResult.verified("Verification accepted.", RESET_PASSWORD_CODE_PATH + "?token=" + verifiedToken);
+        return PasswordResetResult.verified("Verification accepted.", RESET_PASSWORD_CODE_PATH, verifiedToken);
     }
 
     @Override
     @Transactional
     public PasswordResetResult resetByVerifiedCode(String token,
+                                                   String preAuthToken,
+                                                   String deviceFingerprint,
+                                                   String clientIp,
                                                    String kid,
                                                    String payloadCipher,
                                                    String nonce,
@@ -222,27 +267,57 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (normalizedToken == null) {
             return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
         }
-        String email = normalizeEmail(stringRedisTemplate.opsForValue().get(verifiedKey(normalizedToken)));
-        if (StrUtil.isBlank(email)) {
-            return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
-        }
-        UserLoginIdentity identity = findResettableIdentity(email);
-        if (identity == null) {
-            return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
-        }
-
         PasswordPair passwords = decryptPasswordPair(kid, payloadCipher, nonce, timestamp);
         PasswordResetResult passwordError = validatePasswordPair(passwords);
         if (passwordError != null) {
             return passwordError;
         }
 
+        String rawVerifiedPayload = stringRedisTemplate.opsForValue().get(verifiedKey(normalizedToken));
+        PasswordResetVerifiedPayload verifiedPayload = parseVerifiedPayload(rawVerifiedPayload);
+        if (verifiedPayload == null || StrUtil.isBlank(verifiedPayload.email())) {
+            return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
+        }
+        PasswordResetResult bindingError = validateRequestBinding(
+                verifiedPayload.preAuthHash(),
+                verifiedPayload.fpHash(),
+                preAuthToken,
+                deviceFingerprint
+        );
+        if (bindingError != null) {
+            return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
+        }
+        PasswordResetVerifiedPayload consumedPayload = parseVerifiedPayload(
+                stringRedisTemplate.opsForValue().getAndDelete(verifiedKey(normalizedToken)));
+        if (consumedPayload == null || StrUtil.isBlank(consumedPayload.email())) {
+            return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
+        }
+        bindingError = validateRequestBinding(
+                consumedPayload.preAuthHash(),
+                consumedPayload.fpHash(),
+                preAuthToken,
+                deviceFingerprint
+        );
+        if (bindingError != null) {
+            return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
+        }
+        String email = consumedPayload.email();
+        UserLoginIdentity identity = findResettableIdentity(email);
+        if (identity == null) {
+            return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
+        }
+
         int updated = updatePassword(identity.getUserId(), passwords.password());
         if (updated <= 0) {
             return PasswordResetResult.fail("PASSWORD_RESET_FAILED", "Password reset failed.");
         }
-        stringRedisTemplate.delete(verifiedKey(normalizedToken));
         stringRedisTemplate.delete(emailCodeKey(email));
+        deviceRiskProfileWriteService.recordSuccess(
+                identity.getUserId(),
+                deviceFingerprint,
+                clientIp,
+                "PASSWORD_RESET_SUCCESS"
+        );
         return PasswordResetResult.ok("Password has been reset.");
     }
 
@@ -276,10 +351,16 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     }
 
     @Override
-    public boolean isVerifiedCodeTokenUsable(String token) {
+    public boolean isVerifiedCodeTokenUsable(String token, String preAuthToken) {
         String normalizedToken = normalizeToken(token);
-        return normalizedToken != null
-                && Boolean.TRUE.equals(stringRedisTemplate.hasKey(verifiedKey(normalizedToken)));
+        if (normalizedToken == null) {
+            return false;
+        }
+        PasswordResetVerifiedPayload payload = parseVerifiedPayload(
+                stringRedisTemplate.opsForValue().get(verifiedKey(normalizedToken)));
+        return payload != null
+                && StrUtil.isNotBlank(payload.email())
+                && requestPreAuthMatches(payload.preAuthHash(), preAuthToken);
     }
 
     private PasswordResetResult requireRiskPass(String preAuthToken, String riskLevel, boolean wafResumeRequest) {
@@ -358,6 +439,82 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         return null;
     }
 
+    private void addDeviceBindingMetadata(Map<String, Object> payload,
+                                          String preAuthToken,
+                                          String deviceFingerprint) {
+        payload.put("preAuthHash", hashOrBlank(preAuthToken));
+        payload.put("fpHash", hashOrBlank(deviceFingerprint));
+    }
+
+    private void addRequestFingerprintMetadata(Map<String, Object> payload,
+                                               String preAuthToken,
+                                               String deviceFingerprint) {
+        payload.put("requestPreAuthHash", hashOrBlank(preAuthToken));
+        payload.put("requestDeviceFingerprint", StrUtil.blankToDefault(deviceFingerprint, "").trim());
+    }
+
+    private PasswordResetResult validateRequestBinding(String expectedPreAuthHash,
+                                                       String expectedFpHash,
+                                                       String preAuthToken,
+                                                       String deviceFingerprint) {
+        if (!requestPreAuthMatches(expectedPreAuthHash, preAuthToken)) {
+            return PasswordResetResult.fail("PASSWORD_RESET_DEVICE_MISMATCH", "Password reset verification does not match this browser session.");
+        }
+        if (StrUtil.isNotBlank(expectedFpHash) && !StrUtil.equals(expectedFpHash, hashOrBlank(deviceFingerprint))) {
+            return PasswordResetResult.fail("PASSWORD_RESET_DEVICE_MISMATCH", "Password reset verification does not match this device.");
+        }
+        return null;
+    }
+
+    private boolean requestPreAuthMatches(String expectedPreAuthHash, String preAuthToken) {
+        return StrUtil.isBlank(expectedPreAuthHash)
+                || StrUtil.equals(expectedPreAuthHash, hashOrBlank(preAuthToken));
+    }
+
+    private PasswordResetEmailCodePayload parseEmailCodePayload(String raw, String fallbackEmail) {
+        if (StrUtil.isBlank(raw)) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.matches("\\d{6}")) {
+            return new PasswordResetEmailCodePayload(trimmed, normalizeEmail(fallbackEmail), null, "", "");
+        }
+        Map<String, Object> payload = parseObject(trimmed);
+        String code = normalizeCode(asString(payload.get("code")));
+        if (StrUtil.isBlank(code)) {
+            return null;
+        }
+        return new PasswordResetEmailCodePayload(
+                code,
+                normalizeEmail(asString(payload.get("email"))),
+                parseLong(payload.get("userId")),
+                asString(payload.get("preAuthHash")),
+                asString(payload.get("fpHash"))
+        );
+    }
+
+    private PasswordResetVerifiedPayload parseVerifiedPayload(String raw) {
+        if (StrUtil.isBlank(raw)) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (!trimmed.startsWith("{")) {
+            String email = normalizeEmail(trimmed);
+            return StrUtil.isBlank(email) ? null : new PasswordResetVerifiedPayload(email, null, "", "");
+        }
+        Map<String, Object> payload = parseObject(trimmed);
+        String email = normalizeEmail(asString(payload.get("email")));
+        if (StrUtil.isBlank(email)) {
+            return null;
+        }
+        return new PasswordResetVerifiedPayload(
+                email,
+                parseLong(payload.get("userId")),
+                asString(payload.get("preAuthHash")),
+                asString(payload.get("fpHash"))
+        );
+    }
+
     private int updatePassword(Long userId, String rawPassword) {
         return userLoginIdentityMapper.updateEmailPasswordHashByUserId(
                 userId,
@@ -378,7 +535,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     }
 
     private String linkKey(String token) {
-        return PasswordResetRedisKeys.LINK_PREFIX + sha256(token);
+        return PasswordResetRedisKeys.LINK_PREFIX + token;
     }
 
     private String verifiedKey(String token) {
@@ -452,6 +609,11 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         return value == null ? "" : String.valueOf(value);
     }
 
+    private String hashOrBlank(String value) {
+        String normalized = StrUtil.blankToDefault(value, "").trim();
+        return StrUtil.isBlank(normalized) ? "" : sha256(normalized);
+    }
+
     private String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -462,5 +624,18 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     }
 
     private record PasswordPair(String password, String confirmPassword, String error) {
+    }
+
+    private record PasswordResetEmailCodePayload(String code,
+                                                 String email,
+                                                 Long userId,
+                                                 String preAuthHash,
+                                                 String fpHash) {
+    }
+
+    private record PasswordResetVerifiedPayload(String email,
+                                                Long userId,
+                                                String preAuthHash,
+                                                String fpHash) {
     }
 }

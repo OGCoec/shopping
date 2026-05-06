@@ -93,6 +93,10 @@ public interface IpReputationProfileMapper {
             SELECT ip,
                    current_score,
                    country,
+                   region,
+                   city,
+                   latitude,
+                   longitude,
                    EXTRACT(EPOCH FROM expires_at) * 1000 AS expires_at_epoch_millis,
                    raw_json::text AS raw_json_text
             FROM ipv4_reputation_profile
@@ -108,6 +112,10 @@ public interface IpReputationProfileMapper {
             SELECT ip,
                    current_score,
                    country,
+                   region,
+                   city,
+                   latitude,
+                   longitude,
                    EXTRACT(EPOCH FROM expires_at) * 1000 AS expires_at_epoch_millis,
                    raw_json::text AS raw_json_text
             FROM ipv6_reputation_profile
@@ -121,17 +129,19 @@ public interface IpReputationProfileMapper {
      */
     @Update("""
             INSERT INTO ipv4_reputation_profile (
-                ip, ip_type, country, asn, provider_name, latitude, longitude, is_datacenter, is_vpn, is_proxy, is_tor,
+                ip, ip_type, country, region, city, asn, provider_name, latitude, longitude, is_datacenter, is_vpn, is_proxy, is_tor,
                 provider_score, reference_score, base_score, current_score,
                 source_provider, raw_json, queried_at, expires_at, last_seen_at
             ) VALUES (
-                #{ip}, #{ipType}, #{country}, #{asn}, #{providerName}, #{latitude}, #{longitude}, #{isDatacenter}, #{isVpn}, #{isProxy}, #{isTor},
+                #{ip}, #{ipType}, #{country}, #{region}, #{city}, #{asn}, #{providerName}, #{latitude}, #{longitude}, #{isDatacenter}, #{isVpn}, #{isProxy}, #{isTor},
                 #{providerScore}, #{referenceScore}, #{baseScore}, #{currentScore},
                 #{sourceProvider}, CAST(#{rawJson} AS jsonb), #{queriedAt}, #{expiresAt}, #{queriedAt}
             )
             ON CONFLICT (ip) DO UPDATE
             SET ip_type = EXCLUDED.ip_type,
                 country = EXCLUDED.country,
+                region = EXCLUDED.region,
+                city = EXCLUDED.city,
                 asn = EXCLUDED.asn,
                 provider_name = EXCLUDED.provider_name,
                 latitude = EXCLUDED.latitude,
@@ -153,6 +163,8 @@ public interface IpReputationProfileMapper {
     int upsertIpv4RiskProfile(@Param("ip") String ip,
                               @Param("ipType") String ipType,
                               @Param("country") String country,
+                              @Param("region") String region,
+                              @Param("city") String city,
                               @Param("asn") String asn,
                               @Param("providerName") String providerName,
                               @Param("latitude") BigDecimal latitude,
@@ -175,17 +187,19 @@ public interface IpReputationProfileMapper {
      */
     @Update("""
             INSERT INTO ipv6_reputation_profile (
-                ip, ip_type, country, asn, provider_name, latitude, longitude, is_datacenter, is_vpn, is_proxy, is_tor,
+                ip, ip_type, country, region, city, asn, provider_name, latitude, longitude, is_datacenter, is_vpn, is_proxy, is_tor,
                 provider_score, reference_score, base_score, current_score,
                 source_provider, raw_json, queried_at, expires_at, last_seen_at
             ) VALUES (
-                #{ip}, #{ipType}, #{country}, #{asn}, #{providerName}, #{latitude}, #{longitude}, #{isDatacenter}, #{isVpn}, #{isProxy}, #{isTor},
+                #{ip}, #{ipType}, #{country}, #{region}, #{city}, #{asn}, #{providerName}, #{latitude}, #{longitude}, #{isDatacenter}, #{isVpn}, #{isProxy}, #{isTor},
                 #{providerScore}, #{referenceScore}, #{baseScore}, #{currentScore},
                 #{sourceProvider}, CAST(#{rawJson} AS jsonb), #{queriedAt}, #{expiresAt}, #{queriedAt}
             )
             ON CONFLICT (ip) DO UPDATE
             SET ip_type = EXCLUDED.ip_type,
                 country = EXCLUDED.country,
+                region = EXCLUDED.region,
+                city = EXCLUDED.city,
                 asn = EXCLUDED.asn,
                 provider_name = EXCLUDED.provider_name,
                 latitude = EXCLUDED.latitude,
@@ -207,6 +221,8 @@ public interface IpReputationProfileMapper {
     int upsertIpv6RiskProfile(@Param("ip") String ip,
                               @Param("ipType") String ipType,
                               @Param("country") String country,
+                              @Param("region") String region,
+                              @Param("city") String city,
                               @Param("asn") String asn,
                               @Param("providerName") String providerName,
                               @Param("latitude") BigDecimal latitude,

@@ -1,16 +1,12 @@
 package com.example.ShoppingSystem.config;
 
 import cn.hutool.core.util.IdUtil;
-import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
-import com.example.ShoppingSystem.filter.preauth.PreAuthFilter;
 import com.example.ShoppingSystem.security.OAuth2LoginFailureHandler;
 import com.example.ShoppingSystem.security.OAuth2LoginSuccessHandler;
 import com.example.ShoppingSystem.security.RedisStateAuthorizationRequestRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -18,7 +14,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
-import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
@@ -61,6 +56,8 @@ public class SecurityConfig {
             "/shopping/user/totp-verification",
             "/shopping/user/add-phone",
             "/shopping/user/session-ended",
+            "/shopping/user/profile",
+            "/shopping/user/console",
             "/shopping/user/forgot-password",
             "/shopping/user/forgot-password/**",
             "/shopping/user/reset-password-url",
@@ -69,6 +66,13 @@ public class SecurityConfig {
             "/shopping/auth/preauth/phone-country",
             "/shopping/auth/preauth/phone-validate",
             "/shopping/auth/waf/verify",
+            "/shopping/user/auth/me",
+            "/shopping/user/auth/refresh",
+            "/shopping/user/auth/logout",
+            "/shopping/user/auth/logout-all",
+            "/shopping/user/profile/avatar",
+            "/shopping/user/totp",
+            "/shopping/user/totp/**",
             "/css/**",
             "/js/**",
             "/images/**",
@@ -123,8 +127,7 @@ public class SecurityConfig {
                                                       OAuth2LoginSuccessHandler successHandler,
                                                       OAuth2LoginFailureHandler failureHandler,
                                                       RedisStateAuthorizationRequestRepository redisStateAuthorizationRequestRepository,
-                                                      OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver,
-                                                      PreAuthFilter preAuthFilter) throws Exception {
+                                                      OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver) throws Exception {
         return http
                 .securityMatcher(APP_SECURITY_PATHS)
                 .authorizeHttpRequests(auth -> auth
@@ -148,7 +151,6 @@ public class SecurityConfig {
                                 "/shopping/user/forgot-password",
                                 "/shopping/user/forgot-password/**"
                         ))
-                .addFilterAfter(preAuthFilter, CsrfFilter.class)
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .build();
@@ -168,18 +170,5 @@ public class SecurityConfig {
                 new DefaultOAuth2AuthorizationRequestResolver(clientRegistrationRepository, "/oauth2/authorization");
         resolver.setAuthorizationRequestCustomizer(builder -> builder.state(IdUtil.nanoId(48)));
         return resolver;
-    }
-
-    @Bean
-    public PreAuthFilter preAuthFilter(PreAuthBindingService preAuthBindingService,
-                                       ObjectMapper objectMapper) {
-        return new PreAuthFilter(preAuthBindingService, objectMapper);
-    }
-
-    @Bean
-    public FilterRegistrationBean<PreAuthFilter> preAuthFilterRegistration(PreAuthFilter preAuthFilter) {
-        FilterRegistrationBean<PreAuthFilter> registration = new FilterRegistrationBean<>(preAuthFilter);
-        registration.setEnabled(false);
-        return registration;
     }
 }

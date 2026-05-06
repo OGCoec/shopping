@@ -6,6 +6,8 @@ C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\Shoppi
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\SmsCodeRabbitConfig.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\SmsCodeRabbitProperties.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\TianaiCaptchaConfig.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\UserAvatarRabbitConfig.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\UserAvatarRabbitProperties.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\captcha\hutool\HutoolCaptchaService.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\captcha\hutool\impl\HutoolCaptchaServiceImpl.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\captcha\hutool\model\HutoolCaptchaResult.java
@@ -99,6 +101,12 @@ C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\Shoppi
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\register\risk\IpReputationDataProvider.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\register\risk\IpReputationEvidence.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\register\risk\IpReputationScoreService.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\AuthRiskSnapshot.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\AuthRiskSnapshotService.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\DeviceIpGeoLookupService.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\DeviceIpGeoSnapshot.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\DeviceRiskCacheInvalidator.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\DeviceRiskProfileWriteService.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\sms\impl\PhoneSmsRiskGateServiceImpl.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\sms\impl\SmsCodeMessagePublisherImpl.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\sms\impl\SmsCodeServiceImpl.java
@@ -114,3 +122,9 @@ C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\Shoppi
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\totp\model\TotpSetupStartResult.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\totp\model\TotpVerificationResult.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\totp\UserTotpService.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\profile\impl\UserAvatarServiceImpl.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\profile\impl\UserAvatarUploadMessagePublisherImpl.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\profile\mq\UserAvatarUploadMessage.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\profile\mq\UserAvatarUploadMessageConsumer.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\profile\UserAvatarService.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\profile\UserAvatarUploadMessagePublisher.java

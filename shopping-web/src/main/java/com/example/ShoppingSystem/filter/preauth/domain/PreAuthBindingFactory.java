@@ -4,6 +4,8 @@ import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBinding;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthRiskProfile;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthProperties;
+import com.example.ShoppingSystem.quota.IpCountryQueryService;
+import com.example.ShoppingSystem.quota.IpGeoSnapshot;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -11,34 +13,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 负责创建和刷新预登录绑定对象。
- * <p>
- * 它定义了绑定对象如何“长出来”和“随请求变化而演化”，
- * 包括 TTL、recentIps、changeCount、风险分重算等规则。
+ * Factory for creating and refreshing pre-auth bindings.
  */
 @Component
 public class PreAuthBindingFactory {
 
+    private static final int DEFAULT_DEVICE_SCORE = 6666;
+
     private final PreAuthProperties properties;
     private final PreAuthRiskService riskService;
+    private final IpCountryQueryService ipCountryQueryService;
 
     public PreAuthBindingFactory(PreAuthProperties properties,
-                                 PreAuthRiskService riskService) {
+                                 PreAuthRiskService riskService,
+                                 IpCountryQueryService ipCountryQueryService) {
         this.properties = properties;
         this.riskService = riskService;
+        this.ipCountryQueryService = ipCountryQueryService;
     }
 
-    /**
-     * 创建一个全新的绑定对象。
-     */
     public PreAuthBinding createNewBinding(String token,
                                            String fpHash,
                                            String uaHash,
-                                           String currentIp) {
-        long now = System.currentTimeMillis();
-
-        // 新绑定创建时，直接按当前 IP 计算风险信息。
-        PreAuthRiskProfile riskProfile = riskService.resolveRiskProfile(currentIp);
+                                           String currentIp,
+                                           String normalizedFingerprint) {
+        PreAuthRiskProfile riskProfile = riskService.resolveRiskProfile(currentIp, normalizedFingerprint);
+        IpGeoSnapshot geo = resolveGeo(currentIp);
         return new PreAuthBinding(
                 token,
                 fpHash,
@@ -46,35 +46,70 @@ public class PreAuthBindingFactory {
                 currentIp,
                 appendRecentIp(new ArrayList<>(), currentIp),
                 0,
-                now,
-                now + bindingTtl().toMillis(),
+                riskProfile.ipScore(),
+                riskProfile.deviceScore(),
                 riskProfile.score(),
-                riskProfile.riskLevel()
+                riskProfile.riskLevel(),
+                System.currentTimeMillis(),
+                geo == null ? null : geo.country(),
+                geo == null ? null : geo.region(),
+                geo == null ? null : geo.city(),
+                geo == null ? null : geo.latitude(),
+                geo == null ? null : geo.longitude(),
+                0,
+                "",
+                0L,
+                0,
+                ""
         );
     }
 
-    /**
-     * 在已有绑定基础上刷新上下文。
-     * <p>
-     * 如果 IP 变化，会同步更新 recentIps、changeCount，并重新计算风险分与风险等级。
-     */
     public PreAuthBinding refreshExistingBinding(PreAuthBinding existing, String currentIp) {
-        long now = System.currentTimeMillis();
+        return refreshExistingBinding(existing, currentIp, null);
+    }
+
+    public PreAuthBinding refreshExistingBinding(PreAuthBinding existing,
+                                                 String currentIp,
+                                                 String normalizedFingerprint) {
         boolean ipChanged = !StrUtil.equals(existing.currentIp(), currentIp);
         int changeCount = existing.changeCount();
         List<String> recentIps = existing.recentIps() == null
                 ? new ArrayList<>()
                 : new ArrayList<>(existing.recentIps());
-        String riskLevel = existing.riskLevel();
+        int ipScore = existing.ipScore();
+        int deviceScore = existing.deviceScore();
         int score = existing.score();
+        String riskLevel = existing.riskLevel();
+        long currentIpSeenAt = existing.currentIpSeenAtEpochMillis();
+        IpGeoSnapshot currentGeo = new IpGeoSnapshot(
+                existing.currentCountry(),
+                existing.currentRegion(),
+                existing.currentCity(),
+                existing.currentLatitude(),
+                existing.currentLongitude()
+        );
 
         if (ipChanged) {
-            // 把新 IP 推到 recentIps 最前面，并去重裁剪。
             recentIps = appendRecentIp(recentIps, currentIp);
             changeCount += 1;
+            currentIpSeenAt = System.currentTimeMillis();
+            currentGeo = resolveGeo(currentIp);
+        } else {
+            currentIpSeenAt = System.currentTimeMillis();
+            if (!currentGeo.hasAnyGeo()) {
+                IpGeoSnapshot refreshedGeo = resolveGeo(currentIp);
+                if (refreshedGeo != null && refreshedGeo.hasAnyGeo()) {
+                    currentGeo = refreshedGeo;
+                }
+            }
+        }
 
-            // IP 变化后重新走一次风控计算。
-            PreAuthRiskProfile riskProfile = riskService.resolveRiskProfile(currentIp);
+        if (ipChanged || hasMissingCompositeRisk(existing)) {
+            PreAuthRiskProfile riskProfile = StrUtil.isNotBlank(normalizedFingerprint)
+                    ? riskService.resolveRiskProfile(currentIp, normalizedFingerprint)
+                    : riskService.resolveRiskProfile(currentIp, fallbackDeviceScore(deviceScore));
+            ipScore = riskProfile.ipScore();
+            deviceScore = riskProfile.deviceScore();
             score = riskProfile.score();
             riskLevel = riskProfile.riskLevel();
         }
@@ -86,29 +121,28 @@ public class PreAuthBindingFactory {
                 currentIp,
                 recentIps,
                 changeCount,
-                now,
-                now + bindingTtl().toMillis(),
+                ipScore,
+                deviceScore,
                 score,
-                riskLevel
+                riskLevel,
+                currentIpSeenAt,
+                currentGeo == null ? null : currentGeo.country(),
+                currentGeo == null ? null : currentGeo.region(),
+                currentGeo == null ? null : currentGeo.city(),
+                currentGeo == null ? null : currentGeo.latitude(),
+                currentGeo == null ? null : currentGeo.longitude(),
+                existing.sameCityIpChangeCount(),
+                existing.lastPenalizedIpTransition(),
+                existing.lastPenaltyAtEpochMillis(),
+                existing.lastPenaltyScore(),
+                existing.lastPenaltyReason()
         );
     }
 
-    /**
-     * 返回绑定对象的统一 TTL。
-     */
     public Duration bindingTtl() {
         return Duration.ofMinutes(Math.max(1, properties.getTtlMinutes()));
     }
 
-    /**
-     * 维护 recentIps 列表。
-     * <p>
-     * 规则：
-     * 1) 为空时初始化；
-     * 2) 先去掉旧位置上的同 IP；
-     * 3) 再把新 IP 头插；
-     * 4) 最后按配置裁剪长度。
-     */
     private List<String> appendRecentIp(List<String> recentIps, String ip) {
         if (recentIps == null) {
             recentIps = new ArrayList<>();
@@ -117,16 +151,37 @@ public class PreAuthBindingFactory {
             return recentIps;
         }
 
-        // 去掉旧位置上的相同 IP，避免 recentIps 出现重复。
         recentIps.removeIf(existing -> StrUtil.equals(existing, ip));
-
-        // 最新访问 IP 始终放在最前面，方便后续快速观察。
         recentIps.add(0, ip);
         int safeLimit = Math.max(1, properties.getRecentIpLimit());
         while (recentIps.size() > safeLimit) {
-            // 超出上限时从尾部移除最旧的记录。
             recentIps.remove(recentIps.size() - 1);
         }
         return recentIps;
+    }
+
+    private boolean hasMissingCompositeRisk(PreAuthBinding binding) {
+        return binding.ipScore() < 0
+                || binding.deviceScore() < 0
+                || binding.score() < 0
+                || StrUtil.isBlank(binding.riskLevel());
+    }
+
+    private int fallbackDeviceScore(int existingDeviceScore) {
+        return existingDeviceScore >= 0 ? existingDeviceScore : DEFAULT_DEVICE_SCORE;
+    }
+
+    private IpGeoSnapshot resolveGeo(String ip) {
+        if (StrUtil.isBlank(ip)) {
+            return null;
+        }
+        try {
+            IpCountryQueryService.GeoQueryResult result = ipCountryQueryService.queryGeo(ip);
+            if (result != null && result.success() && result.geo() != null && result.geo().hasAnyGeo()) {
+                return result.geo();
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 }

@@ -15,5 +15,15 @@ public interface UserProfileMapper {
     @Select("SELECT EXISTS (SELECT 1 FROM user_profile WHERE id = #{id})")
     boolean existsById(@Param("id") Long id);
 
+    UserProfile findById(@Param("id") Long id);
+
+    String findAvatarById(@Param("id") Long id);
+
     int insertUserProfile(UserProfile profile);
+
+    int insertStubIfAbsent(@Param("id") Long id);
+
+    int updateAvatarById(@Param("id") Long id, @Param("avatar") String avatar);
+
+    int clearAvatarById(@Param("id") Long id);
 }

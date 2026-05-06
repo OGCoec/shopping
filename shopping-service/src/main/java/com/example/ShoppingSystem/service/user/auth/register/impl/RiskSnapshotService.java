@@ -2,7 +2,8 @@ package com.example.ShoppingSystem.service.user.auth.register.impl;
 
 import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSelection;
 import com.example.ShoppingSystem.service.user.auth.register.model.RiskSnapshot;
-import com.example.ShoppingSystem.service.user.auth.register.risk.IpReputationScoreService;
+import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
+import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshotService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -22,18 +23,12 @@ public class RiskSnapshotService {
 
     private static final Logger log = LoggerFactory.getLogger(RiskSnapshotService.class);
 
-    /**
-     * 当前设备分兜底值。
-     * 说明：后续接入设备信誉服务后，这个常量可以替换为实时计算结果。
-     */
-    private static final int DEFAULT_DEVICE_SCORE = 6666;
-
-    private final IpReputationScoreService ipReputationScoreService;
+    private final AuthRiskSnapshotService authRiskSnapshotService;
     private final ChallengePolicy challengePolicy;
 
-    public RiskSnapshotService(IpReputationScoreService ipReputationScoreService,
+    public RiskSnapshotService(AuthRiskSnapshotService authRiskSnapshotService,
                                ChallengePolicy challengePolicy) {
-        this.ipReputationScoreService = ipReputationScoreService;
+        this.authRiskSnapshotService = authRiskSnapshotService;
         this.challengePolicy = challengePolicy;
     }
 
@@ -48,27 +43,45 @@ public class RiskSnapshotService {
      * @param pendingChallengeSelection 若存在则优先复用，避免挑战类型漂移
      * @return 风险快照
      */
-    public RiskSnapshot buildRiskSnapshot(String publicIp, ChallengeSelection pendingChallengeSelection) {
-        int ipScore = ipReputationScoreService.calculateIpScore(publicIp);
-        int deviceScore = DEFAULT_DEVICE_SCORE;
+    public RiskSnapshot buildRiskSnapshot(String publicIp,
+                                          String deviceFingerprint,
+                                          ChallengeSelection pendingChallengeSelection) {
+        return buildRiskSnapshot(publicIp, deviceFingerprint, pendingChallengeSelection, null);
+    }
 
-        int lowScore = Math.min(ipScore, deviceScore);
-        int highScore = Math.max(ipScore, deviceScore);
-        int totalScore = (int) Math.round(lowScore * 0.8 + highScore * 0.2);
-
-        String riskLevel = challengePolicy.resolveRiskLevel(totalScore);
+    public RiskSnapshot buildRiskSnapshot(String publicIp,
+                                          String deviceFingerprint,
+                                          ChallengeSelection pendingChallengeSelection,
+                                          AuthRiskSnapshot riskSnapshotOverride) {
+        AuthRiskSnapshot authRiskSnapshot = validOverride(riskSnapshotOverride)
+                ? riskSnapshotOverride
+                : authRiskSnapshotService.buildRiskSnapshot(publicIp, deviceFingerprint);
         ChallengeSelection challengeSelection = pendingChallengeSelection != null
                 ? pendingChallengeSelection
-                : challengePolicy.resolveChallengeSelection(riskLevel);
+                : challengePolicy.resolveChallengeSelection(authRiskSnapshot.riskLevel());
 
         log.info("注册风控快照：publicIp={}，ipScore={}，deviceScore={}，totalScore={}，riskLevel={}，challengeType={}，challengeSubType={}",
                 publicIp,
-                ipScore,
-                deviceScore,
-                totalScore,
-                riskLevel,
+                authRiskSnapshot.ipScore(),
+                authRiskSnapshot.deviceScore(),
+                authRiskSnapshot.totalScore(),
+                authRiskSnapshot.riskLevel(),
                 challengeSelection != null ? challengeSelection.type() : null,
                 challengeSelection != null ? challengeSelection.subType() : null);
-        return new RiskSnapshot(ipScore, deviceScore, totalScore, riskLevel, challengeSelection);
+        return new RiskSnapshot(
+                authRiskSnapshot.ipScore(),
+                authRiskSnapshot.deviceScore(),
+                authRiskSnapshot.totalScore(),
+                authRiskSnapshot.riskLevel(),
+                challengeSelection);
+    }
+
+    private boolean validOverride(AuthRiskSnapshot riskSnapshot) {
+        return riskSnapshot != null
+                && riskSnapshot.ipScore() >= 0
+                && riskSnapshot.deviceScore() >= 0
+                && riskSnapshot.totalScore() >= 0
+                && riskSnapshot.riskLevel() != null
+                && !riskSnapshot.riskLevel().isBlank();
     }
 }

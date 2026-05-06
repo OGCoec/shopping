@@ -17,7 +17,7 @@ public final class LoginFlowWebSupport {
     public static final String LOGIN_MODE = "login";
     public static final String MODE_QUERY_PARAM = "mode";
     public static final String SESSION_ENDED_PATH = "/shopping/user/session-ended";
-    public static final String AUTHENTICATED_PATH = "/";
+    public static final String AUTHENTICATED_PATH = "/shopping/user/console";
 
     public static final String NOTICE_QUERY_PARAM = "login_notice";
     public static final String NOTICE_FLOW_EXPIRED = "flow-expired";

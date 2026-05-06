@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS user_risk_profile (
     last_login_ip VARCHAR(64),
 
     -- 最近一次登录设备指纹
-    last_device_fingerprint VARCHAR(255),
+    last_device_fingerprint TEXT,
 
     -- 最近更新时间
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
