@@ -22,7 +22,10 @@ import com.example.ShoppingSystem.service.user.auth.login.LoginFlowSessionServic
 import com.example.ShoppingSystem.service.user.auth.login.UserPasswordLoginService;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowSession;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowValidationResult;
+import com.example.ShoppingSystem.service.user.auth.risk.AutomationRiskGateService;
 import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshotService;
+import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskDecision;
+import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskScene;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -62,6 +65,7 @@ public class LoginController {
     private final TianaiCaptchaService tianaiCaptchaService;
     private final AuthTokenService authTokenService;
     private final AuthRiskSnapshotService authRiskSnapshotService;
+    private final AutomationRiskGateService automationRiskGateService;
 
     public LoginController(UserPasswordLoginService userPasswordLoginService,
                            LoginFlowSessionService loginFlowSessionService,
@@ -70,7 +74,8 @@ public class LoginController {
                            HutoolCaptchaService hutoolCaptchaService,
                            TianaiCaptchaService tianaiCaptchaService,
                            AuthTokenService authTokenService,
-                           AuthRiskSnapshotService authRiskSnapshotService) {
+                           AuthRiskSnapshotService authRiskSnapshotService,
+                           AutomationRiskGateService automationRiskGateService) {
         this.userPasswordLoginService = userPasswordLoginService;
         this.loginFlowSessionService = loginFlowSessionService;
         this.loginFlowCookieFactory = loginFlowCookieFactory;
@@ -79,6 +84,7 @@ public class LoginController {
         this.tianaiCaptchaService = tianaiCaptchaService;
         this.authTokenService = authTokenService;
         this.authRiskSnapshotService = authRiskSnapshotService;
+        this.automationRiskGateService = automationRiskGateService;
     }
 
     @Operation(summary = "Start login flow after identifier entry and risk challenge resolution.")
@@ -96,6 +102,21 @@ public class LoginController {
         }
 
         String clientIp = resolveClientIp(request);
+        AutomationRiskDecision automationDecision = automationRiskGateService.checkStart(
+                AutomationRiskScene.LOGIN,
+                body.deviceFingerprint(),
+                clientIp
+        );
+        if (automationDecision.blocked()) {
+            clearFlowCookie(response, request);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(LoginFlowResponse.automationBlocked(
+                            automationDecision.message(),
+                            automationDecision.retryAfterMs()
+                    ));
+        }
+
         String riskLevel = resolveAuthRiskLevel(request, clientIp, body.deviceFingerprint());
         LoginFlowResponse responseBody = LoginFlowResponse.fromStart(
                 userPasswordLoginService.startFlow(

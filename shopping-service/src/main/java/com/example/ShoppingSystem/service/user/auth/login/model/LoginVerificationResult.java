@@ -26,4 +26,5 @@ public class LoginVerificationResult {
     String challengeType;
     String challengeSubType;
     String challengeSiteKey;
+    Long retryAfterMs;
 }

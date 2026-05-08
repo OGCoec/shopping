@@ -8,7 +8,6 @@ import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloo
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -22,18 +21,15 @@ public class PhoneBoundCountingBloomServiceImpl implements PhoneBoundCountingBlo
 
     private final CountingBloomFilter countingBloomFilter;
     private final UserLoginIdentityMapper userLoginIdentityMapper;
-    private final StringRedisTemplate stringRedisTemplate;
     private final PhoneBoundCountingBloomProperties properties;
     private final Executor executor;
 
     public PhoneBoundCountingBloomServiceImpl(CountingBloomFilter countingBloomFilter,
                                               UserLoginIdentityMapper userLoginIdentityMapper,
-                                              StringRedisTemplate stringRedisTemplate,
                                               PhoneBoundCountingBloomProperties properties,
                                               @Qualifier("phoneBoundCountingBloomExecutor") Executor executor) {
         this.countingBloomFilter = countingBloomFilter;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
-        this.stringRedisTemplate = stringRedisTemplate;
         this.properties = properties;
         this.executor = executor;
     }
@@ -62,9 +58,6 @@ public class PhoneBoundCountingBloomServiceImpl implements PhoneBoundCountingBlo
             }
             List<String> normalizedPhones = normalizePhones(page);
             loadedRows += countingBloomFilter.addAllItems(properties.getKey(), normalizedPhones);
-            for (String phone : normalizedPhones) {
-                stringRedisTemplate.opsForValue().set(memberKey(phone), "1");
-            }
             offset += page.size();
         }
 
@@ -104,10 +97,7 @@ public class PhoneBoundCountingBloomServiceImpl implements PhoneBoundCountingBlo
 
     private void addVerifiedPhone(String phone) {
         try {
-            Boolean firstSeen = stringRedisTemplate.opsForValue().setIfAbsent(memberKey(phone), "1");
-            if (Boolean.TRUE.equals(firstSeen)) {
-                countingBloomFilter.add(properties.getKey(), phone);
-            }
+            countingBloomFilter.add(properties.getKey(), phone);
         } catch (RuntimeException e) {
             log.warn("Phone-bound counting bloom add failed, phone={}, reason={}", phone, e.getMessage());
         }
@@ -125,9 +115,5 @@ public class PhoneBoundCountingBloomServiceImpl implements PhoneBoundCountingBlo
             }
         }
         return normalizedPhones;
-    }
-
-    private String memberKey(String phone) {
-        return properties.getMemberKeyPrefix() + phone;
     }
 }

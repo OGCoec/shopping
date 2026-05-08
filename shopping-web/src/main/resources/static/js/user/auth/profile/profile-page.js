@@ -1,6 +1,8 @@
 (function () {
   const ME_PATH = "/shopping/user/auth/me";
   const AVATAR_PATH = "/shopping/user/profile/avatar";
+  const ACCOUNT_DELETION_PATH = "/shopping/user/profile/deletion";
+  const LOGIN_PATH = "/shopping/user/log-in";
   const TOTP_STATUS_PATH = "/shopping/user/totp/status";
   const TOTP_SETUP_PATH = "/shopping/user/totp/setup";
   const TOTP_CONFIRM_PATH = "/shopping/user/totp/setup/confirm";
@@ -12,6 +14,7 @@
   const reloadButton = document.getElementById("reload-profile");
   const logoutCurrentButton = document.getElementById("logout-current");
   const logoutAllButton = document.getElementById("logout-all");
+  const deleteAccountButton = document.getElementById("delete-account");
   const avatarImage = document.getElementById("profile-avatar-image");
   const avatarFallback = document.getElementById("profile-avatar-fallback");
   const avatarTitle = document.getElementById("avatar-title");
@@ -90,6 +93,7 @@
   function setLoggingOut(isLoggingOut) {
     logoutCurrentButton.disabled = isLoggingOut;
     logoutAllButton.disabled = isLoggingOut;
+    deleteAccountButton.disabled = isLoggingOut;
   }
 
   function setAvatarWorking(isWorking) {
@@ -108,6 +112,49 @@
       await action();
     } catch (_) {
       setStatus("退出失败，请稍后重试。", true);
+      setLoggingOut(false);
+    }
+  }
+
+  async function submitAccountDeletion() {
+    if (!authClient?.fetchWithAuth) {
+      setStatus("认证客户端未加载。", true);
+      return;
+    }
+    if (!window.confirm("确定要注销账号吗？账号会先停用，7 天后完成注销。")) {
+      return;
+    }
+    const reason = window.prompt("请输入注销原因：");
+    if (reason === null) {
+      return;
+    }
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      setStatus("注销原因不能为空。", true);
+      return;
+    }
+    if (!window.confirm("再次确认注销账号？确认后当前账号会立即不可用。")) {
+      return;
+    }
+
+    setLoggingOut(true);
+    setStatus("正在提交注销请求...", false);
+    try {
+      const response = await authClient.fetchWithAuth(ACCOUNT_DELETION_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deletionReason: normalizedReason })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        setStatus(payload?.message || "注销请求提交失败。", true);
+        setLoggingOut(false);
+        return;
+      }
+      window.alert("账号注销请求已提交。");
+      window.location.assign(LOGIN_PATH);
+    } catch (_) {
+      setStatus("注销请求提交失败。", true);
       setLoggingOut(false);
     }
   }
@@ -439,6 +486,7 @@
   logoutAllButton?.addEventListener("click", () => {
     confirmAndLogout("确定要退出全部设备吗？其他设备也需要重新登录。", () => authClient?.logoutAll?.());
   });
+  deleteAccountButton?.addEventListener("click", submitAccountDeletion);
 
   avatarUploadTrigger?.addEventListener("click", () => avatarInput?.click());
   avatarChangeButton?.addEventListener("click", () => avatarInput?.click());

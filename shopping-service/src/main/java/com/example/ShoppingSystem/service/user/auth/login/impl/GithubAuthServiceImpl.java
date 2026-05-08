@@ -5,6 +5,9 @@ import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.login.GithubAuthService;
+import com.example.ShoppingSystem.service.user.auth.login.UserAuthAccountUnavailableException;
+import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
+import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthLockStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,11 +20,14 @@ import java.time.OffsetDateTime;
 public class GithubAuthServiceImpl implements GithubAuthService {
 
     private final UserLoginIdentityMapper userLoginIdentityMapper;
+    private final UserAuthFailureRiskService userAuthFailureRiskService;
     private final SnowflakeIdWorker snowflakeIdWorker;
 
     public GithubAuthServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
+                                 UserAuthFailureRiskService userAuthFailureRiskService,
                                  SnowflakeIdWorker snowflakeIdWorker) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
+        this.userAuthFailureRiskService = userAuthFailureRiskService;
         this.snowflakeIdWorker = snowflakeIdWorker;
     }
 
@@ -30,6 +36,7 @@ public class GithubAuthServiceImpl implements GithubAuthService {
     public UserLoginIdentity loginByGithub(String githubId, String githubEmail) {
         UserLoginIdentity existingByGithub = userLoginIdentityMapper.findByGithubId(githubId);
         if (existingByGithub != null) {
+            ensureLoginAllowed(existingByGithub);
             userLoginIdentityMapper.updateLastLoginAtById(existingByGithub.getId());
             return existingByGithub;
         }
@@ -38,6 +45,7 @@ public class GithubAuthServiceImpl implements GithubAuthService {
             String normalizedEmail = githubEmail.trim().toLowerCase();
             UserLoginIdentity existingByEmail = userLoginIdentityMapper.findByEmail(normalizedEmail);
             if (existingByEmail != null) {
+                ensureLoginAllowed(existingByEmail);
                 userLoginIdentityMapper.bindGithubIdById(existingByEmail.getId(), githubId);
                 existingByEmail.setGithubId(githubId);
                 existingByEmail.setLastLoginAt(OffsetDateTime.now());
@@ -75,5 +83,18 @@ public class GithubAuthServiceImpl implements GithubAuthService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+    }
+
+    private void ensureLoginAllowed(UserLoginIdentity identity) {
+        UserAuthLockStatus lockStatus = userAuthFailureRiskService.checkAccountStatusAndLock(
+                identity.getUserId(),
+                identity.getStatus()
+        );
+        if (lockStatus.isBlocked()) {
+            throw new UserAuthAccountUnavailableException(lockStatus.getStatus());
+        }
+        if ("LOCKED".equalsIgnoreCase(String.valueOf(identity.getStatus()))) {
+            identity.setStatus("ACTIVE");
+        }
     }
 }

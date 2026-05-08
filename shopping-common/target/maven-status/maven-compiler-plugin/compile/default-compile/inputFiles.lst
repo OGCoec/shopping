@@ -2,9 +2,11 @@ C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\Shoppin
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\avatar\AvatarMetadataUtils.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\common\exception\ChallengeTypeMismatchException.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\common\exception\TianaiCaptchaFormatException.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\common\proxy\LocalProxyResolver.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\common\result\FailureType.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\common\result\Result.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\phone\PhoneNumberValidationService.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\BotDefenseRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\GithubRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\GoogleRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\Ip2LocationQuotaRedisKeys.java
@@ -12,6 +14,7 @@ C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\Shoppin
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\MicrosoftRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\PasswordResetRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\RegisterRedisKeys.java
+C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisdata\UserAuthRiskRedisKeys.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisfilter\CountingBloomFilter.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\redisfilter\CuckooFilter.java
 C:\Users\damn\Desktop\shopping\shopping-common\src\main\java\com\example\ShoppingSystem\Utils\AliyunUtils.java

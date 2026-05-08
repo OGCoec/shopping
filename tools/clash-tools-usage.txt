@@ -1,0 +1,99 @@
+tools 目录说明
+
+当前这 3 个文件夹都是给 Clash YAML 做节点名称处理和排序用的：
+
+1. clash-country
+   用途：
+   - 根据 YAML 里每个节点的 server IP
+   - 用本地 IP2Location BIN 查询国家
+   - 给节点名前面加国旗和国家代码
+   - 按真实查询到的国家进行聚类
+   - 按国家名称 A-Z 排序
+   - 同步重排 proxy-groups 里的对应节点引用
+
+   入口文件：
+   - add-clash-cf-country-apply.bat
+
+   运行前需要输入：
+   - Clash YAML 文件路径
+   - IP2Location BIN 文件路径
+
+   适用场景：
+   - 想完全离线
+   - 已经有本地 BIN 文件
+   - 能接受 BIN 数据可能不是最新
+
+   注意：
+   - 默认跳过 socks5 / socks / http 类型节点
+   - 例如你自己加的住宅链式代理节点，默认不会参与排序
+   - 写入前会自动生成 .bak 备份
+
+
+2. clash-country-iping
+   用途：
+   - 根据 YAML 里每个节点的 server IP
+   - 调用 iping API 查询国家
+   - 给节点名前面加国旗和国家代码
+   - 按真实查询到的国家进行聚类
+   - 按国家名称 A-Z 排序
+   - 同步重排 proxy-groups 里的对应节点引用
+
+   入口文件：
+   - add-clash-cf-country-iping-apply.bat
+
+   运行前需要输入：
+   - Clash YAML 文件路径
+
+   适用场景：
+   - 觉得本地 BIN 结果不准或过旧
+   - 想用在线结果替代本地库
+
+   注意：
+   - 当前请求间隔是 1.2 秒 1 个 IP
+   - 每查完一个 IP 会在控制台立刻打印结果
+   - 默认跳过 socks5 / socks / http 类型节点
+   - 写入前会自动生成 .bak 备份
+   - 需要网络
+
+
+3. clash-country-prefix
+   用途：
+   - 不查 BIN
+   - 不查 API
+   - 只根据节点名字开头的国家代码处理
+   - 例如 SG / GB / HK / US
+   - 给节点名前面补国旗
+   - 按国家名称 A-Z 聚类排序
+   - 同步重排 proxy-groups 里的对应节点引用
+
+   入口文件：
+   - add-clash-country-prefix-apply.bat
+
+   运行前需要输入：
+   - Clash YAML 文件路径
+
+   适用场景：
+   - 你只想按节点名原本写的国家归类
+   - 不关心真实 IP 落地
+   - 想最快处理
+
+   注意：
+   - 默认跳过 socks5 / socks / http 类型节点
+   - 如果节点名前缀国家码本来就是错的，结果也会跟着错
+   - 写入前会自动生成 .bak 备份
+
+
+共同说明
+
+- 这 3 个工具都独立于本项目后端，不需要启动 Java 服务
+- 推荐直接双击各自的 .bat 文件使用
+- 目标 YAML 如果是 Clash Verge Rev 的订阅文件，订阅刷新后可能会被覆盖
+- 如果刷新订阅后被覆盖，就重新运行一次对应的 .bat
+- 如果控制台出现乱码，优先确认 YAML 本身编码和终端字体
+
+
+怎么选
+
+- 想离线，用本地库：clash-country
+- 想在线查，结果更接近当前：clash-country-iping
+- 只按节点名前缀整理，最快：clash-country-prefix

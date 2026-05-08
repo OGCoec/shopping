@@ -440,6 +440,7 @@ const otpResendApi = createLoginOtpResend({
 });
 otpResendApi.bindOtpResend();
 window.startRegisterEmailResendCooldown = otpResendApi.startRegisterResendCooldown;
+window.startLoginEmailResendCooldown = otpResendApi.startLoginResendCooldown;
 
 const registerBridgeApi = createLoginRegisterBridge({
   shellApi,

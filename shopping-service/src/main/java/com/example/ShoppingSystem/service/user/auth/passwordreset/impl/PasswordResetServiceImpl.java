@@ -78,7 +78,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (riskResult != null) {
             return riskResult;
         }
-        PasswordResetResult cooldownResult = rejectIfCooldown(normalizedEmail);
+        PasswordResetResult cooldownResult = markCooldownOrReject(normalizedEmail);
         if (cooldownResult != null) {
             return cooldownResult;
         }
@@ -100,7 +100,6 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                     PasswordResetRedisKeys.LINK_TTL_MINUTES);
         }
 
-        startCooldown(normalizedEmail);
         return PasswordResetResult.okWithRetryAfter(
                 "If this email exists, a password reset link has been sent.",
                 Duration.ofSeconds(PasswordResetRedisKeys.SEND_COOLDOWN_SECONDS).toMillis());
@@ -118,7 +117,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (riskResult != null) {
             return riskResult;
         }
-        PasswordResetResult cooldownResult = rejectIfCooldown(normalizedEmail);
+        PasswordResetResult cooldownResult = markCooldownOrReject(normalizedEmail);
         if (cooldownResult != null) {
             return cooldownResult;
         }
@@ -154,7 +153,6 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                     PasswordResetRedisKeys.LINK_TTL_MINUTES);
         }
 
-        startCooldown(normalizedEmail);
         return PasswordResetResult.okWithRetryAfter(
                 "If this email exists, a verification code and reset link have been sent.",
                 Duration.ofSeconds(PasswordResetRedisKeys.SEND_COOLDOWN_SECONDS).toMillis());
@@ -375,22 +373,22 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         return null;
     }
 
-    private PasswordResetResult rejectIfCooldown(String email) {
+    private PasswordResetResult markCooldownOrReject(String email) {
         if (StrUtil.isBlank(email)) {
             return PasswordResetResult.fail("PASSWORD_RESET_EMAIL_INVALID", "Please enter a valid email address.");
         }
-        Long ttlSeconds = stringRedisTemplate.getExpire(cooldownKey(email));
-        if (ttlSeconds != null && ttlSeconds > 0) {
-            return PasswordResetResult.rateLimited(Duration.ofSeconds(ttlSeconds).toMillis());
-        }
-        return null;
-    }
-
-    private void startCooldown(String email) {
-        stringRedisTemplate.opsForValue().set(
+        Boolean marked = stringRedisTemplate.opsForValue().setIfAbsent(
                 cooldownKey(email),
                 "1",
                 Duration.ofSeconds(PasswordResetRedisKeys.SEND_COOLDOWN_SECONDS));
+        if (Boolean.TRUE.equals(marked)) {
+            return null;
+        }
+        Long ttlMs = stringRedisTemplate.getExpire(cooldownKey(email), java.util.concurrent.TimeUnit.MILLISECONDS);
+        long retryAfterMs = ttlMs == null || ttlMs <= 0L
+                ? Duration.ofSeconds(PasswordResetRedisKeys.SEND_COOLDOWN_SECONDS).toMillis()
+                : ttlMs;
+        return PasswordResetResult.rateLimited(retryAfterMs);
     }
 
     private UserLoginIdentity findResettableIdentity(String email) {

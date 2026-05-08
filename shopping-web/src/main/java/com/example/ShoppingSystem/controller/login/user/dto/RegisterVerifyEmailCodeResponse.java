@@ -14,4 +14,6 @@ public class RegisterVerifyEmailCodeResponse {
     private String message;
     private Long userId;
     private boolean requirePhoneBinding;
+    private Boolean authenticated;
+    private String redirectPath;
 }

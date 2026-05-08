@@ -6,4 +6,7 @@ package com.example.ShoppingSystem.service.user.auth.risk;
 public interface DeviceRiskCacheInvalidator {
 
     void invalidateDeviceFingerprint(String deviceFingerprint);
+
+    default void invalidateDeviceLinkedUserCount(String deviceFingerprint) {
+    }
 }

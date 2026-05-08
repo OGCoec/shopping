@@ -23,4 +23,5 @@ public class RegisterPhoneBindingResult {
     String challengeType;
     String challengeSubType;
     String challengeSiteKey;
+    Long retryAfterMs;
 }

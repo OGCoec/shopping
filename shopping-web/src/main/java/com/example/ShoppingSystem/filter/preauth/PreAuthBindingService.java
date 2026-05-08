@@ -273,6 +273,54 @@ public class PreAuthBindingService {
         return requestResolver.resolveClientIp(request);
     }
 
+    public boolean isRawL6BloomBlocked(String rawFingerprint, HttpServletRequest request) {
+        String normalizedFingerprint = requestResolver.normalizeFingerprint(rawFingerprint, request);
+        String ip = requestResolver.resolveClientIp(request);
+        return riskService.isRawL6BloomBlocked(ip, normalizedFingerprint);
+    }
+
+    public PreAuthBinding markRawL6BloomBlocked(PreAuthBinding existing,
+                                                String rawFingerprint,
+                                                HttpServletRequest request) {
+        if (existing == null || request == null) {
+            return null;
+        }
+
+        String normalizedFingerprint = requestResolver.normalizeFingerprint(rawFingerprint, request);
+        String ip = requestResolver.resolveClientIp(request);
+        if (!riskService.isRawL6BloomBlocked(ip, normalizedFingerprint)) {
+            return null;
+        }
+
+        PreAuthRiskProfile riskProfile = riskService.resolveRiskProfile(ip, normalizedFingerprint);
+        PreAuthBinding blocked = new PreAuthBinding(
+                existing.token(),
+                existing.fpHash(),
+                existing.uaHash(),
+                ip,
+                existing.recentIps(),
+                existing.changeCount(),
+                riskProfile.ipScore(),
+                riskProfile.deviceScore(),
+                riskProfile.score(),
+                riskProfile.riskLevel(),
+                System.currentTimeMillis(),
+                existing.currentCountry(),
+                existing.currentRegion(),
+                existing.currentCity(),
+                existing.currentLatitude(),
+                existing.currentLongitude(),
+                existing.sameCityIpChangeCount(),
+                existing.lastPenalizedIpTransition(),
+                existing.lastPenaltyAtEpochMillis(),
+                existing.lastPenaltyScore(),
+                existing.lastPenaltyReason()
+        );
+        bindingRepository.save(blocked);
+        riskStateSyncService.forceClearDerivedState(blocked, request);
+        return blocked;
+    }
+
     /**
      * 对外暴露正常 token Cookie 构建入口。
      */

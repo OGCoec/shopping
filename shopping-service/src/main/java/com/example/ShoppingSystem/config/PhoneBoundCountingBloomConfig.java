@@ -8,7 +8,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 @Configuration
-@EnableConfigurationProperties(PhoneBoundCountingBloomProperties.class)
+@EnableConfigurationProperties({
+        PhoneBoundCountingBloomProperties.class,
+        PhoneVerifiedUserCountingBloomProperties.class
+})
 public class PhoneBoundCountingBloomConfig {
 
     @Bean

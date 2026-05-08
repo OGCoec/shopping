@@ -3,6 +3,7 @@ package com.example.ShoppingSystem.quota;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthHashingService;
 import com.example.ShoppingSystem.mapper.RegisterRiskProfileMapper;
+import com.example.ShoppingSystem.service.user.auth.risk.DeviceL6CountingBloomDecisionService;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,12 +22,13 @@ public class DeviceRiskMultiLevelQueryService {
 
     private static final int SCORE_MIN = 0;
     private static final int SCORE_MAX = 10000;
-    private static final int DEFAULT_DEVICE_SCORE = 6666;
+    private static final int DEFAULT_DEVICE_SCORE = 7000;
 
     private final DeviceRiskLocalCacheStore localCacheStore;
     private final StringRedisTemplate stringRedisTemplate;
     private final RegisterRiskProfileMapper registerRiskProfileMapper;
     private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
+    private final DeviceL6CountingBloomDecisionService deviceL6CountingBloomDecisionService;
     private final PreAuthHashingService hashingService;
     private final ObjectMapper objectMapper;
 
@@ -43,12 +45,14 @@ public class DeviceRiskMultiLevelQueryService {
                                             StringRedisTemplate stringRedisTemplate,
                                             RegisterRiskProfileMapper registerRiskProfileMapper,
                                             DeviceRiskProfileWriteService deviceRiskProfileWriteService,
+                                            DeviceL6CountingBloomDecisionService deviceL6CountingBloomDecisionService,
                                             PreAuthHashingService hashingService,
                                             ObjectMapper objectMapper) {
         this.localCacheStore = localCacheStore;
         this.stringRedisTemplate = stringRedisTemplate;
         this.registerRiskProfileMapper = registerRiskProfileMapper;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
+        this.deviceL6CountingBloomDecisionService = deviceL6CountingBloomDecisionService;
         this.hashingService = hashingService;
         this.objectMapper = objectMapper;
     }
@@ -57,6 +61,11 @@ public class DeviceRiskMultiLevelQueryService {
         String normalizedFingerprint = normalizeText(deviceFingerprint);
         if (StrUtil.isBlank(normalizedFingerprint)) {
             return DEFAULT_DEVICE_SCORE;
+        }
+
+        Integer fastL6Score = deviceL6CountingBloomDecisionService.resolveFastL6ScoreIfHit(normalizedFingerprint);
+        if (fastL6Score != null) {
+            return clamp(fastL6Score);
         }
 
         String cacheKey = fingerprintCacheKey(normalizedFingerprint);

@@ -30,6 +30,7 @@ public class Ip2LocationQuotaService {
     private static final DefaultRedisScript<List> DECR_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<List> COMPENSATE_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<List> REBUILD_SCRIPT = new DefaultRedisScript<>();
+    private static final DefaultRedisScript<List> ACQUIRE_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<Long> ROUND_ROBIN_NEXT_SCRIPT = new DefaultRedisScript<>();
 
     static {
@@ -44,6 +45,9 @@ public class Ip2LocationQuotaService {
 
         REBUILD_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_rebuild.lua")));
         REBUILD_SCRIPT.setResultType(List.class);
+
+        ACQUIRE_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_acquire.lua")));
+        ACQUIRE_SCRIPT.setResultType(List.class);
 
         ROUND_ROBIN_NEXT_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_round_robin_next.lua")));
         ROUND_ROBIN_NEXT_SCRIPT.setResultType(Long.class);
@@ -99,30 +103,15 @@ public class Ip2LocationQuotaService {
     }
 
     public QuotaAcquireResult acquireQuotaForCall() {
-        long totalQuota = getTotalQuotaCount();
-        if (totalQuota <= 0) {
-            return QuotaAcquireResult.denied(totalQuota, "quota_count_exhausted");
-        }
-
-        List<String> quotaKeys = getOrderedQuotaKeys();
-        if (quotaKeys.isEmpty()) {
-            rebuildQuotaCount();
-            return QuotaAcquireResult.denied(getTotalQuotaCount(), "quota_key_not_found");
-        }
-
-        int startIndex = nextRoundRobinStartIndex(quotaKeys.size());
-        for (int i = 0; i < quotaKeys.size(); i++) {
-            int index = (startIndex + i) % quotaKeys.size();
-            String quotaKey = quotaKeys.get(index);
-            List result = decrementQuota(quotaKey);
-            if (isDecrementSuccess(result)) {
-                long newTotal = readLongFromLuaResult(result, 2, Math.max(0, totalQuota - 1));
-                return QuotaAcquireResult.allowed(quotaKey, newTotal);
-            }
-        }
-
-        rebuildQuotaCount();
-        return QuotaAcquireResult.denied(getTotalQuotaCount(), "quota_exhausted_after_round_robin");
+        List result = quotaRedisTemplate.execute(
+                ACQUIRE_SCRIPT,
+                Arrays.asList(
+                        Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY,
+                        Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY
+                ),
+                Ip2LocationQuotaRedisKeys.QUOTA_PREFIX
+        );
+        return resolveAcquireResult(result);
     }
 
     public long getTotalQuotaCount() {
@@ -189,11 +178,39 @@ public class Ip2LocationQuotaService {
         return readLong(result.get(0), Long.MIN_VALUE) == 0L;
     }
 
+    private QuotaAcquireResult resolveAcquireResult(List result) {
+        if (result == null || result.isEmpty()) {
+            return QuotaAcquireResult.denied(0L, "quota_acquire_failed");
+        }
+        long status = readLong(result.get(0), Long.MIN_VALUE);
+        long totalQuota = readLongFromLuaResult(result, 2, 0L);
+        if (status == 0L) {
+            String quotaKey = readStringFromLuaResult(result, 1, "");
+            if (!quotaKey.isBlank()) {
+                return QuotaAcquireResult.allowed(quotaKey, totalQuota);
+            }
+            return QuotaAcquireResult.denied(totalQuota, "quota_acquire_failed");
+        }
+        return QuotaAcquireResult.denied(totalQuota, readStringFromLuaResult(result, 3, "quota_acquire_failed"));
+    }
+
     private long readLongFromLuaResult(List result, int index, long fallback) {
         if (result == null || index < 0 || index >= result.size()) {
             return fallback;
         }
         return readLong(result.get(index), fallback);
+    }
+
+    private String readStringFromLuaResult(List result, int index, String fallback) {
+        if (result == null || index < 0 || index >= result.size()) {
+            return fallback;
+        }
+        Object value = result.get(index);
+        if (value == null) {
+            return fallback;
+        }
+        String text = value.toString();
+        return text.isBlank() ? fallback : text;
     }
 
     private long parseLong(String raw, long fallback) {

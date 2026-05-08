@@ -10,6 +10,7 @@
 
   let phoneCountryPicker = null;
   let registerPhoneRequiredCountryPicker = null;
+  let securityPhoneCountryPicker = null;
   let detectedPhoneCountryIso2 = "";
 
   const FALLBACK_COUNTRIES = [
@@ -635,12 +636,22 @@
     return registerPhoneRequiredCountryPicker.setDialCode(dialCode);
   }
 
+  function setSecurityPhoneCountryCode(dialCode) {
+    if (!securityPhoneCountryPicker || !dialCode) {
+      return false;
+    }
+    return securityPhoneCountryPicker.setDialCode(dialCode);
+  }
+
   function setCountryCodeForAvailablePickers(dialCode) {
     let updated = false;
     if (setPhoneCountryCode(dialCode)) {
       updated = true;
     }
     if (setRegisterPhoneRequiredCountryCode(dialCode)) {
+      updated = true;
+    }
+    if (setSecurityPhoneCountryCode(dialCode)) {
       updated = true;
     }
     return updated;
@@ -653,6 +664,9 @@
       updated = true;
     }
     if (registerPhoneRequiredCountryPicker?.setPreferredIso2(iso2)) {
+      updated = true;
+    }
+    if (securityPhoneCountryPicker?.setPreferredIso2(iso2)) {
       updated = true;
     }
     return updated;
@@ -930,6 +944,9 @@
     if (bindInternationalPhoneInput("register-phone-required-input", () => registerPhoneRequiredCountryPicker)) {
       bound = true;
     }
+    if (bindInternationalPhoneInput("security-phone-number", () => securityPhoneCountryPicker)) {
+      bound = true;
+    }
     return bound;
   }
 
@@ -965,6 +982,24 @@
       optionIdPrefix: "register-phone-country-option"
     });
     const initialized = registerPhoneRequiredCountryPicker.init();
+    bindInternationalPhoneInputs();
+    return initialized;
+  }
+
+  function initSecurityPhoneCountryPicker() {
+    securityPhoneCountryPicker = new CountryPicker({
+      containerId: "security-phone-country-picker",
+      hiddenInputId: "security-phone-country-code",
+      triggerId: "security-phone-country-trigger",
+      popoverId: "security-phone-country-popover",
+      searchInputId: "security-phone-country-search",
+      listId: "security-phone-country-list",
+      triggerFlagId: "security-phone-country-flag",
+      triggerNameId: "security-phone-country-name",
+      triggerCodeId: "security-phone-country-code-label",
+      optionIdPrefix: "security-phone-country-option"
+    });
+    const initialized = securityPhoneCountryPicker.init();
     bindInternationalPhoneInputs();
     return initialized;
   }
@@ -1011,6 +1046,10 @@
     return applyInternationalPhoneNumber("register-phone-required-input", () => registerPhoneRequiredCountryPicker, options);
   }
 
+  function applySecurityPhoneInternationalNumber(options = {}) {
+    return applyInternationalPhoneNumber("security-phone-number", () => securityPhoneCountryPicker, options);
+  }
+
   function resolvePhoneNumberForSubmit(options = {}) {
     return resolvePhoneSubmissionParts(
       "phone-number",
@@ -1029,17 +1068,29 @@
     );
   }
 
+  function resolveSecurityPhoneForSubmit(options = {}) {
+    return resolvePhoneSubmissionParts(
+      "security-phone-number",
+      "security-phone-country-code",
+      () => securityPhoneCountryPicker,
+      options
+    );
+  }
+
   const publicApi = {
     DEFAULT_PHONE_COUNTRY_CODE,
     initPhoneCountryPicker,
     initRegisterPhoneRequiredCountryPicker,
+    initSecurityPhoneCountryPicker,
     bindInternationalPhoneInputs,
     autoDetectPhoneCountryCode,
     applyPhoneInternationalNumber,
     applyRegisterPhoneInternationalNumber: applyPhoneInternationalNumber,
     applyRegisterPhoneRequiredInternationalNumber,
+    applySecurityPhoneInternationalNumber,
     resolvePhoneNumberForSubmit,
-    resolveRegisterPhoneRequiredForSubmit
+    resolveRegisterPhoneRequiredForSubmit,
+    resolveSecurityPhoneForSubmit
   };
 
   if (typeof module !== "undefined" && module.exports) {

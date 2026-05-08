@@ -14,12 +14,15 @@ import com.example.ShoppingSystem.service.user.auth.login.UserProfileService;
 import com.example.ShoppingSystem.service.user.auth.login.model.UserProfileDraft;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterCompletionService;
+import com.example.ShoppingSystem.service.user.auth.register.RegisterWelcomeMailSender;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterCompletionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -41,19 +44,22 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
     private final RegisterRiskProfileMapper registerRiskProfileMapper;
     private final SnowflakeIdWorker snowflakeIdWorker;
     private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
+    private final RegisterWelcomeMailSender registerWelcomeMailSender;
 
     public RegisterCompletionServiceImpl(StringRedisTemplate stringRedisTemplate,
                                           UserLoginIdentityMapper userLoginIdentityMapper,
                                           UserProfileService userProfileService,
                                           RegisterRiskProfileMapper registerRiskProfileMapper,
                                           SnowflakeIdWorker snowflakeIdWorker,
-                                          DeviceRiskProfileWriteService deviceRiskProfileWriteService) {
+                                          DeviceRiskProfileWriteService deviceRiskProfileWriteService,
+                                          RegisterWelcomeMailSender registerWelcomeMailSender) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.userProfileService = userProfileService;
         this.registerRiskProfileMapper = registerRiskProfileMapper;
         this.snowflakeIdWorker = snowflakeIdWorker;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
+        this.registerWelcomeMailSender = registerWelcomeMailSender;
     }
 
     @Override
@@ -153,6 +159,7 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
         );
 
         cleanupRegisterKeys(codeKey, metaKey);
+        sendWelcomeMailAfterCommit(normalizedEmail);
 
         return RegisterCompletionResult.builder()
                 .success(true)
@@ -192,6 +199,22 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
         } catch (Exception ex) {
             log.warn("Failed to cleanup register keys: codeKey={}, metaKey={}", codeKey, metaKey, ex);
         }
+    }
+
+    private void sendWelcomeMailAfterCommit(String email) {
+        if (StrUtil.isBlank(email)) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            registerWelcomeMailSender.sendWelcomeMail(email);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                registerWelcomeMailSender.sendWelcomeMail(email);
+            }
+        });
     }
 
     private RegisterCompletionResult fail(String message) {

@@ -2,6 +2,7 @@ package com.example.ShoppingSystem.config;
 
 import com.example.ShoppingSystem.interceptor.LoginFlowGuardInterceptor;
 import com.example.ShoppingSystem.interceptor.PasswordResetTokenGuardInterceptor;
+import com.example.ShoppingSystem.interceptor.PhoneBindingRequiredInterceptor;
 import com.example.ShoppingSystem.interceptor.PreAuthInterceptor;
 import com.example.ShoppingSystem.interceptor.RegisterFlowGuardInterceptor;
 import com.example.ShoppingSystem.registerflow.RegisterFlowWebSupport;
@@ -21,17 +22,20 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
     private final LoginFlowGuardInterceptor loginFlowGuardInterceptor;
     private final PasswordResetTokenGuardInterceptor passwordResetTokenGuardInterceptor;
     private final AccessTokenAuthenticationInterceptor accessTokenAuthenticationInterceptor;
+    private final PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor;
 
     public AuthWebMvcConfig(PreAuthInterceptor preAuthInterceptor,
                             RegisterFlowGuardInterceptor registerFlowGuardInterceptor,
                             LoginFlowGuardInterceptor loginFlowGuardInterceptor,
                             PasswordResetTokenGuardInterceptor passwordResetTokenGuardInterceptor,
-                            AccessTokenAuthenticationInterceptor accessTokenAuthenticationInterceptor) {
+                            AccessTokenAuthenticationInterceptor accessTokenAuthenticationInterceptor,
+                            PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor) {
         this.preAuthInterceptor = preAuthInterceptor;
         this.registerFlowGuardInterceptor = registerFlowGuardInterceptor;
         this.loginFlowGuardInterceptor = loginFlowGuardInterceptor;
         this.passwordResetTokenGuardInterceptor = passwordResetTokenGuardInterceptor;
         this.accessTokenAuthenticationInterceptor = accessTokenAuthenticationInterceptor;
+        this.phoneBindingRequiredInterceptor = phoneBindingRequiredInterceptor;
     }
 
     @Override
@@ -54,6 +58,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/session-ended",
                         "/shopping/user/profile",
                         "/shopping/user/console",
+                        "/shopping/user/security/phone",
                         "/shopping/user/forgot-password",
                         "/shopping/user/reset-password-url",
                         "/shopping/user/reset-password-code",
@@ -92,9 +97,20 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/auth/me",
                         "/shopping/user/auth/logout-all",
                         "/shopping/user/profile/avatar",
+                        "/shopping/user/profile/deletion",
+                        "/shopping/user/security/phone/**",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**"
                 )
                 .order(100);
+
+        registry.addInterceptor(phoneBindingRequiredInterceptor)
+                .addPathPatterns(
+                        "/shopping/user/profile/avatar",
+                        "/shopping/user/profile/deletion",
+                        "/shopping/user/totp",
+                        "/shopping/user/totp/**"
+                )
+                .order(110);
     }
 }

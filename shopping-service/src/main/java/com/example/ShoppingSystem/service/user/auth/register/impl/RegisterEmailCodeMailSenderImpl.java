@@ -1,9 +1,7 @@
 package com.example.ShoppingSystem.service.user.auth.register.impl;
 
 import com.example.ShoppingSystem.service.user.auth.register.RegisterEmailCodeMailSender;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.example.ShoppingSystem.service.mail.ShoppingMailSender;
 import org.springframework.stereotype.Service;
 
 /**
@@ -12,26 +10,22 @@ import org.springframework.stereotype.Service;
 @Service
 public class RegisterEmailCodeMailSenderImpl implements RegisterEmailCodeMailSender {
 
-    private final JavaMailSender mailSender;
-    private final String fromAddress;
+    private final ShoppingMailSender shoppingMailSender;
 
-    public RegisterEmailCodeMailSenderImpl(JavaMailSender mailSender,
-                                           @Value("${spring.mail.username}") String fromAddress) {
-        this.mailSender = mailSender;
-        this.fromAddress = fromAddress;
+    public RegisterEmailCodeMailSenderImpl(ShoppingMailSender shoppingMailSender) {
+        this.shoppingMailSender = shoppingMailSender;
     }
 
     @Override
     public void sendRegisterEmailCode(String email, String code, long expireMinutes) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
-        message.setTo(email);
-        message.setSubject("Registration Verification Code");
-        message.setText(String.format(
-                "Your registration verification code is %s. It expires in %d minutes.",
-                code,
-                expireMinutes
-        ));
-        mailSender.send(message);
+        shoppingMailSender.sendText(
+                email,
+                "注册验证码",
+                String.format(
+                        "你的注册验证码是 %s，%d 分钟内有效。请勿将验证码告诉他人。",
+                        code,
+                        expireMinutes
+                )
+        );
     }
 }

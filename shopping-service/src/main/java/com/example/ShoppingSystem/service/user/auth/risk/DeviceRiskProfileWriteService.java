@@ -24,10 +24,16 @@ import java.util.Map;
 @Service
 public class DeviceRiskProfileWriteService {
 
-    private static final int FIXED_DEVICE_SCORE = 6666;
+    private static final int FIXED_DEVICE_SCORE = 7000;
     private static final int LONG_IP_RISK_L4_PENALTY = 50;
     private static final int LONG_IP_RISK_L5_PENALTY = 150;
     private static final int LONG_IP_RISK_L6_PENALTY = 150;
+    private static final int LINKED_USER_TIER_SMALL = 3;
+    private static final int LINKED_USER_TIER_MEDIUM = 5;
+    private static final int LINKED_USER_TIER_HIGH = 10;
+    private static final int LINKED_USER_TIER_SMALL_PENALTY = 100;
+    private static final int LINKED_USER_TIER_MEDIUM_PENALTY = 200;
+    private static final int LINKED_USER_TIER_HIGH_PENALTY = 350;
     private static final double EARTH_RADIUS_KM = 6371.0088D;
     private static final long MIN_SPEED_WINDOW_MILLIS = 60_000L;
 
@@ -37,19 +43,22 @@ public class DeviceRiskProfileWriteService {
     private final ChallengePolicy challengePolicy;
     private final ObjectProvider<DeviceIpGeoLookupService> geoLookupProvider;
     private final ObjectProvider<DeviceRiskCacheInvalidator> cacheInvalidatorProvider;
+    private final DeviceL6CountingBloomDecisionService deviceL6CountingBloomDecisionService;
 
     public DeviceRiskProfileWriteService(RegisterRiskProfileMapper registerRiskProfileMapper,
                                          IpReputationProfileMapper ipReputationProfileMapper,
                                          HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
                                          ChallengePolicy challengePolicy,
                                          ObjectProvider<DeviceIpGeoLookupService> geoLookupProvider,
-                                         ObjectProvider<DeviceRiskCacheInvalidator> cacheInvalidatorProvider) {
+                                         ObjectProvider<DeviceRiskCacheInvalidator> cacheInvalidatorProvider,
+                                         DeviceL6CountingBloomDecisionService deviceL6CountingBloomDecisionService) {
         this.registerRiskProfileMapper = registerRiskProfileMapper;
         this.ipReputationProfileMapper = ipReputationProfileMapper;
         this.hybridSemaphoreIdWorker = hybridSemaphoreIdWorker;
         this.challengePolicy = challengePolicy;
         this.geoLookupProvider = geoLookupProvider;
         this.cacheInvalidatorProvider = cacheInvalidatorProvider;
+        this.deviceL6CountingBloomDecisionService = deviceL6CountingBloomDecisionService;
     }
 
     public void recordSuccess(Long userId, String deviceFingerprint, String clientIp, String scene) {
@@ -66,7 +75,32 @@ public class DeviceRiskProfileWriteService {
             return FIXED_DEVICE_SCORE;
         }
         upsertDeviceProfile(normalizedFingerprint, normalizeText(clientIp), OffsetDateTime.now(), 0, "");
-        return FIXED_DEVICE_SCORE;
+        Integer currentScore = registerRiskProfileMapper.findDeviceRiskScoreByFingerprint(normalizedFingerprint);
+        int resolvedScore = normalizeDeviceScore(currentScore);
+        syncDeviceL6Bloom(normalizedFingerprint, resolvedScore);
+        return resolvedScore;
+    }
+
+    public void applyAutomationPenalty(String deviceFingerprint, String clientIp, int penaltyScore, String reason) {
+        String normalizedFingerprint = normalizeText(deviceFingerprint);
+        if (StrUtil.isBlank(normalizedFingerprint) || penaltyScore <= 0) {
+            return;
+        }
+
+        String normalizedClientIp = normalizeText(clientIp);
+        OffsetDateTime now = OffsetDateTime.now();
+        upsertDeviceProfile(normalizedFingerprint, normalizedClientIp, now, 0, "");
+        Integer updatedScore = registerRiskProfileMapper.applyDeviceAutomationPenalty(
+                normalizedFingerprint,
+                normalizedClientIp,
+                Math.max(0, penaltyScore),
+                normalizePenaltyReason(reason),
+                now
+        );
+        if (updatedScore != null) {
+            invalidateDeviceRiskCache(normalizedFingerprint);
+            syncDeviceL6Bloom(normalizedFingerprint, normalizeDeviceScore(updatedScore));
+        }
     }
 
     private void record(Long userId, String deviceFingerprint, String clientIp, boolean success) {
@@ -90,6 +124,7 @@ public class DeviceRiskProfileWriteService {
         );
         if (ipChangePenalty.score() > 0) {
             invalidateDeviceRiskCache(normalizedFingerprint);
+            syncDeviceL6BloomFromDb(normalizedFingerprint);
         }
         if (StrUtil.isBlank(deviceIdHex) || userId == null) {
             return;
@@ -111,6 +146,77 @@ public class DeviceRiskProfileWriteService {
             );
         }
         registerRiskProfileMapper.refreshDeviceLinkedUserCount(deviceIdHex, now);
+        invalidateDeviceLinkedUserCount(normalizedFingerprint);
+        applyLinkedUserCountPenalty(normalizedFingerprint, now);
+    }
+
+    private void applyLinkedUserCountPenalty(String deviceFingerprint, OffsetDateTime now) {
+        Map<String, Object> state = registerRiskProfileMapper.findDeviceRiskStateByFingerprint(deviceFingerprint);
+        if (state == null || state.isEmpty()) {
+            return;
+        }
+
+        int linkedUserCount = Math.max(0, normalizeInteger(readInteger(state, "linkedUserCount", "linked_user_count")));
+        int currentScore = normalizeDeviceScore(readInteger(state, "currentScore", "current_score"));
+        int previousPenaltyTier = Math.max(0, normalizeInteger(readInteger(
+                state,
+                "linkedUserPenaltyTier",
+                "linked_user_penalty_tier"
+        )));
+        int targetPenaltyTier = linkedUserPenaltyTier(linkedUserCount);
+        int penaltyScore = linkedUserPenaltyDelta(previousPenaltyTier, targetPenaltyTier);
+        if (penaltyScore <= 0) {
+            return;
+        }
+
+        int updatedRows = registerRiskProfileMapper.applyDeviceLinkedUserCountPenalty(
+                deviceFingerprint,
+                previousPenaltyTier,
+                targetPenaltyTier,
+                targetPenaltyTier,
+                penaltyScore,
+                linkedUserPenaltyReason(targetPenaltyTier),
+                now
+        );
+        if (updatedRows > 0) {
+            invalidateDeviceRiskCache(deviceFingerprint);
+            syncDeviceL6Bloom(deviceFingerprint, Math.max(0, currentScore - penaltyScore));
+        }
+    }
+
+    private int linkedUserPenaltyTier(int linkedUserCount) {
+        if (linkedUserCount >= LINKED_USER_TIER_HIGH) {
+            return LINKED_USER_TIER_HIGH;
+        }
+        if (linkedUserCount >= LINKED_USER_TIER_MEDIUM) {
+            return LINKED_USER_TIER_MEDIUM;
+        }
+        if (linkedUserCount >= LINKED_USER_TIER_SMALL) {
+            return LINKED_USER_TIER_SMALL;
+        }
+        return 0;
+    }
+
+    private int linkedUserPenaltyDelta(int previousPenaltyTier, int targetPenaltyTier) {
+        if (targetPenaltyTier <= previousPenaltyTier) {
+            return 0;
+        }
+
+        int penalty = 0;
+        if (previousPenaltyTier < LINKED_USER_TIER_SMALL && targetPenaltyTier >= LINKED_USER_TIER_SMALL) {
+            penalty += LINKED_USER_TIER_SMALL_PENALTY;
+        }
+        if (previousPenaltyTier < LINKED_USER_TIER_MEDIUM && targetPenaltyTier >= LINKED_USER_TIER_MEDIUM) {
+            penalty += LINKED_USER_TIER_MEDIUM_PENALTY;
+        }
+        if (previousPenaltyTier < LINKED_USER_TIER_HIGH && targetPenaltyTier >= LINKED_USER_TIER_HIGH) {
+            penalty += LINKED_USER_TIER_HIGH_PENALTY;
+        }
+        return penalty;
+    }
+
+    private String linkedUserPenaltyReason(int targetPenaltyTier) {
+        return "LINKED_USER_COUNT_" + targetPenaltyTier;
     }
 
     private IpChangePenalty resolveLongTermIpChangePenalty(String deviceFingerprint,
@@ -328,6 +434,30 @@ public class DeviceRiskProfileWriteService {
         }
     }
 
+    private void invalidateDeviceLinkedUserCount(String normalizedFingerprint) {
+        DeviceRiskCacheInvalidator invalidator = cacheInvalidatorProvider.getIfAvailable();
+        if (invalidator != null) {
+            invalidator.invalidateDeviceLinkedUserCount(normalizedFingerprint);
+        }
+    }
+
+    private void syncDeviceL6BloomFromDb(String normalizedFingerprint) {
+        try {
+            Integer currentScore = registerRiskProfileMapper.findDeviceRiskScoreByFingerprint(normalizedFingerprint);
+            if (currentScore != null) {
+                syncDeviceL6Bloom(normalizedFingerprint, normalizeDeviceScore(currentScore));
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void syncDeviceL6Bloom(String normalizedFingerprint, int score) {
+        try {
+            deviceL6CountingBloomDecisionService.syncMembershipByScore(normalizedFingerprint, score);
+        } catch (Exception ignored) {
+        }
+    }
+
     private String normalizePenaltyReason(String reason) {
         String normalized = normalizeText(reason);
         if (StrUtil.isBlank(normalized)) {
@@ -349,6 +479,15 @@ public class DeviceRiskProfileWriteService {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private int normalizeInteger(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private int normalizeDeviceScore(Integer value) {
+        int score = value == null ? FIXED_DEVICE_SCORE : value;
+        return Math.max(0, Math.min(10000, score));
     }
 
     private BigDecimal readBigDecimal(Map<String, Object> row, String... keys) {

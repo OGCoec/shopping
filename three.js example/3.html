@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鼠标周边炫酷粒子动画</title>
+    <style>
+        /* 重置默认边距，并让背景变为纯黑以便突出粒子光效 */
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+        }
+
+        /* 隐藏超出的粒子，防止出现滚动条 */
+        #Particles {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* 核心步骤：将 canvas 设为固定定位，并置于底层作为背景 */
+        #Particles canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+
+        /* 页面上的提示文字样式 */
+        .content {
+            position: relative;
+            z-index: 10;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            padding-top: 40vh;
+            pointer-events: none;
+            /* 让鼠标事件穿透文字，不影响粒子交互 */
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 粒子动画渲染容器 -->
+    <div id="Particles">
+        <canvas></canvas>
+    </div>
+
+    <!-- 提示文字 -->
+    <div class="content">
+        <h1>在屏幕上移动鼠标查看炫酷特效</h1>
+        <p>你可以在代码中修改 colors 和 pointSize 等参数来改变效果</p>
+    </div>
+
+    <!-- 引入 threejs-toys 库并初始化 -->
+    <script type="module">
+        import { particlesCursor } from 'https://unpkg.com/threejs-toys@0.0.8/build/threejs-toys.module.cdn.min.js';
+
+        // 初始化鼠标粒子对象并配置参数
+        const pc = particlesCursor({
+            el: document.getElementById('Particles'),
+            gpgpuSize: 512,                     // GPU 运算的纹理大小，决定了粒子总数 (512x512)
+            colors: [0x880088, 0x008888],       // 粒子的颜色数组 (调暗：深紫和深青色)
+            color: 0x880000,                    // 基础颜色 (调暗：暗红色)
+            coordScale: 0.5,                    // 坐标缩放比例
+            noiseIntensity: 0.005,              // 噪点强度 (控制粒子的混乱和扩散程度)
+            noiseTimeCoef: 0.0001,              // 噪点随时间变化的系数
+            pointSize: 1.5,                     // 粒子大小 (调小一点也能有效降低刺眼的高光)
+            pointDecay: 0.0025,                 // 粒子的消散/衰减速度
+            sleepRadiusX: 250,                  // X轴休眠半径 (鼠标停止时粒子活动的范围)
+            sleepRadiusY: 250,                  // Y轴休眠半径
+            sleepTimeCoefX: 0.001,              // 休眠时的X轴时间系数
+            sleepTimeCoefY: 0.002               // 休眠时的Y轴时间系数
+        });
+    </script>
+</body>
+
+</html>

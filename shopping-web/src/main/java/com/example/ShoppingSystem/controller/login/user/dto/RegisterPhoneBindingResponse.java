@@ -17,7 +17,8 @@ public record RegisterPhoneBindingResponse(boolean success,
                                            Boolean authenticated,
                                            String challengeType,
                                            String challengeSubType,
-                                           String challengeSiteKey) {
+                                           String challengeSiteKey,
+                                           Long retryAfterMs) {
 
     public static RegisterPhoneBindingResponse from(RegisterPhoneBindingResult result) {
         if (result == null) {
@@ -39,7 +40,8 @@ public record RegisterPhoneBindingResponse(boolean success,
                 result.isAuthenticated(),
                 result.getChallengeType(),
                 result.getChallengeSubType(),
-                result.getChallengeSiteKey()
+                result.getChallengeSiteKey(),
+                result.getRetryAfterMs()
         );
     }
 
@@ -58,6 +60,7 @@ public record RegisterPhoneBindingResponse(boolean success,
                 null,
                 false,
                 false,
+                null,
                 null,
                 null,
                 null

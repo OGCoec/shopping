@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS user_login_identity (
     CONSTRAINT uq_user_login_identity_microsoft_id UNIQUE (microsoft_id),
 
     CONSTRAINT ck_user_login_identity_status
-        CHECK (status IN ('ACTIVE', 'DISABLED', 'LOCKED')),
+        CHECK (status IN ('ACTIVE', 'DISABLED', 'LOCKED', 'RISK_TERMINATED')),
 
     CONSTRAINT ck_user_login_identity_email_password_pair
         CHECK (

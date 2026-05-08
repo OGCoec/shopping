@@ -4,7 +4,8 @@ import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
-import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingAvailabilityService;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingWriteService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterFlowSessionService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterPhoneBindingService;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterFlowSession;
@@ -22,27 +23,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingService {
 
-    private static final String ERROR_PHONE_ALREADY_BOUND = "PHONE_ALREADY_BOUND";
-    private static final String ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE = "PHONE_BOUND_BLOOM_UNAVAILABLE";
-    private static final String REGISTER_COMPLETED_REDIRECT_PATH = "/shopping/user/log-in?register_notice=register-completed";
+    private static final String REGISTER_COMPLETED_REDIRECT_PATH = "/shopping/user/console";
 
     private final RegisterFlowSessionService registerFlowSessionService;
     private final UserLoginIdentityMapper userLoginIdentityMapper;
     private final PhoneNumberValidationService phoneNumberValidationService;
-    private final PhoneBoundCountingBloomService phoneBoundCountingBloomService;
+    private final PhoneBindingAvailabilityService phoneBindingAvailabilityService;
+    private final PhoneBindingWriteService phoneBindingWriteService;
     private final PhoneSmsRiskGateService phoneSmsRiskGateService;
     private final SmsCodeService smsCodeService;
 
     public RegisterPhoneBindingServiceImpl(RegisterFlowSessionService registerFlowSessionService,
                                            UserLoginIdentityMapper userLoginIdentityMapper,
                                            PhoneNumberValidationService phoneNumberValidationService,
-                                           PhoneBoundCountingBloomService phoneBoundCountingBloomService,
+                                           PhoneBindingAvailabilityService phoneBindingAvailabilityService,
+                                           PhoneBindingWriteService phoneBindingWriteService,
                                            PhoneSmsRiskGateService phoneSmsRiskGateService,
                                            SmsCodeService smsCodeService) {
         this.registerFlowSessionService = registerFlowSessionService;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.phoneNumberValidationService = phoneNumberValidationService;
-        this.phoneBoundCountingBloomService = phoneBoundCountingBloomService;
+        this.phoneBindingAvailabilityService = phoneBindingAvailabilityService;
+        this.phoneBindingWriteService = phoneBindingWriteService;
         this.phoneSmsRiskGateService = phoneSmsRiskGateService;
         this.smsCodeService = smsCodeService;
     }
@@ -86,7 +88,14 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
 
         SmsCodeSendResult sendResult = smsCodeService.sendBindPhoneCode(dialCode, phoneNumber, clientIp);
         if (!sendResult.isSuccess()) {
-            return fail(sendResult.getReasonCode(), sendResult.getReasonCode(), sendResult.getMessage(), null, sendResult.getNormalizedE164());
+            return fail(
+                    sendResult.getReasonCode(),
+                    sendResult.getReasonCode(),
+                    sendResult.getMessage(),
+                    null,
+                    sendResult.getNormalizedE164(),
+                    sendResult.getRetryAfterMs()
+            );
         }
         return RegisterPhoneBindingResult.builder()
                 .success(true)
@@ -97,6 +106,7 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
                 .step(RegisterFlowStep.ADD_PHONE.name())
                 .requirePhoneBinding(true)
                 .authenticated(false)
+                .retryAfterMs(sendResult.getRetryAfterMs())
                 .build();
     }
 
@@ -128,12 +138,12 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
         }
 
         String phone = StrUtil.blankToDefault(verifyResult.getNormalizedE164(), normalizeVerifiedPhone(dialCode, phoneNumber));
-        int updatedRows = userLoginIdentityMapper.bindVerifiedPhoneByUserId(identity.getUserId(), phone);
-        if (updatedRows <= 0) {
-            return fail("Failed to bind phone number.");
+        PhoneBindingWriteService.PhoneBindingResult bindingResult =
+                phoneBindingWriteService.bindVerifiedPhone(identity.getUserId(), phone);
+        if (!bindingResult.success()) {
+            return fail(bindingResult.errorCode(), bindingResult.reasonCode(), bindingResult.message(), null, phone);
         }
 
-        phoneBoundCountingBloomService.addVerifiedPhoneAsync(phone);
         registerFlowSessionService.updateStep(
                 session.getFlowId(),
                 RegisterFlowStep.DONE,
@@ -151,7 +161,7 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
                 .step(RegisterFlowStep.DONE.name())
                 .redirectPath(REGISTER_COMPLETED_REDIRECT_PATH)
                 .requirePhoneBinding(false)
-                .authenticated(false)
+                .authenticated(true)
                 .build();
     }
 
@@ -182,13 +192,11 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
                     validationResult.normalizedE164()
             );
         }
-        PhoneBoundCountingBloomService.PhoneBoundLookupResult lookupResult =
-                phoneBoundCountingBloomService.lookupVerifiedPhone(validationResult.normalizedE164());
-        if (!lookupResult.available()) {
-            return fail(ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE, ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE, "Phone existence filter is temporarily unavailable.");
-        }
-        if (lookupResult.mightContain()) {
-            return fail(ERROR_PHONE_ALREADY_BOUND, ERROR_PHONE_ALREADY_BOUND, "This phone number is already in use.");
+        PhoneBindingAvailabilityService.PhoneBindingAvailability availability =
+                phoneBindingAvailabilityService.checkPhoneAvailable(validationResult.normalizedE164());
+        if (!availability.allowed()) {
+            return fail(availability.errorCode(), availability.reasonCode(), availability.message(),
+                    validationResult.phoneType(), validationResult.normalizedE164());
         }
         return null;
     }
@@ -267,6 +275,15 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
     }
 
     private RegisterPhoneBindingResult fail(String error, String reasonCode, String message, String phoneType, String normalizedE164) {
+        return fail(error, reasonCode, message, phoneType, normalizedE164, null);
+    }
+
+    private RegisterPhoneBindingResult fail(String error,
+                                            String reasonCode,
+                                            String message,
+                                            String phoneType,
+                                            String normalizedE164,
+                                            Long retryAfterMs) {
         return RegisterPhoneBindingResult.builder()
                 .success(false)
                 .error(error)
@@ -275,6 +292,7 @@ public class RegisterPhoneBindingServiceImpl implements RegisterPhoneBindingServ
                 .phoneType(phoneType)
                 .normalizedE164(normalizedE164)
                 .authenticated(false)
+                .retryAfterMs(retryAfterMs)
                 .build();
     }
 

@@ -80,7 +80,7 @@ public record LoginFlowResponse(boolean success,
                 result.getChallengeType(),
                 result.getChallengeSubType(),
                 result.getChallengeSiteKey(),
-                null,
+                result.getRetryAfterMs(),
                 null,
                 null
         );
@@ -134,6 +134,31 @@ public record LoginFlowResponse(boolean success,
                 null,
                 null,
                 null,
+                null,
+                null
+        );
+    }
+
+    public static LoginFlowResponse automationBlocked(String message, Long retryAfterMs) {
+        return new LoginFlowResponse(
+                false,
+                "AUTOMATION_RATE_LIMITED",
+                message,
+                null,
+                null,
+                null,
+                null,
+                "BLOCKED",
+                "/shopping/user/log-in",
+                Set.of(),
+                Set.of(),
+                null,
+                false,
+                false,
+                null,
+                null,
+                null,
+                retryAfterMs,
                 null,
                 null
         );

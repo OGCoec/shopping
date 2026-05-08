@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>手机号验证 - Shopping System</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons/css/flag-icons.min.css" />
+  <link rel="stylesheet" href="/css/security-phone.css" />
+</head>
+<body>
+  <main class="phone-shell">
+    <section class="phone-panel" aria-labelledby="phone-title">
+      <header class="phone-header">
+        <p class="eyebrow">账号安全验证</p>
+        <h1 id="phone-title">验证手机号后继续</h1>
+        <p class="phone-copy">当前登录环境需要补充手机号验证，完成后会返回用户控制台。</p>
+      </header>
+
+      <div id="phone-status" class="phone-status">请输入可接收短信的手机号。</div>
+
+      <form id="security-phone-form" class="phone-form" novalidate>
+        <div class="phone-row">
+          <label for="security-phone-country-trigger">国家/地区</label>
+          <div id="security-phone-country-picker" class="phone-country-picker security-phone-country-picker" data-open="false">
+            <input type="hidden" id="security-phone-country-code" name="security-phone-country-code" value="" />
+            <button type="button" id="security-phone-country-trigger" class="phone-country-trigger" aria-haspopup="listbox"
+              aria-expanded="false" aria-controls="security-phone-country-popover">
+              <span class="phone-country-trigger-main">
+                <span id="security-phone-country-flag" class="fi"></span>
+                <span id="security-phone-country-name">Detecting...</span>
+              </span>
+              <span id="security-phone-country-code-label" class="phone-country-code-label">--</span>
+              <svg class="phone-country-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div id="security-phone-country-popover" class="phone-country-popover" role="dialog" aria-label="选择国家区号" hidden>
+              <div class="phone-country-search-wrap">
+                <input id="security-phone-country-search" type="text" class="phone-country-search" placeholder="搜索国家或区号"
+                  autocomplete="off" />
+              </div>
+              <ul id="security-phone-country-list" class="phone-country-list" role="listbox" aria-label="国家区号列表"></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="phone-row">
+          <label for="security-phone-number">手机号</label>
+          <input id="security-phone-number" name="phoneNumber" type="tel" inputmode="tel" autocomplete="tel" pattern="\+?[0-9]*" maxlength="16" placeholder="请输入手机号" />
+        </div>
+
+        <div id="security-phone-code-row" class="phone-row" hidden>
+          <label for="security-phone-code">短信验证码</label>
+          <input id="security-phone-code" name="smsCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位验证码" />
+        </div>
+
+        <div id="security-phone-challenge" class="phone-challenge" hidden>
+          <p id="security-phone-challenge-title">请先完成安全验证</p>
+          <div id="security-phone-challenge-widget" class="phone-challenge-widget"></div>
+        </div>
+
+        <div class="phone-actions">
+          <button type="button" id="security-phone-send">发送验证码</button>
+          <button type="submit" id="security-phone-bind">完成验证</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="/js/user/auth/shared/preauth-client.js"></script>
+  <script src="/js/user/auth/shared/auth-client.js"></script>
+  <script src="/js/user/auth/login/login-country-picker.js"></script>
+  <script src="/js/user/auth/security-phone.js"></script>
+</body>
+</html>

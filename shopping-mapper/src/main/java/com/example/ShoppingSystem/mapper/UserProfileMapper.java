@@ -26,4 +26,6 @@ public interface UserProfileMapper {
     int updateAvatarById(@Param("id") Long id, @Param("avatar") String avatar);
 
     int clearAvatarById(@Param("id") Long id);
+
+    int deleteById(@Param("id") Long id);
 }

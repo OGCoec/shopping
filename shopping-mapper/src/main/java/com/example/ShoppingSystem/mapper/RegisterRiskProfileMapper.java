@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -23,6 +24,45 @@ public interface RegisterRiskProfileMapper {
     Integer findDeviceRiskScoreByFingerprint(@Param("deviceFingerprint") String deviceFingerprint);
 
     @Select("""
+            SELECT COUNT(1)
+            FROM device_risk_profile
+            WHERE current_score < #{scoreThreshold}
+              AND device_fingerprint IS NOT NULL
+              AND btrim(device_fingerprint) <> ''
+            """)
+    long countDeviceFingerprintsByCurrentScoreLessThan(@Param("scoreThreshold") int scoreThreshold);
+
+    @Select("""
+            SELECT device_fingerprint
+            FROM device_risk_profile
+            WHERE current_score < #{scoreThreshold}
+              AND device_fingerprint IS NOT NULL
+              AND btrim(device_fingerprint) <> ''
+            ORDER BY device_fingerprint
+            LIMIT #{limit}
+            OFFSET #{offset}
+            """)
+    List<String> listDeviceFingerprintsByCurrentScoreLessThan(@Param("scoreThreshold") int scoreThreshold,
+                                                              @Param("limit") int limit,
+                                                              @Param("offset") long offset);
+
+    @Select("""
+            SELECT linked_user_count
+            FROM device_risk_profile
+            WHERE device_fingerprint = #{deviceFingerprint}
+            LIMIT 1
+            """)
+    Integer findLinkedUserCountByFingerprint(@Param("deviceFingerprint") String deviceFingerprint);
+
+    @Select("""
+            SELECT COUNT(1)::INT
+            FROM device_user_relation relation
+            JOIN device_risk_profile profile ON profile.id = relation.device_id
+            WHERE profile.device_fingerprint = #{deviceFingerprint}
+            """)
+    int countLinkedUsersByFingerprint(@Param("deviceFingerprint") String deviceFingerprint);
+
+    @Select("""
             SELECT current_score AS "currentScore",
                    risk_level AS "riskLevel",
                    last_login_ip AS "lastLoginIp",
@@ -30,7 +70,9 @@ public interface RegisterRiskProfileMapper {
                    last_penalized_ip_transition AS "lastPenalizedIpTransition",
                    last_penalty_at AS "lastPenaltyAt",
                    last_penalty_score AS "lastPenaltyScore",
-                   last_penalty_reason AS "lastPenaltyReason"
+                   last_penalty_reason AS "lastPenaltyReason",
+                   linked_user_count AS "linkedUserCount",
+                   linked_user_penalty_tier AS "linkedUserPenaltyTier"
             FROM device_risk_profile
             WHERE device_fingerprint = #{deviceFingerprint}
             LIMIT 1
@@ -118,8 +160,77 @@ public interface RegisterRiskProfileMapper {
                                        @Param("penaltyReason") String penaltyReason);
 
     @Update("""
+            UPDATE device_risk_profile
+            SET current_score = GREATEST(0, current_score - GREATEST(0, #{penaltyScore})),
+                risk_level = CASE
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 8500 THEN 'L1'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 7500 THEN 'L2'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 6000 THEN 'L3'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 4800 THEN 'L4'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 3000 THEN 'L5'
+                    ELSE 'L6'
+                END,
+                linked_user_penalty_tier = #{targetPenaltyTier},
+                last_linked_user_penalty_at = CAST(#{penalizedAt} AS TIMESTAMPTZ),
+                last_linked_user_penalty_score = GREATEST(0, #{penaltyScore}),
+                last_linked_user_penalty_reason = #{penaltyReason},
+                updated_at = #{penalizedAt}
+            WHERE device_fingerprint = #{deviceFingerprint}
+              AND linked_user_count >= #{minimumLinkedUserCount}
+              AND linked_user_penalty_tier = #{previousPenaltyTier}
+              AND #{targetPenaltyTier} > #{previousPenaltyTier}
+              AND #{penaltyScore} > 0
+            """)
+    int applyDeviceLinkedUserCountPenalty(@Param("deviceFingerprint") String deviceFingerprint,
+                                          @Param("previousPenaltyTier") int previousPenaltyTier,
+                                          @Param("targetPenaltyTier") int targetPenaltyTier,
+                                          @Param("minimumLinkedUserCount") int minimumLinkedUserCount,
+                                          @Param("penaltyScore") int penaltyScore,
+                                          @Param("penaltyReason") String penaltyReason,
+                                          @Param("penalizedAt") OffsetDateTime penalizedAt);
+
+    @Select("""
+            UPDATE device_risk_profile
+            SET current_score = GREATEST(0, current_score - GREATEST(0, #{penaltyScore})),
+                risk_level = CASE
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 8500 THEN 'L1'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 7500 THEN 'L2'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 6000 THEN 'L3'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 4800 THEN 'L4'
+                    WHEN GREATEST(0, current_score - GREATEST(0, #{penaltyScore})) >= 3000 THEN 'L5'
+                    ELSE 'L6'
+                END,
+                last_seen_at = #{penalizedAt},
+                last_login_ip = CASE
+                    WHEN btrim(COALESCE(CAST(#{clientIp} AS TEXT), '')) = ''
+                    THEN last_login_ip
+                    ELSE #{clientIp}
+                END,
+                last_ip_seen_at = CASE
+                    WHEN btrim(COALESCE(CAST(#{clientIp} AS TEXT), '')) = ''
+                    THEN last_ip_seen_at
+                    ELSE CAST(#{penalizedAt} AS TIMESTAMPTZ)
+                END,
+                last_penalty_at = CAST(#{penalizedAt} AS TIMESTAMPTZ),
+                last_penalty_score = GREATEST(0, #{penaltyScore}),
+                last_penalty_reason = #{penaltyReason},
+                updated_at = #{penalizedAt}
+            WHERE device_fingerprint = #{deviceFingerprint}
+              AND #{penaltyScore} > 0
+            RETURNING current_score
+            """)
+    Integer applyDeviceAutomationPenalty(@Param("deviceFingerprint") String deviceFingerprint,
+                                         @Param("clientIp") String clientIp,
+                                         @Param("penaltyScore") int penaltyScore,
+                                         @Param("penaltyReason") String penaltyReason,
+                                         @Param("penalizedAt") OffsetDateTime penalizedAt);
+
+    @Update("""
             INSERT INTO user_risk_profile (
                 user_id,
+                register_base_score,
+                current_env_score,
+                behavior_score_delta,
                 current_score,
                 risk_level,
                 last_login_at,
@@ -129,6 +240,9 @@ public interface RegisterRiskProfileMapper {
             ) VALUES (
                 #{userId},
                 #{currentScore},
+                #{currentScore},
+                0,
+                #{currentScore},
                 #{riskLevel},
                 #{lastLoginAt},
                 #{lastLoginIp},
@@ -136,7 +250,13 @@ public interface RegisterRiskProfileMapper {
                 #{updatedAt}
             )
             ON CONFLICT (user_id) DO UPDATE
-            SET current_score = EXCLUDED.current_score,
+            SET register_base_score = CASE
+                    WHEN user_risk_profile.register_base_score > 0
+                    THEN user_risk_profile.register_base_score
+                    ELSE EXCLUDED.register_base_score
+                END,
+                current_env_score = EXCLUDED.current_env_score,
+                current_score = EXCLUDED.current_score,
                 risk_level = EXCLUDED.risk_level,
                 last_login_at = EXCLUDED.last_login_at,
                 last_login_ip = EXCLUDED.last_login_ip,

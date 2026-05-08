@@ -13,12 +13,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class DeviceRiskCacheInvalidationService implements DeviceRiskCacheInvalidator {
 
+    private static final String LINKED_USER_COUNT_LOCAL_CACHE_KEY_PREFIX = "linked-user-count:";
+
     private final DeviceRiskLocalCacheStore localCacheStore;
     private final StringRedisTemplate stringRedisTemplate;
     private final PreAuthHashingService hashingService;
 
     @Value("${register.device-risk-multi-level.redis-key-prefix:register:device:risk:v2:}")
     private String redisKeyPrefix;
+
+    @Value("${register.device-linked-user-count.redis-key-prefix:register:device:linked-user-count:v1:}")
+    private String linkedUserCountRedisKeyPrefix;
 
     public DeviceRiskCacheInvalidationService(DeviceRiskLocalCacheStore localCacheStore,
                                               StringRedisTemplate stringRedisTemplate,
@@ -38,6 +43,20 @@ public class DeviceRiskCacheInvalidationService implements DeviceRiskCacheInvali
         localCacheStore.invalidate(fingerprintHash);
         try {
             stringRedisTemplate.delete(redisKeyPrefix + fingerprintHash);
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    public void invalidateDeviceLinkedUserCount(String deviceFingerprint) {
+        String normalizedFingerprint = StrUtil.blankToDefault(deviceFingerprint, "").trim();
+        if (StrUtil.isBlank(normalizedFingerprint)) {
+            return;
+        }
+        String fingerprintHash = hashingService.sha256(normalizedFingerprint);
+        localCacheStore.invalidate(LINKED_USER_COUNT_LOCAL_CACHE_KEY_PREFIX + fingerprintHash);
+        try {
+            stringRedisTemplate.delete(linkedUserCountRedisKeyPrefix + fingerprintHash);
         } catch (Exception ignored) {
         }
     }

@@ -9,7 +9,6 @@ public class PhoneBoundCountingBloomProperties {
 
     private boolean enabled = true;
     private String key = "login:phone:bound:cbf";
-    private String memberKeyPrefix = "login:phone:bound:member:";
     private int capacity = 600000;
     private int hashCount = 7;
     private int counterBytes = 2;

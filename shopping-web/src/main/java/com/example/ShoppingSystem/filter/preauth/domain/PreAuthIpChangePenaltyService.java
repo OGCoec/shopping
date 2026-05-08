@@ -7,6 +7,7 @@ import com.example.ShoppingSystem.filter.preauth.support.PreAuthProperties;
 import com.example.ShoppingSystem.mapper.RegisterRiskProfileMapper;
 import com.example.ShoppingSystem.quota.IpCountryQueryService;
 import com.example.ShoppingSystem.quota.IpGeoSnapshot;
+import com.example.ShoppingSystem.service.user.auth.risk.DeviceL6CountingBloomDecisionService;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskCacheInvalidator;
 import org.springframework.stereotype.Service;
 
@@ -33,17 +34,20 @@ public class PreAuthIpChangePenaltyService {
     private final IpCountryQueryService ipCountryQueryService;
     private final PreAuthRiskService riskService;
     private final DeviceRiskCacheInvalidator cacheInvalidator;
+    private final DeviceL6CountingBloomDecisionService deviceL6CountingBloomDecisionService;
     private final PreAuthProperties properties;
 
     public PreAuthIpChangePenaltyService(RegisterRiskProfileMapper registerRiskProfileMapper,
                                          IpCountryQueryService ipCountryQueryService,
                                          PreAuthRiskService riskService,
                                          DeviceRiskCacheInvalidator cacheInvalidator,
+                                         DeviceL6CountingBloomDecisionService deviceL6CountingBloomDecisionService,
                                          PreAuthProperties properties) {
         this.registerRiskProfileMapper = registerRiskProfileMapper;
         this.ipCountryQueryService = ipCountryQueryService;
         this.riskService = riskService;
         this.cacheInvalidator = cacheInvalidator;
+        this.deviceL6CountingBloomDecisionService = deviceL6CountingBloomDecisionService;
         this.properties = properties;
     }
 
@@ -82,6 +86,7 @@ public class PreAuthIpChangePenaltyService {
         }
         if (appliedPenalty > 0) {
             cacheInvalidator.invalidateDeviceFingerprint(normalizedFingerprint);
+            syncDeviceL6BloomFromDb(normalizedFingerprint);
         }
 
         PreAuthRiskProfile riskProfile = resolveRiskProfile(currentIp, normalizedFingerprint, existing, appliedPenalty);
@@ -278,6 +283,18 @@ public class PreAuthIpChangePenaltyService {
     private String normalizeReason(String reason) {
         String normalized = StrUtil.blankToDefault(reason, "").trim();
         return normalized.length() <= 128 ? normalized : normalized.substring(0, 128);
+    }
+
+    private void syncDeviceL6BloomFromDb(String normalizedFingerprint) {
+        try {
+            Integer currentScore = registerRiskProfileMapper.findDeviceRiskScoreByFingerprint(normalizedFingerprint);
+            if (currentScore != null) {
+                deviceL6CountingBloomDecisionService.syncMembershipByScore(
+                        normalizedFingerprint,
+                        Math.max(0, Math.min(10000, currentScore)));
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private record PenaltyDecision(int penaltyScore,

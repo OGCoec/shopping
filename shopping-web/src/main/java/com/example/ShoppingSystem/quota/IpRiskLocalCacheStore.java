@@ -73,6 +73,13 @@ public class IpRiskLocalCacheStore {
         cache.put(ip, new LocalRiskEntry(score, normalizeCountry(country), expiresAt));
     }
 
+    public void invalidate(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return;
+        }
+        cache.invalidate(ip);
+    }
+
     private String normalizeCountry(String country) {
         if (country == null || country.isBlank()) {
             return null;

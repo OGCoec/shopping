@@ -9,10 +9,12 @@ public final class LoginRedisKeys {
     }
 
     public static final String EMAIL_CODE_PREFIX = "auth:login:email-code:";
+    public static final String EMAIL_CODE_COOLDOWN_PREFIX = "auth:login:email-code:cooldown:";
     public static final String CHALLENGE_PREFIX = "auth:login:challenge:";
     public static final String WAF_VERIFIED_PREFIX = "auth:login:waf-verified:";
 
     public static final long EMAIL_CODE_TTL_MINUTES = 5L;
+    public static final long EMAIL_CODE_SEND_COOLDOWN_SECONDS = 60L;
     public static final long CHALLENGE_TTL_MINUTES = 5L;
     public static final long WAF_VERIFIED_TTL_MINUTES = 5L;
 

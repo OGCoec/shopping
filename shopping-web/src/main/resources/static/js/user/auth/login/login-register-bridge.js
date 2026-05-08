@@ -56,6 +56,62 @@
     let registerPhoneCodeDialCode = "";
     let registerPhoneCodeRawPhone = "";
     let pendingRegisterPhoneSmsChallenge = null;
+    let registerPhoneSendCooldownUntil = 0;
+    let registerPhoneSendCooldownTimer = null;
+    const registerPhoneSendCodeDefaultText = registerPhoneRequiredSendCodeButton?.textContent || "Send code";
+    const registerPhoneCodeSentMessage = "\u77ed\u4fe1\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001\uff0c\u8bf7\u8f93\u5165\u77ed\u4fe1\u9a8c\u8bc1\u7801\u3002";
+
+    function resolveRetryAfterMs(payload, fallbackMs = 0) {
+      const retryAfterMs = Number(payload?.retryAfterMs);
+      if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+        return Math.round(retryAfterMs);
+      }
+      return Math.max(0, Math.round(Number(fallbackMs) || 0));
+    }
+
+    function clearRegisterPhoneSendCooldownTimer() {
+      if (!registerPhoneSendCooldownTimer) {
+        return;
+      }
+      clearInterval(registerPhoneSendCooldownTimer);
+      registerPhoneSendCooldownTimer = null;
+    }
+
+    function applyRegisterPhoneSendCodeButton(text, disabled) {
+      if (!registerPhoneRequiredSendCodeButton) {
+        return;
+      }
+      registerPhoneRequiredSendCodeButton.textContent = text;
+      registerPhoneRequiredSendCodeButton.disabled = disabled;
+      registerPhoneRequiredSendCodeButton.setAttribute("aria-disabled", disabled ? "true" : "false");
+    }
+
+    function resetRegisterPhoneSendCooldown() {
+      clearRegisterPhoneSendCooldownTimer();
+      registerPhoneSendCooldownUntil = 0;
+      applyRegisterPhoneSendCodeButton(registerPhoneSendCodeDefaultText, false);
+    }
+
+    function refreshRegisterPhoneSendCooldown() {
+      const remainingMs = Math.max(0, registerPhoneSendCooldownUntil - Date.now());
+      if (remainingMs <= 0) {
+        resetRegisterPhoneSendCooldown();
+        return;
+      }
+      const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+      applyRegisterPhoneSendCodeButton(`${registerPhoneSendCodeDefaultText} (${remainingSeconds}s)`, true);
+    }
+
+    function startRegisterPhoneSendCooldown(cooldownMs) {
+      const safeCooldownMs = Math.max(0, Math.round(Number(cooldownMs) || 0));
+      if (safeCooldownMs <= 0) {
+        return;
+      }
+      registerPhoneSendCooldownUntil = Date.now() + safeCooldownMs;
+      clearRegisterPhoneSendCooldownTimer();
+      refreshRegisterPhoneSendCooldown();
+      registerPhoneSendCooldownTimer = setInterval(refreshRegisterPhoneSendCooldown, 200);
+    }
 
     function normalizeRoutePath(routeTarget) {
       const rawRouteTarget = typeof routeTarget === "string" ? routeTarget.trim() : "";
@@ -130,7 +186,18 @@
       }
     }
 
+    function showRegisterPhoneCodeSentStatus() {
+      if (registerPhoneRequiredErrorMessage) {
+        registerPhoneRequiredErrorMessage.textContent = registerPhoneCodeSentMessage;
+        registerPhoneRequiredErrorMessage.style.display = "block";
+      }
+    }
+
     async function sendRegisterPhoneRequiredCode(dialCode, rawPhone) {
+      if (Date.now() < registerPhoneSendCooldownUntil) {
+        refreshRegisterPhoneSendCooldown();
+        return false;
+      }
       const submitPhoneCode = isRegisterModeRoute() ? submitRegisterPhoneCode : submitLoginPhoneCode;
       if (!submitPhoneCode) {
         showRegisterPhoneRequiredValidationError("SMS verification is not available.");
@@ -141,6 +208,15 @@
         showRegisterPhoneRequiredValidationError(validationResult.message);
         return false;
       }
+
+      const showCodeSentState = (payload) => {
+        registerPhoneCodeDialCode = dialCode;
+        registerPhoneCodeRawPhone = rawPhone;
+        showRegisterPhoneCodeStep();
+        startRegisterPhoneSendCooldown(resolveRetryAfterMs(payload, 60_000));
+        showRegisterPhoneCodeSentStatus();
+      };
+
       const sendResult = await submitPhoneCode(dialCode, rawPhone);
       if (!sendResult?.success) {
         if (sendResult?.challengeType) {
@@ -164,13 +240,7 @@
                 showRegisterPhoneRequiredValidationError(payload?.message || "Failed to send SMS code.");
                 return false;
               }
-              registerPhoneCodeDialCode = dialCode;
-              registerPhoneCodeRawPhone = rawPhone;
-              showRegisterPhoneCodeStep();
-              if (registerPhoneRequiredErrorMessage) {
-                registerPhoneRequiredErrorMessage.textContent = "验证码已发送，请输入短信验证码。";
-                registerPhoneRequiredErrorMessage.style.display = "block";
-              }
+              showCodeSentState(payload);
               return true;
             }
           });
@@ -178,16 +248,16 @@
             return false;
           }
         }
+
+        const retryAfterMs = resolveRetryAfterMs(sendResult);
+        if (retryAfterMs > 0) {
+          startRegisterPhoneSendCooldown(retryAfterMs);
+        }
         showRegisterPhoneRequiredValidationError(sendResult?.message || "Failed to send SMS code.");
         return false;
       }
-      registerPhoneCodeDialCode = dialCode;
-      registerPhoneCodeRawPhone = rawPhone;
-      showRegisterPhoneCodeStep();
-      if (registerPhoneRequiredErrorMessage) {
-        registerPhoneRequiredErrorMessage.textContent = "验证码已发送，请输入短信验证码。";
-        registerPhoneRequiredErrorMessage.style.display = "block";
-      }
+
+      showCodeSentState(sendResult);
       return true;
     }
 
@@ -246,7 +316,7 @@
           if (registerPhoneRequiredCodeInput) {
             registerPhoneRequiredCodeInput.classList.add("error");
           }
-          showRegisterPhoneRequiredValidationError("请输入 6 位短信验证码");
+          showRegisterPhoneRequiredValidationError("\u8bf7\u8f93\u5165 6 \u4f4d\u77ed\u4fe1\u9a8c\u8bc1\u7801");
           return true;
         }
 
@@ -312,7 +382,13 @@
           }
           resetRegisterPhoneCodeState();
           resetRegisterPhoneRequiredValidationState();
+          resetRegisterPhoneSendCooldown();
           window.location.assign(registerModePath("ADD_PHONE", "REGISTER_ADD_PHONE"));
+          return true;
+        }
+
+        if (verifyResult?.authenticated && verifyResult?.redirectPath) {
+          window.location.assign(verifyResult.redirectPath);
           return true;
         }
 
@@ -395,7 +471,10 @@
     }
 
     if (registerPhoneRequiredInput) {
-      registerPhoneRequiredInput.addEventListener("input", resetRegisterPhoneCodeState);
+      registerPhoneRequiredInput.addEventListener("input", () => {
+        resetRegisterPhoneCodeState();
+        resetRegisterPhoneSendCooldown();
+      });
     }
     if (registerPhoneRequiredSendCodeButton) {
       registerPhoneRequiredSendCodeButton.addEventListener("click", async () => {
@@ -408,7 +487,7 @@
         const dialCode = phoneParts.dialCode || "";
         resetRegisterPhoneRequiredValidationState();
         if (!dialCode || !/^\d{6,15}$/.test(rawPhone)) {
-          showRegisterPhoneRequiredValidationError("请输入有效的手机号码");
+          showRegisterPhoneRequiredValidationError("\u8bf7\u8f93\u5165\u6709\u6548\u7684\u624b\u673a\u53f7\u7801");
           return;
         }
         await sendRegisterPhoneRequiredCode(dialCode, rawPhone);

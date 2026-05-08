@@ -23,6 +23,7 @@
   const LOGIN_WAF_RESUME_COOKIE_NAME = "LOGIN_WAF_RESUME";
   const LOGIN_WAF_RESUME_HEADER = "X-Login-Waf-Resume";
   const ERROR_INVALID_STATE = "INVALID_STATE";
+  const DEFAULT_SEND_COOLDOWN_MS = 60_000;
   const INVALID_STATE_MESSAGE = "验证过程中出错 (invalid_state)。请重试。";
 
   function createLoginSubmitHandlers(options = {}) {
@@ -60,6 +61,11 @@
     let pendingLoginStartPayload = null;
     let pendingPhoneLoginPayload = null;
     let loginEmailCodeRequestInFlight = false;
+    let phoneLoginSmsCooldownUntil = 0;
+    let phoneLoginSmsCooldownTimer = null;
+    let phoneLoginSmsCooldownMessage = "SMS code sent.";
+    let phoneLoginSmsCooldownDialCode = "";
+    let phoneLoginSmsCooldownPhone = "";
 
     function normalizeRoutePath(routeTarget) {
       const rawRouteTarget = typeof routeTarget === "string" ? routeTarget.trim() : "";
@@ -231,6 +237,72 @@
       phoneContinueButton.querySelectorAll(".btn-text, .btn-hover-content span").forEach((node) => {
         node.textContent = text;
       });
+    }
+
+    function resolveRetryAfterMs(payload, fallbackMs = 0) {
+      const retryAfterMs = Number(payload?.retryAfterMs);
+      if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+        return Math.round(retryAfterMs);
+      }
+      return Math.max(0, Math.round(Number(fallbackMs) || 0));
+    }
+
+    function clearPhoneLoginSmsCooldownTimer() {
+      if (!phoneLoginSmsCooldownTimer) {
+        return;
+      }
+      clearInterval(phoneLoginSmsCooldownTimer);
+      phoneLoginSmsCooldownTimer = null;
+    }
+
+    function resetPhoneLoginSmsCooldownState() {
+      clearPhoneLoginSmsCooldownTimer();
+      phoneLoginSmsCooldownUntil = 0;
+      phoneLoginSmsCooldownDialCode = "";
+      phoneLoginSmsCooldownPhone = "";
+    }
+
+    function refreshPhoneLoginSmsCooldown() {
+      const remainingMs = Math.max(0, phoneLoginSmsCooldownUntil - Date.now());
+      if (remainingMs <= 0) {
+        resetPhoneLoginSmsCooldownState();
+        return;
+      }
+      if (phoneErrorMessage) {
+        const remainingSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+        phoneErrorMessage.textContent = `${phoneLoginSmsCooldownMessage} (${remainingSeconds}s)`;
+        phoneErrorMessage.style.display = "block";
+      }
+    }
+
+    function startPhoneLoginSmsCooldown(cooldownMs, message = "SMS code sent.", dialCode = "", rawPhone = "") {
+      const safeCooldownMs = Math.max(0, Math.round(Number(cooldownMs) || 0));
+      if (safeCooldownMs <= 0) {
+        return;
+      }
+      phoneLoginSmsCooldownUntil = Date.now() + safeCooldownMs;
+      phoneLoginSmsCooldownMessage = message || "SMS code sent.";
+      phoneLoginSmsCooldownDialCode = dialCode || "";
+      phoneLoginSmsCooldownPhone = rawPhone || "";
+      clearPhoneLoginSmsCooldownTimer();
+      refreshPhoneLoginSmsCooldown();
+      phoneLoginSmsCooldownTimer = setInterval(refreshPhoneLoginSmsCooldown, 200);
+    }
+
+    function cooldownAppliesToPhone(dialCode, rawPhone) {
+      return !phoneLoginSmsCooldownDialCode
+        || !phoneLoginSmsCooldownPhone
+        || (phoneLoginSmsCooldownDialCode === (dialCode || "")
+          && phoneLoginSmsCooldownPhone === (rawPhone || ""));
+    }
+
+    function startLoginEmailResendCooldown(payload, fallbackMs = 0) {
+      const cooldownMs = resolveRetryAfterMs(payload, fallbackMs);
+      if (cooldownMs <= 0 || typeof window === "undefined"
+          || typeof window.startLoginEmailResendCooldown !== "function") {
+        return;
+      }
+      window.startLoginEmailResendCooldown(cooldownMs);
     }
 
     function showPhoneLoginCodeStep(dialCode, phoneNumber) {
@@ -684,6 +756,7 @@
           await showInvalidStateTerminal(payload);
           return payload;
         }
+        startLoginEmailResendCooldown(payload);
         showPasswordError(payload?.message || "Failed to send the email code.");
         return payload;
       }
@@ -701,6 +774,7 @@
       } else {
         clearOtpError();
       }
+      startLoginEmailResendCooldown(payload, DEFAULT_SEND_COOLDOWN_MS);
       return payload;
     }
 
@@ -747,6 +821,17 @@
         return;
       }
 
+      const cooldownRemainingMs = Math.max(0, phoneLoginSmsCooldownUntil - Date.now());
+      if (cooldownRemainingMs > 0 && cooldownAppliesToPhone(dialCode, rawPhone)) {
+        startPhoneLoginSmsCooldown(
+          cooldownRemainingMs,
+          "Please wait before requesting another SMS code.",
+          dialCode,
+          rawPhone
+        );
+        return;
+      }
+
       clearPhoneLoginCodeStep();
 
       const phoneValidationResult = await validatePhoneNumberPolicy(dialCode, rawPhone);
@@ -785,7 +870,12 @@
             resolveChallengeSuccess(successPayload) {
               if (successPayload?.success) {
                 showPhoneLoginCodeStep(dialCode, rawPhone);
-                showPhoneValidationError(successPayload.message || "SMS code sent.", phoneNumberInput, phoneNumberLabel);
+                startPhoneLoginSmsCooldown(
+                  resolveRetryAfterMs(successPayload, DEFAULT_SEND_COOLDOWN_MS),
+                  successPayload.message || "SMS code sent.",
+                  dialCode,
+                  rawPhone
+                );
                 return true;
               }
               return false;
@@ -795,11 +885,26 @@
             return;
           }
         }
+        const retryAfterMs = resolveRetryAfterMs(payload);
+        if (retryAfterMs > 0) {
+          startPhoneLoginSmsCooldown(
+            retryAfterMs,
+            payload?.message || "Please wait before requesting another SMS code.",
+            dialCode,
+            rawPhone
+          );
+          return;
+        }
         showPhoneValidationError(payload?.message || "Failed to send SMS code.", phoneNumberInput, phoneNumberLabel);
         return;
       }
       showPhoneLoginCodeStep(dialCode, rawPhone);
-      showPhoneValidationError(payload?.message || "SMS code sent.", phoneNumberInput, phoneNumberLabel);
+      startPhoneLoginSmsCooldown(
+        resolveRetryAfterMs(payload, DEFAULT_SEND_COOLDOWN_MS),
+        payload?.message || "SMS code sent.",
+        dialCode,
+        rawPhone
+      );
     }
 
     async function handlePasswordSubmit() {
@@ -958,7 +1063,8 @@
           challengeSiteKey: payload?.challengeSiteKey || "",
           email: payload?.email || "",
           riskLevel: payload?.riskLevel || "",
-          deviceFingerprint: buildDeviceFingerprint()
+          deviceFingerprint: buildDeviceFingerprint(),
+          retryAfterMs: payload?.retryAfterMs || 0
         };
       }
       setCurrentLoginFlow(payload);
@@ -1007,14 +1113,16 @@
       if (!response.ok || !payload?.success) {
         return {
           success: false,
-          message: payload?.message || "Failed to send SMS code.",
+          message: resolvePhoneValidationMessage(payload) || "Failed to send SMS code.",
           error: payload?.error || "",
+          reasonCode: payload?.reasonCode || payload?.error || "",
           challengeType: payload?.challengeType || "",
           challengeSubType: payload?.challengeSubType || "",
           challengeSiteKey: payload?.challengeSiteKey || "",
           email: payload?.email || "",
           riskLevel: payload?.riskLevel || "",
-          deviceFingerprint: buildDeviceFingerprint()
+          deviceFingerprint: buildDeviceFingerprint(),
+          retryAfterMs: payload?.retryAfterMs || 0
         };
       }
       return payload;

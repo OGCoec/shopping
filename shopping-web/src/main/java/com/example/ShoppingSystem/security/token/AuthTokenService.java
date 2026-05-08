@@ -17,9 +17,8 @@ import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -43,6 +43,25 @@ public class AuthTokenService {
     private static final String ACTIVE_STATUS = "ACTIVE";
     private static final String LEGACY_REFRESH_COOKIE_PATH = "/shopping/user/auth";
     private static final String SCENE_LOGIN_SUCCESS = "LOGIN_SUCCESS";
+    private static final DefaultRedisScript<Long> DELETE_REFRESH_SESSIONS_SCRIPT = new DefaultRedisScript<>(
+            """
+                    local prefix = ARGV[1]
+                    local cursor = "0"
+                    local deleted = 0
+
+                    repeat
+                        local result = redis.call('SCAN', cursor, 'MATCH', prefix .. '*', 'COUNT', 100)
+                        cursor = result[1]
+                        local keys = result[2]
+                        if #keys > 0 then
+                            deleted = deleted + redis.call('DEL', unpack(keys))
+                        end
+                    until cursor == "0"
+
+                    return deleted
+                    """,
+            Long.class
+    );
 
     private final JwtUtils jwtUtils;
     private final StringRedisTemplate stringRedisTemplate;
@@ -244,6 +263,13 @@ public class AuthTokenService {
         return context;
     }
 
+    public void evictUserContext(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        stringRedisTemplate.delete(userContextKey(userId));
+    }
+
     private UserLoginIdentity requireActiveIdentity(Long userId) {
         if (userId == null) {
             throw new AuthTokenException(HttpServletResponse.SC_UNAUTHORIZED,
@@ -360,12 +386,9 @@ public class AuthTokenService {
     }
 
     private void deleteRefreshSessionsByUserId(Long userId) {
-        String pattern = properties.getRefreshRedisKeyPrefix() + userId + ":*";
-        try (Cursor<String> cursor = stringRedisTemplate.scan(
-                ScanOptions.scanOptions().match(pattern).count(100).build())) {
-            while (cursor.hasNext()) {
-                stringRedisTemplate.delete(cursor.next());
-            }
+        String prefix = properties.getRefreshRedisKeyPrefix() + userId + ":";
+        try {
+            stringRedisTemplate.execute(DELETE_REFRESH_SESSIONS_SCRIPT, Collections.emptyList(), prefix);
         } catch (Exception ignored) {
         }
     }

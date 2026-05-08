@@ -87,6 +87,11 @@ public class StaticController {
         return htmlPage("console.html");
     }
 
+    @GetMapping("/shopping/user/security/phone")
+    public ResponseEntity<Resource> securityPhonePage() {
+        return htmlPage("security-phone.html");
+    }
+
     @GetMapping("/shopping/user/forgot-password")
     public ResponseEntity<Resource> forgotPasswordPage() {
         return htmlPage("login.html");

@@ -727,7 +727,9 @@
         success: true,
         message: payload?.message || "Register completed.",
         requirePhoneBinding: Boolean(payload?.requirePhoneBinding),
-        userId: Number(payload?.userId || 0) || null
+        userId: Number(payload?.userId || 0) || null,
+        authenticated: Boolean(payload?.authenticated),
+        redirectPath: typeof payload?.redirectPath === "string" ? payload.redirectPath : ""
       };
     }
 

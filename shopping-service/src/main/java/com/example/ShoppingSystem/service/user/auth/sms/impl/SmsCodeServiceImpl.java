@@ -60,8 +60,9 @@ public class SmsCodeServiceImpl implements SmsCodeService {
         }
 
         String normalizedPhone = validation.normalizedE164();
-        if (!markCooldown(normalizedPhone)) {
-            return sendFail("Please wait before requesting another SMS code.", REASON_RATE_LIMITED, normalizedPhone);
+        long cooldownRetryAfterMs = tryMarkCooldown(normalizedPhone);
+        if (cooldownRetryAfterMs > 0L) {
+            return sendFail("Please wait before requesting another SMS code.", REASON_RATE_LIMITED, normalizedPhone, cooldownRetryAfterMs);
         }
         if (!incrementWithinLimit(dailyKey(normalizedPhone), properties.getPhoneDailyLimit(), 1, TimeUnit.DAYS)) {
             return sendFail("SMS request limit reached for this phone number.", REASON_RATE_LIMITED, normalizedPhone);
@@ -102,6 +103,7 @@ public class SmsCodeServiceImpl implements SmsCodeService {
                 .message("SMS code sent.")
                 .reasonCode(REASON_OK)
                 .normalizedE164(normalizedPhone)
+                .retryAfterMs(TimeUnit.SECONDS.toMillis(properties.getCooldownSeconds()))
                 .build();
     }
 
@@ -142,14 +144,22 @@ public class SmsCodeServiceImpl implements SmsCodeService {
         return phoneNumberValidationService.validateMobileLikeNumber(dialCode, phoneNumber);
     }
 
-    private boolean markCooldown(String normalizedPhone) {
+    private long tryMarkCooldown(String normalizedPhone) {
+        String key = cooldownKey(normalizedPhone);
         Boolean marked = stringRedisTemplate.opsForValue().setIfAbsent(
-                cooldownKey(normalizedPhone),
+                key,
                 "1",
                 properties.getCooldownSeconds(),
                 TimeUnit.SECONDS
         );
-        return Boolean.TRUE.equals(marked);
+        if (Boolean.TRUE.equals(marked)) {
+            return 0L;
+        }
+        Long ttlMs = stringRedisTemplate.getExpire(key, TimeUnit.MILLISECONDS);
+        if (ttlMs == null || ttlMs <= 0L) {
+            return TimeUnit.SECONDS.toMillis(properties.getCooldownSeconds());
+        }
+        return ttlMs;
     }
 
     private boolean incrementWithinLimit(String key, int limit, long ttl, TimeUnit timeUnit) {
@@ -187,11 +197,16 @@ public class SmsCodeServiceImpl implements SmsCodeService {
     }
 
     private SmsCodeSendResult sendFail(String message, String reasonCode, String normalizedPhone) {
+        return sendFail(message, reasonCode, normalizedPhone, null);
+    }
+
+    private SmsCodeSendResult sendFail(String message, String reasonCode, String normalizedPhone, Long retryAfterMs) {
         return SmsCodeSendResult.builder()
                 .success(false)
                 .message(message)
                 .reasonCode(reasonCode)
                 .normalizedE164(normalizedPhone)
+                .retryAfterMs(retryAfterMs)
                 .build();
     }
 

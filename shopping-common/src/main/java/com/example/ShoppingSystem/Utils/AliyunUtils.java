@@ -2,6 +2,9 @@ package com.example.ShoppingSystem.Utils;
 
 import cn.hutool.core.util.StrUtil;
 import com.aliyun.auth.credentials.provider.EnvironmentVariableCredentialProvider;
+import com.aliyun.core.http.HttpClient;
+import com.aliyun.core.http.ProxyOptions;
+import com.aliyun.httpcomponent.httpclient.ApacheAsyncHttpClientBuilder;
 import com.aliyun.sdk.service.dypnsapi20170525.AsyncClient;
 import com.aliyun.sdk.service.dypnsapi20170525.models.SendSmsVerifyCodeRequest;
 import com.aliyun.sdk.service.dypnsapi20170525.models.SendSmsVerifyCodeResponse;
@@ -12,12 +15,16 @@ import com.aliyun.sdk.service.oss2.models.CopyObjectRequest;
 import com.aliyun.sdk.service.oss2.models.DeleteObjectRequest;
 import com.aliyun.sdk.service.oss2.models.PutObjectRequest;
 import com.aliyun.sdk.service.oss2.transport.BinaryData;
+import com.example.ShoppingSystem.common.proxy.LocalProxyResolver;
 import com.google.gson.Gson;
 import darabonba.core.client.ClientOverrideConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.InetSocketAddress;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
 @Component
@@ -31,20 +38,40 @@ public class AliyunUtils {
     public static final String HONG_KONG_OSS_REGION = "cn-hongkong";
     public static final String HONG_KONG_OSS_ENDPOINT = "https://oss-cn-hongkong.aliyuncs.com";
 
+    private final LocalProxyResolver localProxyResolver;
+    private final boolean smsProxyEnabled;
+    private final String smsProxyHost;
+    private final int smsProxyPort;
+
+    public AliyunUtils(LocalProxyResolver localProxyResolver,
+                       @Value("${aliyun.sms.proxy.enabled:true}") boolean smsProxyEnabled,
+                       @Value("${aliyun.sms.proxy.host:127.0.0.1}") String smsProxyHost,
+                       @Value("${aliyun.sms.proxy.port:7892}") int smsProxyPort) {
+        this.localProxyResolver = localProxyResolver;
+        this.smsProxyEnabled = smsProxyEnabled;
+        this.smsProxyHost = smsProxyHost;
+        this.smsProxyPort = smsProxyPort;
+    }
+
     public void sendSmsVerifyCode(String telephoneNumber,
                                   String templateCode,
                                   String code,
                                   String time) throws Exception {
         EnvironmentVariableCredentialProvider provider = new EnvironmentVariableCredentialProvider();
 
-        try (AsyncClient client = AsyncClient.builder()
+        var clientBuilder = AsyncClient.builder()
                 .region("cn-hangzhou")
                 .credentialsProvider(provider)
                 .overrideConfiguration(
                         ClientOverrideConfiguration.create()
                                 .setEndpointOverride("dypnsapi.aliyuncs.com")
-                )
-                .build()) {
+                );
+        HttpClient smsHttpClient = buildSmsHttpClient();
+        if (smsHttpClient != null) {
+            clientBuilder.httpClient(smsHttpClient);
+        }
+
+        try (AsyncClient client = clientBuilder.build()) {
 
             String templateParamJson = String.format("{\"code\":\"%s\",\"min\":\"%s\"}", code, time);
 
@@ -59,6 +86,30 @@ public class AliyunUtils {
             SendSmsVerifyCodeResponse response = responseFuture.get();
             log.info("Aliyun SMS send result: {}", new Gson().toJson(response));
         }
+    }
+
+    private HttpClient buildSmsHttpClient() {
+        if (!smsProxyEnabled) {
+            return null;
+        }
+        LocalProxyResolver.ProxySelection proxySelection =
+                localProxyResolver.resolveOrConfigured(smsProxyHost, smsProxyPort);
+        InetSocketAddress proxyAddress = proxySelection.address();
+        if (proxyAddress == null) {
+            return null;
+        }
+        log.info("Aliyun SMS HTTP proxy selected: host={}, port={}, reachable={}, reason={}",
+                proxyAddress.getHostString(),
+                proxyAddress.getPort(),
+                proxySelection.reachable(),
+                proxySelection.reason());
+        return new ApacheAsyncHttpClientBuilder()
+                .connectionTimeout(Duration.ofSeconds(10))
+                .responseTimeout(Duration.ofSeconds(10))
+                .maxConnections(128)
+                .maxIdleTimeOut(Duration.ofSeconds(50))
+                .proxy(new ProxyOptions(ProxyOptions.Type.HTTP, proxyAddress))
+                .build();
     }
 
     public CompletableFuture<String> uploadFile(String objectKey, byte[] fileBytes) {

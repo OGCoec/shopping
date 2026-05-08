@@ -128,6 +128,22 @@ public class PreAuthInterceptor implements HandlerInterceptor {
         PreAuthBinding binding = outcome.binding();
         refreshTokenCookie(response, request, binding.token());
 
+        PreAuthBinding rawL6BlockedBinding = preAuthBindingService.markRawL6BloomBlocked(
+                binding,
+                request.getHeader(PreAuthHeaders.HEADER_DEVICE_FINGERPRINT),
+                request);
+        if (rawL6BlockedBinding != null) {
+            writeJsonError(
+                    response,
+                    request,
+                    HttpServletResponse.SC_FORBIDDEN,
+                    BLOCKED_PUBLIC_ERROR_CODE,
+                    BLOCKED_PUBLIC_ERROR_MESSAGE,
+                    rawL6BlockedBinding
+            );
+            return false;
+        }
+
         if (preAuthBindingService.isBlockedRisk(binding.riskLevel())
                 && !isLoginFlowApiRequest(request)) {
             writeJsonError(

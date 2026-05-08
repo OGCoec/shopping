@@ -239,4 +239,62 @@ public interface IpReputationProfileMapper {
                               @Param("rawJson") String rawJson,
                               @Param("queriedAt") OffsetDateTime queriedAt,
                               @Param("expiresAt") OffsetDateTime expiresAt);
+
+    @Select("""
+            INSERT INTO ipv4_reputation_profile (
+                ip,
+                ip_type,
+                reference_score,
+                base_score,
+                current_score,
+                source_provider,
+                last_seen_at
+            ) VALUES (
+                #{ip},
+                'UNKNOWN',
+                6000,
+                6000,
+                GREATEST(0, 6000 - GREATEST(0, #{penaltyScore})),
+                'AUTOMATION',
+                #{seenAt}
+            )
+            ON CONFLICT (ip) DO UPDATE
+            SET current_score = GREATEST(0, ipv4_reputation_profile.current_score - GREATEST(0, #{penaltyScore})),
+                last_seen_at = EXCLUDED.last_seen_at,
+                source_provider = COALESCE(ipv4_reputation_profile.source_provider, EXCLUDED.source_provider)
+            WHERE #{penaltyScore} > 0
+            RETURNING current_score
+            """)
+    Integer applyIpv4AutomationPenalty(@Param("ip") String ip,
+                                       @Param("penaltyScore") int penaltyScore,
+                                       @Param("seenAt") OffsetDateTime seenAt);
+
+    @Select("""
+            INSERT INTO ipv6_reputation_profile (
+                ip,
+                ip_type,
+                reference_score,
+                base_score,
+                current_score,
+                source_provider,
+                last_seen_at
+            ) VALUES (
+                #{ip},
+                'UNKNOWN',
+                6000,
+                6000,
+                GREATEST(0, 6000 - GREATEST(0, #{penaltyScore})),
+                'AUTOMATION',
+                #{seenAt}
+            )
+            ON CONFLICT (ip) DO UPDATE
+            SET current_score = GREATEST(0, ipv6_reputation_profile.current_score - GREATEST(0, #{penaltyScore})),
+                last_seen_at = EXCLUDED.last_seen_at,
+                source_provider = COALESCE(ipv6_reputation_profile.source_provider, EXCLUDED.source_provider)
+            WHERE #{penaltyScore} > 0
+            RETURNING current_score
+            """)
+    Integer applyIpv6AutomationPenalty(@Param("ip") String ip,
+                                       @Param("penaltyScore") int penaltyScore,
+                                       @Param("seenAt") OffsetDateTime seenAt);
 }

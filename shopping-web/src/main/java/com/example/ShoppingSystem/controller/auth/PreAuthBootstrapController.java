@@ -13,7 +13,7 @@ import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationError;
 import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
 import com.example.ShoppingSystem.quota.IpCountryQueryService;
 import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
-import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingAvailabilityService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -46,18 +46,18 @@ public class PreAuthBootstrapController {
     private final IpCountryQueryService ipCountryQueryService;
     private final RegisterPasswordCryptoService registerPasswordCryptoService;
     private final PhoneNumberValidationService phoneNumberValidationService;
-    private final PhoneBoundCountingBloomService phoneBoundCountingBloomService;
+    private final PhoneBindingAvailabilityService phoneBindingAvailabilityService;
 
     public PreAuthBootstrapController(PreAuthBindingService preAuthBindingService,
                                       IpCountryQueryService ipCountryQueryService,
                                       RegisterPasswordCryptoService registerPasswordCryptoService,
                                       PhoneNumberValidationService phoneNumberValidationService,
-                                      PhoneBoundCountingBloomService phoneBoundCountingBloomService) {
+                                      PhoneBindingAvailabilityService phoneBindingAvailabilityService) {
         this.preAuthBindingService = preAuthBindingService;
         this.ipCountryQueryService = ipCountryQueryService;
         this.registerPasswordCryptoService = registerPasswordCryptoService;
         this.phoneNumberValidationService = phoneNumberValidationService;
-        this.phoneBoundCountingBloomService = phoneBoundCountingBloomService;
+        this.phoneBindingAvailabilityService = phoneBindingAvailabilityService;
     }
 
     /**
@@ -118,21 +118,13 @@ public class PreAuthBootstrapController {
                 phoneNumberValidationService.validateMobileLikeNumber(request.dialCode(), request.phoneNumber());
         if (result.allowed()) {
             if (shouldRejectAlreadyBoundPhone(request)) {
-                PhoneBoundCountingBloomService.PhoneBoundLookupResult lookupResult =
-                        phoneBoundCountingBloomService.lookupVerifiedPhone(result.normalizedE164());
-                if (!lookupResult.available()) {
+                PhoneBindingAvailabilityService.PhoneBindingAvailability availability =
+                        phoneBindingAvailabilityService.checkPhoneAvailable(result.normalizedE164());
+                if (!availability.allowed()) {
                     return new PreAuthPhoneValidationResponse(
                             false,
-                            resolvePhoneValidationMessage(REASON_PHONE_BOUND_BLOOM_UNAVAILABLE),
-                            REASON_PHONE_BOUND_BLOOM_UNAVAILABLE,
-                            result.phoneType(),
-                            result.normalizedE164());
-                }
-                if (lookupResult.mightContain()) {
-                    return new PreAuthPhoneValidationResponse(
-                            false,
-                            resolvePhoneValidationMessage(REASON_PHONE_ALREADY_BOUND),
-                            REASON_PHONE_ALREADY_BOUND,
+                            availability.message(),
+                            availability.reasonCode(),
                             result.phoneType(),
                             result.normalizedE164());
                 }

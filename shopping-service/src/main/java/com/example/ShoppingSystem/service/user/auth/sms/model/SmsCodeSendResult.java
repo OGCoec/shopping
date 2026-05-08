@@ -11,4 +11,5 @@ public class SmsCodeSendResult {
     String message;
     String reasonCode;
     String normalizedE164;
+    Long retryAfterMs;
 }

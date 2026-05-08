@@ -10,6 +10,8 @@
   const HEADER_CSRF_TOKEN = "X-XSRF-TOKEN";
   const COOKIE_CSRF_TOKEN = "XSRF-TOKEN";
   const WAF_REQUIRED_ERROR_CODE = "PREAUTH_IP_CHANGED_WAF_REQUIRED";
+  const PHONE_BINDING_REQUIRED_ERROR_CODE = "PHONE_BINDING_REQUIRED";
+  const PHONE_BINDING_PATH = "/shopping/user/security/phone";
   const WAF_PENDING_REQUEST_KEY = "shopping.preauth.waf.pending-request";
   const WAF_REPLAY_EVENT_NAME = "shopping:preauth:waf-request-replayed";
   const DEVICE_SEED_KEY = "shopping.preauth.device-seed";
@@ -299,6 +301,7 @@
       const replayOptions = sanitizeReplayOptions(pending.options || {});
       const response = await fetchWithPreAuth(pending.url, replayOptions);
       const payload = await parseJsonSafely(response.clone());
+      handlePhoneBindingRequiredPayload(payload);
       emitWafReplayEvent(buildWafReplayEventDetail(pending.url, response, payload));
     } catch (error) {
       emitWafReplayEvent(buildWafReplayEventDetail(
@@ -317,6 +320,26 @@
     persistWafPendingRequest(url, options || {});
     const finalUrl = (verifyUrl && String(verifyUrl).trim()) || buildDefaultWafVerifyUrl();
     window.location.assign(finalUrl);
+  }
+
+  function redirectToPhoneBinding(payload) {
+    if (!isBrowserRuntime()) {
+      return;
+    }
+    const target = payload?.redirectPath || PHONE_BINDING_PATH;
+    if (window.location.pathname === PHONE_BINDING_PATH) {
+      return;
+    }
+    window.location.assign(target);
+  }
+
+  function handlePhoneBindingRequiredPayload(payload) {
+    const errorCode = payload && payload.error ? String(payload.error) : "";
+    if (errorCode !== PHONE_BINDING_REQUIRED_ERROR_CODE) {
+      return false;
+    }
+    redirectToPhoneBinding(payload);
+    return true;
   }
 
   function readCookieValue(name) {
@@ -460,6 +483,11 @@
       if (errorCode === WAF_REQUIRED_ERROR_CODE) {
         redirectToWafVerify(wafPayload?.verifyUrl, url, options);
       }
+      return response;
+    }
+    if (response.status === 428) {
+      const phoneBindingPayload = await parseJsonSafely(response.clone());
+      handlePhoneBindingRequiredPayload(phoneBindingPayload);
       return response;
     }
     if (response.status !== 401) {

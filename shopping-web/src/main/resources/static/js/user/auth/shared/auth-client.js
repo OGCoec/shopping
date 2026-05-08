@@ -9,9 +9,11 @@
   const LOGOUT_PATH = "/shopping/user/auth/logout";
   const LOGOUT_ALL_PATH = "/shopping/user/auth/logout-all";
   const LOGIN_PATH = "/shopping/user/log-in";
+  const PHONE_BINDING_PATH = "/shopping/user/security/phone";
   const CSRF_COOKIE_NAME = "XSRF-TOKEN";
   const CSRF_HEADER_NAME = "X-XSRF-TOKEN";
   const ACCESS_EXPIRED_ERROR = "ACCESS_TOKEN_EXPIRED";
+  const PHONE_BINDING_REQUIRED_ERROR = "PHONE_BINDING_REQUIRED";
 
   let refreshTask = null;
 
@@ -79,8 +81,31 @@
     }
   }
 
+  function redirectToPhoneBinding(payload) {
+    if (typeof window === "undefined" || !window.location) {
+      return;
+    }
+    const target = payload?.redirectPath || PHONE_BINDING_PATH;
+    if (window.location.pathname === PHONE_BINDING_PATH) {
+      return;
+    }
+    window.location.assign(target);
+  }
+
   function isPreAuthVerificationResponse(response) {
     return response?.status === 409;
+  }
+
+  async function handlePhoneBindingRequiredResponse(response) {
+    if (response?.status !== 428) {
+      return false;
+    }
+    const payload = await parseJson(response.clone());
+    if (payload?.error !== PHONE_BINDING_REQUIRED_ERROR) {
+      return false;
+    }
+    redirectToPhoneBinding(payload);
+    return true;
   }
 
   async function refresh() {
@@ -101,6 +126,9 @@
     const firstOptions = cloneOptions(options);
     applyCsrf(firstOptions.headers);
     const firstResponse = await guardedFetch(url, firstOptions);
+    if (await handlePhoneBindingRequiredResponse(firstResponse)) {
+      return firstResponse;
+    }
     if (firstResponse.status !== 401) {
       return firstResponse;
     }
@@ -122,7 +150,9 @@
 
     const retryOptions = cloneOptions(options);
     applyCsrf(retryOptions.headers);
-    return guardedFetch(url, retryOptions);
+    const retryResponse = await guardedFetch(url, retryOptions);
+    await handlePhoneBindingRequiredResponse(retryResponse);
+    return retryResponse;
   }
 
   async function logout() {

@@ -23,11 +23,19 @@ public interface UserLoginIdentityMapper {
 
     UserLoginIdentity findByUserId(@Param("userId") Long userId);
 
+    UserLoginIdentity findByPhone(@Param("phone") String phone);
+
     UserLoginIdentity findVerifiedByPhone(@Param("phone") String phone);
 
     long countVerifiedPhones();
 
     java.util.List<String> listVerifiedPhones(@Param("limit") int limit, @Param("offset") long offset);
+
+    Boolean findPhoneVerifiedByUserId(@Param("userId") Long userId);
+
+    long countPhoneVerifiedUsers();
+
+    java.util.List<Long> listPhoneVerifiedUserIds(@Param("limit") int limit, @Param("offset") long offset);
 
     int bindGithubIdById(@Param("id") Long id, @Param("githubId") String githubId);
 
@@ -47,6 +55,18 @@ public interface UserLoginIdentityMapper {
 
     int updateTokenVersionByUserId(@Param("userId") Long userId,
                                     @Param("tokenVersion") String tokenVersion);
+
+    int updateStatusByUserId(@Param("userId") Long userId, @Param("status") String status);
+
+    int updateStatusByUserIdAt(@Param("userId") Long userId,
+                               @Param("status") String status,
+                               @Param("updatedAt") java.time.OffsetDateTime updatedAt);
+
+    int updateStatusByUserIdIfStatus(@Param("userId") Long userId,
+                                     @Param("oldStatus") String oldStatus,
+                                     @Param("newStatus") String newStatus);
+
+    int deleteByUserId(@Param("userId") Long userId);
 
     int activateTotpSecret(@Param("id") Long id,
                             @Param("secretEncrypted") String secretEncrypted,

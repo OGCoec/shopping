@@ -20,6 +20,14 @@
     let registerResendCooldownUntil = 0;
     let registerResendCooldownTimer = null;
 
+    function resolveRetryAfterMs(payload) {
+      const retryAfterMs = Number(payload?.retryAfterMs);
+      if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+        return Math.round(retryAfterMs);
+      }
+      return 0;
+    }
+
     function clearRegisterResendCooldownTimer() {
       if (!registerResendCooldownTimer) {
         return;
@@ -77,12 +85,20 @@
         if (otpApi?.getCurrentLoginFactor?.() === "TOTP") {
           return;
         }
+        if (Date.now() < registerResendCooldownUntil) {
+          refreshRegisterResendCooldown();
+          return;
+        }
         try {
           const resendResult = await resendLoginEmailCode();
           otpErrorMessage.textContent = resendResult?.message || otpApi?.getOtpResendMessage?.() || "";
           otpErrorMessage.style.display = "block";
           if (!resendResult?.success) {
             triggerLoginError();
+          }
+          const retryAfterMs = resolveRetryAfterMs(resendResult);
+          if (retryAfterMs > 0) {
+            startRegisterResendCooldown(retryAfterMs);
           }
         } catch (_) {
           otpErrorMessage.textContent = "Failed to resend the verification code.";
@@ -149,6 +165,7 @@
       clearRegisterResendCooldownTimer,
       refreshRegisterResendCooldown,
       startRegisterResendCooldown,
+      startLoginResendCooldown: startRegisterResendCooldown,
       handleOtpResendClick
     };
   }

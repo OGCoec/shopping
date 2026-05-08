@@ -72,6 +72,16 @@ public class PreAuthRiskStateSyncService {
         }
     }
 
+    public void forceClearDerivedState(PreAuthBinding current, HttpServletRequest request) {
+        if (current == null || request == null) {
+            return;
+        }
+
+        syncLoginFlow(current, request, true);
+        syncRegisterFlow(current, request, true);
+        loginChallengeSessionService.consumeWafVerified(current.token());
+    }
+
     private boolean syncLoginFlow(PreAuthBinding current,
                                   HttpServletRequest request,
                                   boolean bindingRiskLevelChanged) {

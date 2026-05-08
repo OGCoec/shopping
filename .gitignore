@@ -1,1 +1,4 @@
-"IP2LOCATION-LITE-DB11.IPV6.BIN" 
+IP2LOCATION-LITE-DB11.IPV6.BIN
+.tmp-ip2location-country-lookup/
+tools/clash-country/IP2LOCATION-LITE-DB11.IPV6.BIN
+tools/clash-country/.tmp-ip2location-country-lookup/

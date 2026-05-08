@@ -1,0 +1,278 @@
+机器人攻击防范规则
+
+一、目标
+
+用于防范脚本、机器人、批量线程对注册入口、登录入口、账号枚举入口的高频请求。
+核心原则是：先在 Redis 层拦截，再进入业务 Service，最后才允许查数据库。
+
+推荐链路：
+
+PreAuth 校验
+-> 检查设备/IP 封禁 key
+-> Redis INCR 设备/IP 频率计数
+-> 超阈值直接拒绝
+-> 未超阈值才进入业务 Service
+-> 需要查账号时才访问 DB
+
+
+二、强制封禁 key
+
+注册设备封禁：
+register:block:device:{deviceHash}
+
+注册 IP 封禁：
+register:block:ip:{ipHash}
+
+登录设备封禁：
+login:block:device:{deviceHash}
+
+登录 IP 封禁：
+login:block:ip:{ipHash}
+
+key 的值建议为空字符串，TTL 表示剩余封禁时间。
+
+示例：
+SET register:block:device:{deviceHash} "" EX 3600 NX
+
+
+三、注册自动化频控 key
+
+设备维度：
+register:rate:device:start:1s:{deviceHash}
+register:rate:device:start:1m:{deviceHash}
+register:rate:device:start:30m:{deviceHash}
+
+IP 维度：
+register:rate:ip:start:1s:{ipHash}
+register:rate:ip:start:1m:{ipHash}
+register:rate:ip:start:30m:{ipHash}
+
+
+四、登录自动化频控 key
+
+设备维度：
+login:rate:device:start:1s:{deviceHash}
+login:rate:device:start:1m:{deviceHash}
+login:rate:device:start:30m:{deviceHash}
+
+IP 维度：
+login:rate:ip:start:1s:{ipHash}
+login:rate:ip:start:1m:{ipHash}
+login:rate:ip:start:30m:{ipHash}
+
+
+五、不存在账号枚举 key
+
+设备维度：
+login:rate:device:unknown:30m:{deviceHash}
+
+IP 维度：
+login:rate:ip:unknown:30m:{ipHash}
+
+
+六、Redis 计数方式
+
+使用 Redis INCR + EXPIRE 形成固定时间窗口。
+第一次 INCR 得到 1 时设置 TTL。
+建议使用 Lua 脚本保证 INCR 和 EXPIRE 原子执行。
+
+Lua 逻辑：
+
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return count
+
+
+七、注册自动化阈值和处罚
+
+1. 设备维度
+
+register 1秒 > 3 次：
+封禁 key：register:block:device:{deviceHash}
+封禁时间：1小时
+设备扣分：300
+原因：REGISTER_BURST_1S
+
+register 1分钟 > 10 次：
+封禁 key：register:block:device:{deviceHash}
+封禁时间：12小时
+设备扣分：600
+原因：REGISTER_BURST_1M
+
+register 30分钟 > 30 次：
+封禁 key：register:block:device:{deviceHash}
+封禁时间：3天
+设备扣分：1000
+原因：REGISTER_BURST_30M
+
+register 30分钟 > 80 次：
+封禁 key：register:block:device:{deviceHash}
+封禁时间：30天
+设备扣分：1600
+原因：REGISTER_BURST_30M_SEVERE
+补充动作：如果设备分降到 L6，同步加入设备 L6 计数 Bloom。
+
+
+2. IP 维度
+
+register 1秒 > 20 次：
+封禁 key：register:block:ip:{ipHash}
+封禁时间：15分钟
+IP 扣分：100
+原因：REGISTER_IP_BURST_1S
+
+register 1分钟 > 100 次：
+封禁 key：register:block:ip:{ipHash}
+封禁时间：2小时
+IP 扣分：300
+原因：REGISTER_IP_BURST_1M
+
+register 30分钟 > 500 次：
+封禁 key：register:block:ip:{ipHash}
+封禁时间：12小时
+IP 扣分：700
+原因：REGISTER_IP_BURST_30M
+
+register 30分钟 > 1500 次：
+封禁 key：register:block:ip:{ipHash}
+封禁时间：3天
+IP 扣分：1200
+原因：REGISTER_IP_BURST_30M_SEVERE
+补充动作：如果 IP 分降到 L6，同步加入 IP L6 计数 Bloom。
+
+
+八、登录自动化阈值和处罚
+
+1. 设备维度
+
+login 1秒 > 5 次：
+封禁 key：login:block:device:{deviceHash}
+封禁时间：30分钟
+设备扣分：200
+原因：LOGIN_BURST_1S
+
+login 1分钟 > 30 次：
+封禁 key：login:block:device:{deviceHash}
+封禁时间：6小时
+设备扣分：500
+原因：LOGIN_BURST_1M
+
+login 30分钟 > 100 次：
+封禁 key：login:block:device:{deviceHash}
+封禁时间：3天
+设备扣分：900
+原因：LOGIN_BURST_30M
+
+login 30分钟 > 300 次：
+封禁 key：login:block:device:{deviceHash}
+封禁时间：30天
+设备扣分：1400
+原因：LOGIN_BURST_30M_SEVERE
+补充动作：如果设备分降到 L6，同步加入设备 L6 计数 Bloom。
+
+
+2. IP 维度
+
+login 1秒 > 50 次：
+封禁 key：login:block:ip:{ipHash}
+封禁时间：10分钟
+IP 扣分：50
+原因：LOGIN_IP_BURST_1S
+
+login 1分钟 > 300 次：
+封禁 key：login:block:ip:{ipHash}
+封禁时间：1小时
+IP 扣分：200
+原因：LOGIN_IP_BURST_1M
+
+login 30分钟 > 1500 次：
+封禁 key：login:block:ip:{ipHash}
+封禁时间：8小时
+IP 扣分：500
+原因：LOGIN_IP_BURST_30M
+
+login 30分钟 > 5000 次：
+封禁 key：login:block:ip:{ipHash}
+封禁时间：3天
+IP 扣分：1000
+原因：LOGIN_IP_BURST_30M_SEVERE
+补充动作：如果 IP 分降到 L6，同步加入 IP L6 计数 Bloom。
+
+
+九、不存在账号枚举阈值和处罚
+
+1. 设备维度
+
+unknown account 30分钟 > 20 次：
+封禁 key：login:block:device:{deviceHash}
+封禁时间：12小时
+设备扣分：500
+原因：UNKNOWN_ACCOUNT_ENUMERATION_30M
+
+unknown account 30分钟 > 50 次：
+封禁 key：login:block:device:{deviceHash}
+封禁时间：3天
+设备扣分：1000
+原因：UNKNOWN_ACCOUNT_ENUMERATION_30M_HIGH
+
+unknown account 30分钟 > 100 次：
+封禁 key：login:block:device:{deviceHash}
+封禁时间：30天
+设备扣分：1600
+原因：UNKNOWN_ACCOUNT_ENUMERATION_30M_SEVERE
+补充动作：如果设备分降到 L6，同步加入设备 L6 计数 Bloom。
+
+
+2. IP 维度
+
+unknown account 30分钟 > 300 次：
+封禁 key：login:block:ip:{ipHash}
+封禁时间：2小时
+IP 扣分：300
+原因：UNKNOWN_ACCOUNT_IP_ENUMERATION_30M
+
+unknown account 30分钟 > 1000 次：
+封禁 key：login:block:ip:{ipHash}
+封禁时间：12小时
+IP 扣分：700
+原因：UNKNOWN_ACCOUNT_IP_ENUMERATION_30M_HIGH
+
+unknown account 30分钟 > 3000 次：
+封禁 key：login:block:ip:{ipHash}
+封禁时间：3天
+IP 扣分：1200
+原因：UNKNOWN_ACCOUNT_IP_ENUMERATION_30M_SEVERE
+补充动作：如果 IP 分降到 L6，同步加入 IP L6 计数 Bloom。
+
+
+十、扣分落库要求
+
+设备扣分写入 device_risk_profile。
+IP 扣分写入 ip_reputation_profile 或项目当前 IP 风险画像表。
+
+扣分后必须执行：
+
+1. 删除 Caffeine 本地缓存。
+2. 删除 Redis 风险分缓存。
+3. 重新计算 risk_level。
+4. 如果分数进入 L6，同步加入对应的 L6 计数 Bloom。
+
+
+十一、防误伤规则
+
+1. 设备维度可以严格，因为设备更接近攻击源。
+2. IP 维度必须更保守，因为公司网、校园网、家庭 NAT 可能多人共用同一个 IP。
+3. 1秒窗口命中时优先短封。
+4. 1分钟和30分钟窗口持续命中时才升级到长封和重扣分。
+5. 所有返回给前端的提示都用通用提示，不暴露账号是否存在。
+
+
+十二、推荐通用提示
+
+请求过于频繁，请稍后再试。
+
+当前环境暂时无法继续操作，请稍后再试。
+
+无法完成请求，请稍后再试。

@@ -78,4 +78,9 @@
         WHERE id = #{id}
     </update>
 
+    <delete id="deleteById">
+        DELETE FROM user_profile
+        WHERE id = #{id}
+    </delete>
+
 </mapper>

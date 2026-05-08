@@ -18,7 +18,7 @@ import java.util.List;
 @Component
 public class PreAuthBindingFactory {
 
-    private static final int DEFAULT_DEVICE_SCORE = 6666;
+    private static final int DEFAULT_DEVICE_SCORE = 7000;
 
     private final PreAuthProperties properties;
     private final PreAuthRiskService riskService;

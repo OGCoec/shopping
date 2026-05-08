@@ -20,6 +20,7 @@ import com.example.ShoppingSystem.registerflow.RegisterFlowCookieFactory;
 import com.example.ShoppingSystem.registerflow.RegisterFlowErrorResponse;
 import com.example.ShoppingSystem.registerflow.RegisterFlowWebSupport;
 import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
+import com.example.ShoppingSystem.security.token.AuthTokenService;
 import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
 import com.example.ShoppingSystem.service.captcha.hutool.model.HutoolCaptchaResult;
 import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
@@ -33,11 +34,15 @@ import com.example.ShoppingSystem.service.user.auth.register.model.RegisterFlowS
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterFlowValidationResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPhoneBindingResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
+import com.example.ShoppingSystem.service.user.auth.risk.AutomationRiskGateService;
 import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
+import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskDecision;
+import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskScene;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -57,6 +62,10 @@ import java.util.Set;
 @RequestMapping("/shopping/user/register")
 public class RegisterController {
 
+    private static final String AUTH_USER_ID_SESSION_ATTRIBUTE = "AUTH_USER_ID";
+    private static final String REGISTER_COMPLETED_REDIRECT_PATH = "/shopping/user/console";
+    private static final String SCENE_REGISTER_EMAIL_VERIFY_SUCCESS = "REGISTER_EMAIL_VERIFY_SUCCESS";
+    private static final String SCENE_REGISTER_PHONE_BIND_SUCCESS = "REGISTER_PHONE_BIND_SUCCESS";
     private static final String CHALLENGE_HUTOOL_SHEAR = "HUTOOL_SHEAR_CAPTCHA";
     private static final String CHALLENGE_TIANAI = "TIANAI_CAPTCHA";
     private static final String TIANAI_SUBTYPE_SLIDER = "SLIDER";
@@ -73,6 +82,8 @@ public class RegisterController {
     private final RegisterPasswordCryptoService registerPasswordCryptoService;
     private final RegisterFlowCookieFactory registerFlowCookieFactory;
     private final PreAuthBindingService preAuthBindingService;
+    private final AuthTokenService authTokenService;
+    private final AutomationRiskGateService automationRiskGateService;
 
     public RegisterController(RegisterPrecheckService registerPrecheckService,
                               RegisterCompletionService registerCompletionService,
@@ -82,7 +93,9 @@ public class RegisterController {
                               TianaiCaptchaService tianaiCaptchaService,
                               RegisterPasswordCryptoService registerPasswordCryptoService,
                               RegisterFlowCookieFactory registerFlowCookieFactory,
-                              PreAuthBindingService preAuthBindingService) {
+                              PreAuthBindingService preAuthBindingService,
+                              AuthTokenService authTokenService,
+                              AutomationRiskGateService automationRiskGateService) {
         this.registerPrecheckService = registerPrecheckService;
         this.registerCompletionService = registerCompletionService;
         this.registerFlowSessionService = registerFlowSessionService;
@@ -92,6 +105,8 @@ public class RegisterController {
         this.registerPasswordCryptoService = registerPasswordCryptoService;
         this.registerFlowCookieFactory = registerFlowCookieFactory;
         this.preAuthBindingService = preAuthBindingService;
+        this.authTokenService = authTokenService;
+        this.automationRiskGateService = automationRiskGateService;
     }
 
     @Operation(summary = "Start or restart the server-side register flow after the email step.")
@@ -124,6 +139,17 @@ public class RegisterController {
                     RegisterFlowWebSupport.NOTICE_FLOW_EXPIRED,
                     false
             );
+        }
+
+        AutomationRiskDecision automationDecision = automationRiskGateService.checkStart(
+                AutomationRiskScene.REGISTER,
+                deviceFingerprint,
+                resolveClientIp(httpServletRequest)
+        );
+        if (automationDecision.blocked()) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new RegisterFlowStartResponse(false, automationDecision.message(), null));
         }
 
         RegisterFlowSession session = registerFlowSessionService.startFlow(
@@ -421,6 +447,8 @@ public class RegisterController {
                 clientIp
         );
 
+        boolean authenticated = false;
+        String redirectPath = null;
         if (result.isSuccess()) {
             RegisterFlowStep nextStep = result.isRequirePhoneBinding()
                     ? RegisterFlowStep.ADD_PHONE
@@ -432,6 +460,20 @@ public class RegisterController {
                     result.isRequirePhoneBinding(),
                     !result.isRequirePhoneBinding()
             );
+            if (!result.isRequirePhoneBinding() && result.getUserId() != null) {
+                httpServletResponse.addHeader("Set-Cookie", registerFlowCookieFactory.buildExpiredFlowCookie(httpServletRequest).toString());
+                HttpSession httpSession = httpServletRequest.getSession(true);
+                httpSession.setAttribute(AUTH_USER_ID_SESSION_ATTRIBUTE, result.getUserId());
+                authTokenService.issueLoginTokens(
+                        result.getUserId(),
+                        resolvePreAuthToken(httpServletRequest),
+                        httpServletRequest,
+                        httpServletResponse,
+                        SCENE_REGISTER_EMAIL_VERIFY_SUCCESS
+                );
+                authenticated = true;
+                redirectPath = REGISTER_COMPLETED_REDIRECT_PATH;
+            }
         }
 
         return ResponseEntity.ok(RegisterVerifyEmailCodeResponse.builder()
@@ -439,6 +481,8 @@ public class RegisterController {
                 .message(result.getMessage())
                 .userId(result.getUserId())
                 .requirePhoneBinding(result.isRequirePhoneBinding())
+                .authenticated(authenticated)
+                .redirectPath(redirectPath)
                 .build());
     }
 
@@ -476,6 +520,17 @@ public class RegisterController {
         );
         if (result != null && result.isSuccess()) {
             response.addHeader("Set-Cookie", registerFlowCookieFactory.buildExpiredFlowCookie(request).toString());
+            if (result.isAuthenticated() && result.getUserId() != null) {
+                HttpSession httpSession = request.getSession(true);
+                httpSession.setAttribute(AUTH_USER_ID_SESSION_ATTRIBUTE, result.getUserId());
+                authTokenService.issueLoginTokens(
+                        result.getUserId(),
+                        resolvePreAuthToken(request),
+                        request,
+                        response,
+                        SCENE_REGISTER_PHONE_BIND_SUCCESS
+                );
+            }
         }
         return registerPhoneResponse(result);
     }

@@ -1,4 +1,8 @@
+com\example\ShoppingSystem\mapper\UserAccountSelfDeletionMapper.class
+com\example\ShoppingSystem\mapper\UserAccountSelfDeletionMapper$CleanupMailTarget.class
+com\example\ShoppingSystem\mapper\IpReputationProfileMapper.class
+com\example\ShoppingSystem\mapper\UserRiskProfileMapper.class
+com\example\ShoppingSystem\mapper\UserProfileMapper.class
+com\example\ShoppingSystem\mapper\UserRiskAccountTerminationMapper.class
 com\example\ShoppingSystem\mapper\RegisterRiskProfileMapper.class
 com\example\ShoppingSystem\mapper\UserLoginIdentityMapper.class
-com\example\ShoppingSystem\mapper\IpReputationProfileMapper.class
-com\example\ShoppingSystem\mapper\UserProfileMapper.class

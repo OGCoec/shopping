@@ -36,8 +36,8 @@ spring:
           timeout: 10000
           writetimeout: 10000
           socks:
-            host: 127.0.0.1
-            port: 7892
+            host: ${MAIL_PROXY_HOST:127.0.0.1}
+            port: ${MAIL_PROXY_PORT:7892}
           starttls:
             enable: true
   rabbitmq:
@@ -103,6 +103,9 @@ app:
     redirect-uri: https://localhost:6655/login/github/callback
   google:
     redirect-uri: https://localhost:6655/login/google/callback
+  mail:
+    from-address: ${SHOPPING_MAIL_FROM_ADDRESS:${spring.mail.username}}
+    from-name: ${SHOPPING_MAIL_FROM_NAME:Shopping System}
   rabbitmq:
     register-email:
       exchange: ${REGISTER_EMAIL_EXCHANGE:register.email.code.exchange}
@@ -162,6 +165,13 @@ app:
     ip-hourly-limit: ${SMS_CODE_IP_HOURLY_LIMIT:60}
     supported-dial-code: ${SMS_CODE_SUPPORTED_DIAL_CODE:86}
 
+aliyun:
+  sms:
+    proxy:
+      enabled: ${ALIYUN_SMS_PROXY_ENABLED:true}
+      host: ${ALIYUN_SMS_PROXY_HOST:127.0.0.1}
+      port: ${ALIYUN_SMS_PROXY_PORT:7892}
+
 elasticsearch:
   host: localhost
   port: 9200
@@ -201,6 +211,17 @@ captcha:
   expire:
     default: 300000
 
+local-proxy:
+  enabled: ${LOCAL_PROXY_ENABLED:true}
+  host: ${LOCAL_PROXY_HOST:127.0.0.1}
+  ports: ${LOCAL_PROXY_PORTS:7892,7897}
+  connect-timeout-ms: ${LOCAL_PROXY_CONNECT_TIMEOUT_MS:300}
+
+mail:
+  proxy:
+    auto-switch:
+      enabled: ${MAIL_PROXY_AUTO_SWITCH_ENABLED:true}
+
 login:
   phone-bound-counting-bloom:
     enabled: true
@@ -213,6 +234,16 @@ login:
     async-core-pool-size: 1
     async-max-pool-size: 2
     async-queue-capacity: 1000
+  phone-verified-user-counting-bloom:
+    enabled: true
+    key: "login:phone:verified-user:cbf"
+    member-key-prefix: "login:phone:verified-user:member:"
+    ready-key: "login:phone:verified-user:cbf:ready"
+    cache-key-prefix: "login:phone:verified-user:cache:"
+    redis-positive-ttl-minutes: 1440
+    redis-negative-ttl-minutes: 5
+    local-cache-ttl-minutes: 5
+    local-cache-maximum-size: 200000
 
 register:
   pre-auth:
@@ -256,6 +287,15 @@ register:
     page-size: 2000
     ipv4-key: "register:ip:l6:cbf:ipv4"
     ipv6-key: "register:ip:l6:cbf:ipv6"
+  device-l6-counting-bloom:
+    enabled: true
+    realtime-enabled: true
+    l6-fast-score: 2999
+    score-threshold: 3000
+    capacity: 150000
+    hash-count: 7
+    page-size: 2000
+    key: "register:device:l6:cbf"
   ip-risk-multi-level:
     enabled: true
     redis-key-prefix: "register:ip:risk:v2:"

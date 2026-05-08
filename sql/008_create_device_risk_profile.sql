@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS device_risk_profile (
 
     -- 该设备关联过的用户账户数量。
     linked_user_count INT NOT NULL DEFAULT 0,
+    linked_user_penalty_tier INT NOT NULL DEFAULT 0,
+    last_linked_user_penalty_at TIMESTAMPTZ,
+    last_linked_user_penalty_score INT NOT NULL DEFAULT 0,
+    last_linked_user_penalty_reason VARCHAR(128),
 
     -- 近期使用过的不同 IP 数量。
     recent_distinct_ip_count INT NOT NULL DEFAULT 0,
@@ -62,6 +66,11 @@ CREATE TABLE IF NOT EXISTS device_risk_profile (
 );
 
 ALTER TABLE device_risk_profile
+    ADD COLUMN IF NOT EXISTS linked_user_count INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS linked_user_penalty_tier INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS last_linked_user_penalty_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS last_linked_user_penalty_score INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS last_linked_user_penalty_reason VARCHAR(128),
     ADD COLUMN IF NOT EXISTS last_ip_seen_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS last_penalized_ip_transition TEXT,
     ADD COLUMN IF NOT EXISTS last_penalty_at TIMESTAMPTZ,

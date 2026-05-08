@@ -1,5 +1,6 @@
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\AuthWebMvcConfig.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\Ip2LocationQuotaRedisConfig.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\JavaMailProxyAutoSwitchPostProcessor.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\RedissonConfig.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\SchedulingConfig.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\config\SchedulingErrorHandler.java
@@ -43,7 +44,9 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\RegisterController.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\login\user\RegisterControllerExceptionHandler.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\staticcontroller\StaticController.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\user\profile\UserAccountDeletionController.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\user\profile\UserAvatarController.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\user\security\UserSecurityPhoneController.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\user\totp\dto\TotpSetupConfirmRequest.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\user\totp\dto\TotpSetupStartResponse.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\controller\user\totp\dto\TotpVerifyRequest.java
@@ -68,6 +71,7 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\filter\preauth\support\PreAuthRequestResolver.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\LoginFlowGuardInterceptor.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\PasswordResetTokenGuardInterceptor.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\PhoneBindingRequiredInterceptor.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\PreAuthInterceptor.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\interceptor\RegisterFlowGuardInterceptor.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\listener\HutoolCaptchaWarmUpListener.java
@@ -75,6 +79,7 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\loginflow\LoginFlowCookieFactory.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\loginflow\LoginFlowWebSupport.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\DeviceIpGeoLookupBridge.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\DeviceLinkedUserCountQueryService.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\DeviceRiskCacheInvalidationService.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\DeviceRiskLocalCacheStore.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\DeviceRiskMultiLevelQueryService.java
@@ -89,6 +94,7 @@ C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSy
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\IpingApiHttpService.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\IpReputationMultiLevelQueryService.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\IpRiskCachedPayload.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\IpRiskCacheInvalidationService.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\IpRiskLocalCacheStore.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\writeback\IpRiskWritebackAction.java
 C:\Users\damn\Desktop\shopping\shopping-web\src\main\java\com\example\ShoppingSystem\quota\writeback\IpRiskWritebackCommand.java

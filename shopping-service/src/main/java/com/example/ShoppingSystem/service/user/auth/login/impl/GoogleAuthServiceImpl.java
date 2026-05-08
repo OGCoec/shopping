@@ -5,6 +5,9 @@ import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.login.GoogleAuthService;
+import com.example.ShoppingSystem.service.user.auth.login.UserAuthAccountUnavailableException;
+import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
+import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthLockStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,11 +20,14 @@ import java.time.OffsetDateTime;
 public class GoogleAuthServiceImpl implements GoogleAuthService {
 
     private final UserLoginIdentityMapper userLoginIdentityMapper;
+    private final UserAuthFailureRiskService userAuthFailureRiskService;
     private final SnowflakeIdWorker snowflakeIdWorker;
 
     public GoogleAuthServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
+                                 UserAuthFailureRiskService userAuthFailureRiskService,
                                  SnowflakeIdWorker snowflakeIdWorker) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
+        this.userAuthFailureRiskService = userAuthFailureRiskService;
         this.snowflakeIdWorker = snowflakeIdWorker;
     }
 
@@ -30,6 +36,7 @@ public class GoogleAuthServiceImpl implements GoogleAuthService {
     public UserLoginIdentity loginByGoogle(String googleId, String googleEmail) {
         UserLoginIdentity existingByGoogle = userLoginIdentityMapper.findByGoogleId(googleId);
         if (existingByGoogle != null) {
+            ensureLoginAllowed(existingByGoogle);
             userLoginIdentityMapper.updateLastLoginAtById(existingByGoogle.getId());
             return existingByGoogle;
         }
@@ -38,6 +45,7 @@ public class GoogleAuthServiceImpl implements GoogleAuthService {
             String normalizedEmail = googleEmail.trim().toLowerCase();
             UserLoginIdentity existingByEmail = userLoginIdentityMapper.findByEmail(normalizedEmail);
             if (existingByEmail != null) {
+                ensureLoginAllowed(existingByEmail);
                 userLoginIdentityMapper.bindGoogleIdById(existingByEmail.getId(), googleId);
                 existingByEmail.setGoogleId(googleId);
                 existingByEmail.setLastLoginAt(OffsetDateTime.now());
@@ -75,5 +83,18 @@ public class GoogleAuthServiceImpl implements GoogleAuthService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+    }
+
+    private void ensureLoginAllowed(UserLoginIdentity identity) {
+        UserAuthLockStatus lockStatus = userAuthFailureRiskService.checkAccountStatusAndLock(
+                identity.getUserId(),
+                identity.getStatus()
+        );
+        if (lockStatus.isBlocked()) {
+            throw new UserAuthAccountUnavailableException(lockStatus.getStatus());
+        }
+        if ("LOCKED".equalsIgnoreCase(String.valueOf(identity.getStatus()))) {
+            identity.setStatus("ACTIVE");
+        }
     }
 }

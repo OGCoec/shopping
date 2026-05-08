@@ -1,0 +1,234 @@
+本项目分控验证码规则说明
+
+说明：
+本文档记录当前注册、登录、手机号短信、强制绑定手机号、重置密码等场景在 L1-L5 风险等级下会触发的验证码或拦截类型。
+L6 不属于普通验证码分流，通常是强阻断或高危拦截，不纳入本文 L1-L5 表格。
+
+
+一、注册输入邮箱 / 发送注册邮箱验证码
+
+对应策略类：
+shopping-service/src/main/java/com/example/ShoppingSystem/service/user/auth/register/impl/ChallengePolicy.java
+
+规则：
+
+L1：
+不弹验证码。
+
+L2：
+随机分流：
+50% 不弹验证码；
+25% Hutool 图形验证码；
+25% Tianai 图形验证码。
+
+L3：
+随机分流：
+1/3 Hutool 图形验证码；
+2/3 Tianai 图形验证码。
+
+其中 Tianai 会在以下子类型中随机：
+SLIDER；
+ROTATE；
+CONCAT；
+WORD_IMAGE_CLICK。
+
+L4：
+随机分流：
+Cloudflare Turnstile；
+hCaptcha；
+Google reCAPTCHA v2；
+Tianai 图形验证码。
+
+L5：
+随机分流：
+Cloudflare Turnstile；
+hCaptcha；
+Google reCAPTCHA v2；
+OPERATION_TIMEOUT。
+
+补充：
+如果当前注册流程已经存在 pending challenge，则会优先复用 pending challenge，避免同一流程中验证码类型反复漂移。
+
+
+二、登录输入邮箱 / 登录开始
+
+对应策略类：
+shopping-service/src/main/java/com/example/ShoppingSystem/service/user/auth/login/impl/LoginChallengePolicy.java
+
+规则：
+
+L1：
+不弹验证码。
+
+L2：
+Hutool 图形验证码。
+
+L3：
+Tianai 图形验证码，子类型随机。
+
+Tianai 子类型包括：
+SLIDER；
+ROTATE；
+CONCAT；
+WORD_IMAGE_CLICK。
+
+L4：
+按 email + deviceFingerprint 做固定分桶：
+Cloudflare Turnstile；
+hCaptcha；
+Google reCAPTCHA v2。
+
+L5：
+WAF_REQUIRED。
+
+说明：
+L5 登录不是普通图形验证码，而是要求跳转 WAF 验证。
+
+
+三、手机号登录发送短信验证码
+
+对应策略类：
+shopping-service/src/main/java/com/example/ShoppingSystem/service/user/auth/sms/impl/PhoneSmsRiskGateServiceImpl.java
+
+场景：
+SCENE_PHONE_LOGIN_SMS
+
+规则：
+
+L1：
+随机分流，5 种各 1/5：
+Hutool 图形验证码；
+Tianai SLIDER；
+Tianai ROTATE；
+Tianai CONCAT；
+Tianai WORD_IMAGE_CLICK。
+
+L2：
+随机分流，5 种各 1/5：
+Hutool 图形验证码；
+Tianai SLIDER；
+Tianai ROTATE；
+Tianai CONCAT；
+Tianai WORD_IMAGE_CLICK。
+
+L3：
+Cloudflare Turnstile / hCaptcha，二选一。
+
+L4：
+Google reCAPTCHA v2 / hCaptcha，二选一。
+
+L5：
+Google reCAPTCHA v2。
+
+说明：
+短信验证码属于外部成本资源，所以即使是 L1/L2，也会要求轻量验证码后才允许发送短信。
+
+
+四、强制验证手机号
+
+覆盖两种场景：
+1. 注册成功后 L3/L4/L5 需要强制绑定手机号；
+2. 登录成功后 L3/L4/L5 且账号没有验证手机号，需要强制绑定手机号。
+
+对应策略类：
+shopping-service/src/main/java/com/example/ShoppingSystem/service/user/auth/sms/impl/PhoneSmsRiskGateServiceImpl.java
+
+场景：
+SCENE_BIND_PHONE_SMS
+
+规则与手机号登录发送短信验证码一致：
+
+L1：
+随机分流，5 种各 1/5：
+Hutool 图形验证码；
+Tianai SLIDER；
+Tianai ROTATE；
+Tianai CONCAT；
+Tianai WORD_IMAGE_CLICK。
+
+L2：
+随机分流，5 种各 1/5：
+Hutool 图形验证码；
+Tianai SLIDER；
+Tianai ROTATE；
+Tianai CONCAT；
+Tianai WORD_IMAGE_CLICK。
+
+L3：
+Cloudflare Turnstile / hCaptcha，二选一。
+
+L4：
+Google reCAPTCHA v2 / hCaptcha，二选一。
+
+L5：
+Google reCAPTCHA v2。
+
+说明：
+强制绑定手机号虽然业务场景和手机号登录不同，但目前验证码选择策略复用同一个短信风控网关。
+注册后补手机号验证成功后，会进入已登录状态。
+登录后补手机号验证成功后，会完成登录流程。
+
+
+五、重置密码输入邮箱 / 发送重置密码邮件或邮箱验证码
+
+对应策略类：
+shopping-service/src/main/java/com/example/ShoppingSystem/service/user/auth/passwordreset/impl/PasswordResetServiceImpl.java
+
+规则：
+
+L1：
+不弹验证码。
+
+L2：
+不弹验证码。
+
+L3：
+不弹验证码。
+
+L4：
+不弹验证码。
+
+L5：
+WAF_REQUIRED。
+
+说明：
+重置密码目前没有 Hutool、Tianai、Google reCAPTCHA、hCaptcha 这类普通图形验证码分流。
+当前规则是 L1-L4 允许继续发送重置密码邮件或邮箱验证码，L5 要求先完成 WAF 验证。
+
+
+六、验证码类型说明
+
+HUTOOL_SHEAR_CAPTCHA：
+Hutool 图形验证码，当前页面中看到的普通图片字符验证码通常属于这一类。
+
+TIANAI_CAPTCHA：
+Tianai 图形验证码，具体玩法由 subType 决定。
+
+Tianai subType：
+SLIDER：滑块；
+ROTATE：旋转；
+CONCAT：拼接；
+WORD_IMAGE_CLICK：文字或图片点击。
+
+CLOUDFLARE_TURNSTILE：
+Cloudflare Turnstile。
+
+HCAPTCHA：
+hCaptcha。
+
+GOOGLE_RECAPTCHA_V2：
+Google reCAPTCHA v2。
+
+WAF_REQUIRED：
+不是普通图形验证码，而是要求跳转 WAF 验证。
+
+OPERATION_TIMEOUT：
+不是普通验证码，而是操作超时或等待窗口类阻断。
+
+
+七、测试注意事项
+
+1. 注册、登录、短信发送等场景如果已经生成 pending challenge，后续同一流程会优先复用该 challenge 类型。
+2. 如果想测试随机分流，需要清掉对应 pending challenge，或者换邮箱、设备指纹、流程 token。
+3. 手机号登录和强制绑定手机号都属于短信资源入口，因此 L1/L2 也会弹轻量验证码。
+4. 登录 L5 和重置密码 L5 当前走 WAF_REQUIRED，不是普通图形验证码。

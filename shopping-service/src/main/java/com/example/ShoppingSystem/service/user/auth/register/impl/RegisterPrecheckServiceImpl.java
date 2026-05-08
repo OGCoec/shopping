@@ -14,6 +14,10 @@ import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -181,6 +185,7 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
         if (canReusePassedChallenge) {
             RegisterPrecheckResult cooldownFailure = buildEmailCodeCooldownResultIfNecessary(
                     riskSnapshot,
+                    email,
                     challengePassedState.passedAt());
             if (cooldownFailure != null) {
                 return cooldownFailure;
@@ -231,16 +236,26 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
             challengeSessionService.clearPendingChallengeSelection(email, deviceFingerprint);
         }
 
-        emailCodeDispatchService.dispatchRegisterEmailCode(
-                email,
-                username,
-                rawPassword,
-                deviceFingerprint,
-                publicIp,
-                riskSnapshot,
-                challengeSelection);
+        RegisterPrecheckResult cooldownFailure = markEmailCodeCooldownIfNecessary(riskSnapshot, email);
+        if (cooldownFailure != null) {
+            return cooldownFailure;
+        }
 
-        long passedAt = System.currentTimeMillis() + EMAIL_CODE_RESEND_COOLDOWN_MS;
+        try {
+            emailCodeDispatchService.dispatchRegisterEmailCode(
+                    email,
+                    username,
+                    rawPassword,
+                    deviceFingerprint,
+                    publicIp,
+                    riskSnapshot,
+                    challengeSelection);
+        } catch (RuntimeException e) {
+            stringRedisTemplate.delete(emailCodeCooldownKey(email));
+            throw e;
+        }
+
+        long passedAt = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(RegisterRedisKeys.EMAIL_CODE_SEND_COOLDOWN_SECONDS);
         saveChallengePassed(flowId, email, deviceFingerprint, passedAt);
 
         return RegisterPrecheckResult.builder()
@@ -250,7 +265,7 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 .riskLevel(riskSnapshot.riskLevel())
                 .challengeType(challengeType)
                 .challengeSubType(challengeSubType)
-                .emailCodeRetryAfterMs(EMAIL_CODE_RESEND_COOLDOWN_MS)
+                .emailCodeRetryAfterMs(TimeUnit.SECONDS.toMillis(RegisterRedisKeys.EMAIL_CODE_SEND_COOLDOWN_SECONDS))
                 .passedAt(passedAt)
                 .emailCodeSent(true)
                 .requirePhoneBinding(shouldRequirePhoneBinding(riskSnapshot.riskLevel()))
@@ -281,7 +296,13 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 expectedChallengeSelection);
     }
 
-    private RegisterPrecheckResult buildEmailCodeCooldownResultIfNecessary(RiskSnapshot riskSnapshot, long passedAt) {
+    private RegisterPrecheckResult buildEmailCodeCooldownResultIfNecessary(RiskSnapshot riskSnapshot,
+                                                                           String email,
+                                                                           long passedAt) {
+        long redisRetryAfterMs = readEmailCodeCooldownMs(email);
+        if (redisRetryAfterMs > 0L) {
+            return buildEmailCodeCooldownResult(riskSnapshot, redisRetryAfterMs);
+        }
         if (passedAt <= 0L) {
             return null;
         }
@@ -289,6 +310,28 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
         if (retryAfterMs <= 0L) {
             return null;
         }
+        return buildEmailCodeCooldownResult(riskSnapshot, retryAfterMs);
+    }
+
+    private RegisterPrecheckResult markEmailCodeCooldownIfNecessary(RiskSnapshot riskSnapshot, String email) {
+        String key = emailCodeCooldownKey(email);
+        Boolean marked = stringRedisTemplate.opsForValue().setIfAbsent(
+                key,
+                "1",
+                RegisterRedisKeys.EMAIL_CODE_SEND_COOLDOWN_SECONDS,
+                TimeUnit.SECONDS
+        );
+        if (Boolean.TRUE.equals(marked)) {
+            return null;
+        }
+        long retryAfterMs = readEmailCodeCooldownMs(email);
+        if (retryAfterMs <= 0L) {
+            retryAfterMs = TimeUnit.SECONDS.toMillis(RegisterRedisKeys.EMAIL_CODE_SEND_COOLDOWN_SECONDS);
+        }
+        return buildEmailCodeCooldownResult(riskSnapshot, retryAfterMs);
+    }
+
+    private RegisterPrecheckResult buildEmailCodeCooldownResult(RiskSnapshot riskSnapshot, long retryAfterMs) {
         long retryAfterSeconds = Math.max(1L, (retryAfterMs + 999L) / 1000L);
         return RegisterPrecheckResult.builder()
                 .success(false)
@@ -296,10 +339,18 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 .totalScore(riskSnapshot.totalScore())
                 .riskLevel(riskSnapshot.riskLevel())
                 .emailCodeRetryAfterMs(retryAfterMs)
-                .passedAt(passedAt)
+                .passedAt(System.currentTimeMillis() + retryAfterMs)
                 .emailCodeSent(false)
                 .requirePhoneBinding(shouldRequirePhoneBinding(riskSnapshot.riskLevel()))
                 .build();
+    }
+
+    private long readEmailCodeCooldownMs(String email) {
+        Long ttlMs = stringRedisTemplate.getExpire(emailCodeCooldownKey(email), TimeUnit.MILLISECONDS);
+        if (ttlMs == null || ttlMs <= 0L) {
+            return 0L;
+        }
+        return ttlMs;
     }
 
     private ChallengePassedState readChallengePassed(String flowId, String email, String deviceFingerprint) {
@@ -346,6 +397,19 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
 
     private String challengePassedKey(String flowId) {
         return RegisterRedisKeys.EMAIL_CODE_CHALLENGE_PASSED_PREFIX + flowId;
+    }
+
+    private String emailCodeCooldownKey(String email) {
+        return RegisterRedisKeys.EMAIL_CODE_COOLDOWN_PREFIX + sha256(normalizeChallengeText(email).toLowerCase());
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(StrUtil.nullToEmpty(value).getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest is unavailable.", e);
+        }
     }
 
     private String normalizeChallengeText(String value) {

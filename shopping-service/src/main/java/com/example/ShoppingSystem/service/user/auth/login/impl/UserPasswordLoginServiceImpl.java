@@ -20,7 +20,15 @@ import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowValidat
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginVerificationResult;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterEmailCodeMessagePublisher;
 import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSelection;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingAvailabilityService;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingWriteService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneVerifiedUserLookupService;
+import com.example.ShoppingSystem.service.user.auth.risk.AutomationRiskGateService;
+import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
+import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskDecision;
+import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthFailureType;
+import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthLockStatus;
 import com.example.ShoppingSystem.service.user.auth.sms.SmsCodeService;
 import com.example.ShoppingSystem.service.user.auth.sms.PhoneSmsRiskGateService;
 import com.example.ShoppingSystem.service.user.auth.sms.model.PhoneSmsRiskGateResult;
@@ -35,6 +43,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -67,8 +78,9 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
     private static final String ERROR_PHONE_LOGIN_BLOOM_MISS = "PHONE_LOGIN_BLOOM_MISS";
     private static final String ERROR_PHONE_LOGIN_DB_MISS = "PHONE_LOGIN_DB_MISS";
     private static final String ERROR_PHONE_LOGIN_NOT_IMPLEMENTED = "PHONE_LOGIN_NOT_IMPLEMENTED";
-    private static final String ERROR_PHONE_ALREADY_BOUND = "PHONE_ALREADY_BOUND";
-    private static final String ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE = "PHONE_BOUND_BLOOM_UNAVAILABLE";
+    private static final String ERROR_AUTH_LOCKED = "AUTH_LOCKED";
+    private static final String AUTH_LOCKED_MESSAGE =
+            "For security reasons, this account is temporarily unavailable. Please try again later.";
     private static final String INVALID_STATE_MESSAGE = "验证过程中出错 (invalid_state)。请重试。";
 
     private final UserLoginIdentityMapper userLoginIdentityMapper;
@@ -85,7 +97,12 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
     private final SmsCodeService smsCodeService;
     private final PhoneSmsRiskGateService phoneSmsRiskGateService;
     private final PhoneNumberValidationService phoneNumberValidationService;
+    private final PhoneBindingAvailabilityService phoneBindingAvailabilityService;
+    private final PhoneBindingWriteService phoneBindingWriteService;
     private final PhoneBoundCountingBloomService phoneBoundCountingBloomService;
+    private final PhoneVerifiedUserLookupService phoneVerifiedUserLookupService;
+    private final UserAuthFailureRiskService userAuthFailureRiskService;
+    private final AutomationRiskGateService automationRiskGateService;
 
     public UserPasswordLoginServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
                                         LoginFlowSessionService loginFlowSessionService,
@@ -101,7 +118,12 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                                         SmsCodeService smsCodeService,
                                         PhoneSmsRiskGateService phoneSmsRiskGateService,
                                         PhoneNumberValidationService phoneNumberValidationService,
-                                        PhoneBoundCountingBloomService phoneBoundCountingBloomService) {
+                                        PhoneBindingAvailabilityService phoneBindingAvailabilityService,
+                                        PhoneBindingWriteService phoneBindingWriteService,
+                                        PhoneBoundCountingBloomService phoneBoundCountingBloomService,
+                                        PhoneVerifiedUserLookupService phoneVerifiedUserLookupService,
+                                        UserAuthFailureRiskService userAuthFailureRiskService,
+                                        AutomationRiskGateService automationRiskGateService) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.loginFlowSessionService = loginFlowSessionService;
         this.loginChallengePolicy = loginChallengePolicy;
@@ -116,7 +138,12 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         this.smsCodeService = smsCodeService;
         this.phoneSmsRiskGateService = phoneSmsRiskGateService;
         this.phoneNumberValidationService = phoneNumberValidationService;
+        this.phoneBindingAvailabilityService = phoneBindingAvailabilityService;
+        this.phoneBindingWriteService = phoneBindingWriteService;
         this.phoneBoundCountingBloomService = phoneBoundCountingBloomService;
+        this.phoneVerifiedUserLookupService = phoneVerifiedUserLookupService;
+        this.userAuthFailureRiskService = userAuthFailureRiskService;
+        this.automationRiskGateService = automationRiskGateService;
     }
 
     @Override
@@ -138,6 +165,21 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
         if (StrUtil.hasBlank(normalizedDeviceFingerprint, normalizedPreAuthToken)) {
             return startFail("Login context is missing, please refresh and try again.");
+        }
+
+        UserLoginIdentity existingIdentity = userLoginIdentityMapper.findByEmail(normalizedEmail);
+        if (existingIdentity == null) {
+            AutomationRiskDecision unknownDecision = automationRiskGateService.recordUnknownLoginIdentifier(
+                    normalizedDeviceFingerprint,
+                    publicIp
+            );
+            if (unknownDecision.blocked()) {
+                return automationBlockedStartResult(unknownDecision);
+            }
+        }
+        LoginFlowStartResult blockedStart = blockedStartIfNecessary(existingIdentity);
+        if (blockedStart != null) {
+            return blockedStart;
         }
 
         String normalizedRiskLevel = loginChallengePolicy.normalizeRiskLevel(riskLevel);
@@ -204,9 +246,22 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             return verifyFail("Invalid email or password.");
         }
         UserLoginIdentity identity = resolved.identity();
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(identity);
+        if (blocked != null) {
+            return blocked;
+        }
         if (StrUtil.isBlank(identity.getEmailPasswordHash())
                 || StrUtil.isBlank(password)
                 || !passwordEncoder.matches(password, identity.getEmailPasswordHash())) {
+            LoginVerificationResult locked = recordAuthFailure(
+                    identity,
+                    UserAuthFailureType.PASSWORD,
+                    null,
+                    resolved.session().getDeviceFingerprint()
+            );
+            if (locked != null) {
+                return locked;
+            }
             return verifyFail("Invalid email or password.");
         }
         return completeFactor(resolved.session(), LoginFactor.PASSWORD, identity);
@@ -223,6 +278,20 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         ResolvedLoginSession resolved = resolveSessionForFactor(session, LoginFactor.EMAIL_OTP);
         if (resolved == null) {
             return invalidState();
+        }
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(resolved.identity());
+        if (blocked != null) {
+            return blocked;
+        }
+
+        long cooldownRetryAfterMs = tryMarkLoginEmailCodeCooldown(session.getEmail());
+        if (cooldownRetryAfterMs > 0L) {
+            return rateLimitedFromSession(
+                    resolved.session(),
+                    "EMAIL_CODE_RATE_LIMITED",
+                    cooldownMessage(cooldownRetryAfterMs, "email code"),
+                    cooldownRetryAfterMs
+            );
         }
 
         String code = RandomUtil.randomNumbers(6);
@@ -244,7 +313,12 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 resolved.session().isRequirePhoneBinding(),
                 false
         );
-        return fromSession(updated, false, "Email code sent.");
+        return fromSession(
+                updated,
+                false,
+                "Email code sent.",
+                TimeUnit.SECONDS.toMillis(LoginRedisKeys.EMAIL_CODE_SEND_COOLDOWN_SECONDS)
+        );
     }
 
     @Override
@@ -259,9 +333,22 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         if (resolved == null) {
             return invalidState();
         }
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(resolved.identity());
+        if (blocked != null) {
+            return blocked;
+        }
         String normalizedEmailCode = normalizeText(emailCode);
         String cachedCode = stringRedisTemplate.opsForValue().get(emailCodeKey(resolved.session().getFlowId()));
         if (StrUtil.isBlank(cachedCode) || !StrUtil.equals(cachedCode, normalizedEmailCode)) {
+            LoginVerificationResult locked = recordAuthFailure(
+                    resolved.identity(),
+                    UserAuthFailureType.EMAIL_OTP,
+                    null,
+                    resolved.session().getDeviceFingerprint()
+            );
+            if (locked != null) {
+                return locked;
+            }
             return verifyFail("Email code is incorrect or expired.");
         }
         stringRedisTemplate.delete(emailCodeKey(resolved.session().getFlowId()));
@@ -279,6 +366,10 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         ResolvedLoginSession resolved = resolveSessionForFactor(session, LoginFactor.TOTP);
         if (resolved == null) {
             return verifyFail("Verification failed.");
+        }
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(resolved.identity());
+        if (blocked != null) {
+            return blocked;
         }
         TotpVerificationResult result = userTotpService.verify(resolved.identity().getUserId(), code);
         if (!result.isSuccess()) {
@@ -300,10 +391,13 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             return verifyFail(ERROR_PHONE_LOGIN_BLOOM_MISS, "Phone number was not found by counting bloom filter.");
         }
         UserLoginIdentity identity = userLoginIdentityMapper.findVerifiedByPhone(normalizedPhone);
-        if (identity == null || !isActive(identity)) {
+        if (identity == null) {
             return verifyFail(ERROR_PHONE_LOGIN_DB_MISS, "Phone number was not found in verified login identities.");
         }
-        phoneBoundCountingBloomService.addVerifiedPhoneAsync(normalizedPhone);
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(identity);
+        if (blocked != null) {
+            return blocked;
+        }
         return verifyFail(ERROR_PHONE_LOGIN_NOT_IMPLEMENTED, "Phone-first login is not connected yet.");
     }
 
@@ -326,6 +420,10 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         if (session.getStep() != LoginFlowStep.ADD_PHONE) {
             return verifyFail("Phone binding is not required for this login.");
         }
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(session.getUserId());
+        if (blocked != null) {
+            return blocked;
+        }
         LoginVerificationResult phoneValidationResult = validatePhoneCanBeBound(dialCode, phoneNumber);
         if (phoneValidationResult != null) {
             return phoneValidationResult;
@@ -347,9 +445,9 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
         SmsCodeSendResult sendResult = smsCodeService.sendBindPhoneCode(dialCode, phoneNumber, clientIp);
         if (!sendResult.isSuccess()) {
-            return verifyFail(sendResult.getMessage());
+            return smsSendFail(sendResult);
         }
-        return fromSession(session, false, sendResult.getMessage());
+        return fromSession(session, false, sendResult.getMessage(), sendResult.getRetryAfterMs());
     }
 
     @Override
@@ -387,20 +485,25 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             return verifyFail(ERROR_PHONE_LOGIN_BLOOM_MISS, "Phone number was not found by counting bloom filter.");
         }
         UserLoginIdentity identity = userLoginIdentityMapper.findVerifiedByPhone(normalizedPhone);
-        if (identity == null || !isActive(identity)) {
+        if (identity == null) {
             return verifyFail(ERROR_PHONE_LOGIN_DB_MISS, "Phone number was not found in verified login identities.");
         }
-        phoneBoundCountingBloomService.addVerifiedPhoneAsync(normalizedPhone);
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(identity);
+        if (blocked != null) {
+            return blocked;
+        }
+        phoneVerifiedUserLookupService.markPhoneVerified(identity.getUserId());
 
         SmsCodeSendResult sendResult = smsCodeService.sendBindPhoneCode(dialCode, phoneNumber, clientIp);
         if (!sendResult.isSuccess()) {
-            return verifyFail(sendResult.getMessage());
+            return smsSendFail(sendResult);
         }
         return LoginVerificationResult.builder()
                 .success(true)
                 .message(sendResult.getMessage())
                 .riskLevel(loginChallengePolicy.normalizeRiskLevel(riskLevel))
                 .authenticated(false)
+                .retryAfterMs(sendResult.getRetryAfterMs())
                 .build();
     }
 
@@ -410,20 +513,36 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                                                         String phoneNumber,
                                                         String smsCode,
                                                         String riskLevel) {
-        SmsCodeVerifyResult verifyResult = smsCodeService.verifyBindPhoneCode(dialCode, phoneNumber, smsCode);
-        if (!verifyResult.isSuccess()) {
-            return verifyFail(verifyResult.getReasonCode(), verifyResult.getMessage());
-        }
-        String normalizedPhone = verifyResult.getNormalizedE164();
-        if (StrUtil.isBlank(normalizedPhone)) {
+        PhoneNumberValidationService.ValidationResult validationResult =
+                phoneNumberValidationService.validateMobileLikeNumber(dialCode, phoneNumber);
+        if (!validationResult.allowed() || StrUtil.isBlank(validationResult.normalizedE164())) {
             return verifyFail(ERROR_PHONE_LOGIN_INVALID_PHONE, "Phone number validation failed.");
         }
 
+        String normalizedPhone = validationResult.normalizedE164();
         UserLoginIdentity identity = userLoginIdentityMapper.findVerifiedByPhone(normalizedPhone);
-        if (identity == null || !isActive(identity)) {
+        if (identity == null) {
             return verifyFail(ERROR_PHONE_LOGIN_DB_MISS, "Phone number was not found in verified login identities.");
         }
-        phoneBoundCountingBloomService.addVerifiedPhoneAsync(normalizedPhone);
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(identity);
+        if (blocked != null) {
+            return blocked;
+        }
+
+        SmsCodeVerifyResult verifyResult = smsCodeService.verifyBindPhoneCode(dialCode, phoneNumber, smsCode);
+        if (!verifyResult.isSuccess()) {
+            LoginVerificationResult locked = recordAuthFailure(
+                    identity,
+                    UserAuthFailureType.SMS_OTP,
+                    null,
+                    null
+            );
+            if (locked != null) {
+                return locked;
+            }
+            return verifyFail(verifyResult.getReasonCode(), verifyResult.getMessage());
+        }
+        phoneVerifiedUserLookupService.markPhoneVerified(identity.getUserId());
         userLoginIdentityMapper.updateLastLoginAtByUserId(identity.getUserId());
         return LoginVerificationResult.builder()
                 .success(true)
@@ -452,20 +571,33 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         if (session.getStep() != LoginFlowStep.ADD_PHONE) {
             return verifyFail("Phone binding is not required for this login.");
         }
+        LoginVerificationResult blocked = blockedVerifyIfNecessary(session.getUserId());
+        if (blocked != null) {
+            return blocked;
+        }
         LoginVerificationResult phoneValidationResult = validatePhoneCanBeBound(dialCode, phoneNumber);
         if (phoneValidationResult != null) {
             return phoneValidationResult;
         }
         SmsCodeVerifyResult verifyResult = smsCodeService.verifyBindPhoneCode(dialCode, phoneNumber, smsCode);
         if (!verifyResult.isSuccess()) {
+            LoginVerificationResult locked = recordAuthFailure(
+                    session.getUserId(),
+                    UserAuthFailureType.SMS_OTP,
+                    null,
+                    session.getDeviceFingerprint()
+            );
+            if (locked != null) {
+                return locked;
+            }
             return verifyFail(verifyResult.getMessage());
         }
         String phone = StrUtil.blankToDefault(verifyResult.getNormalizedE164(), normalizePhone(dialCode, phoneNumber));
-        int updatedRows = userLoginIdentityMapper.bindVerifiedPhoneByUserId(session.getUserId(), phone);
-        if (updatedRows <= 0) {
-            return verifyFail("Failed to bind phone number.");
+        PhoneBindingWriteService.PhoneBindingResult bindingResult =
+                phoneBindingWriteService.bindVerifiedPhone(session.getUserId(), phone);
+        if (!bindingResult.success()) {
+            return verifyFail(bindingResult.errorCode(), bindingResult.message());
         }
-        phoneBoundCountingBloomService.addVerifiedPhoneAsync(phone);
         userLoginIdentityMapper.updateLastLoginAtByUserId(session.getUserId());
         LoginFlowSession updated = loginFlowSessionService.updateStep(
                 session.getFlowId(),
@@ -618,7 +750,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                                           UserLoginIdentity identity,
                                           Set<LoginFactor> completedFactors) {
         if (completedFactors.size() >= session.getRequiredFactorCount()) {
-            if (session.isRequirePhoneBinding() && !Boolean.TRUE.equals(identity.getPhoneVerified())) {
+            if (session.isRequirePhoneBinding() && !hasVerifiedPhone(identity)) {
                 return LoginFlowStep.ADD_PHONE;
             }
             return LoginFlowStep.DONE;
@@ -629,6 +761,13 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             }
         }
         return LoginFlowStep.DONE;
+    }
+
+    private boolean hasVerifiedPhone(UserLoginIdentity identity) {
+        if (identity == null || identity.getUserId() == null) {
+            return false;
+        }
+        return phoneVerifiedUserLookupService.isPhoneVerified(identity.getUserId(), identity.getPhoneVerified());
     }
 
     private boolean canUseFactor(LoginFlowSession session, LoginFactor factor) {
@@ -652,13 +791,10 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         if (!validationResult.allowed() || StrUtil.isBlank(validationResult.normalizedE164())) {
             return verifyFail("Phone number validation failed.");
         }
-        PhoneBoundCountingBloomService.PhoneBoundLookupResult lookupResult =
-                phoneBoundCountingBloomService.lookupVerifiedPhone(validationResult.normalizedE164());
-        if (!lookupResult.available()) {
-            return verifyFail(ERROR_PHONE_BOUND_BLOOM_UNAVAILABLE, "Phone existence filter is temporarily unavailable.");
-        }
-        if (lookupResult.mightContain()) {
-            return verifyFail(ERROR_PHONE_ALREADY_BOUND, "This phone number is already in use.");
+        PhoneBindingAvailabilityService.PhoneBindingAvailability availability =
+                phoneBindingAvailabilityService.checkPhoneAvailable(validationResult.normalizedE164());
+        if (!availability.allowed()) {
+            return verifyFail(availability.errorCode(), availability.message());
         }
         return null;
     }
@@ -677,6 +813,70 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .build();
     }
 
+    private LoginFlowStartResult blockedStartIfNecessary(UserLoginIdentity identity) {
+        if (identity == null) {
+            return null;
+        }
+        UserAuthLockStatus lockStatus = userAuthFailureRiskService.checkAccountStatusAndLock(
+                identity.getUserId(),
+                identity.getStatus()
+        );
+        if (!lockStatus.isBlocked()) {
+            markIdentityActiveAfterUnlock(identity);
+            return null;
+        }
+        return lockedStartResult(lockStatus.getRetryAfterMs());
+    }
+
+    private LoginVerificationResult blockedVerifyIfNecessary(UserLoginIdentity identity) {
+        if (identity == null) {
+            return null;
+        }
+        UserAuthLockStatus lockStatus = userAuthFailureRiskService.checkAccountStatusAndLock(
+                identity.getUserId(),
+                identity.getStatus()
+        );
+        if (!lockStatus.isBlocked()) {
+            markIdentityActiveAfterUnlock(identity);
+            return null;
+        }
+        return lockedVerifyResult(lockStatus.getRetryAfterMs());
+    }
+
+    private LoginVerificationResult blockedVerifyIfNecessary(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        UserLoginIdentity identity = userLoginIdentityMapper.findByUserId(userId);
+        return blockedVerifyIfNecessary(identity);
+    }
+
+    private LoginVerificationResult recordAuthFailure(UserLoginIdentity identity,
+                                                      UserAuthFailureType failureType,
+                                                      String ip,
+                                                      String deviceFingerprint) {
+        if (identity == null || !isActive(identity)) {
+            return null;
+        }
+        return recordAuthFailure(identity.getUserId(), failureType, ip, deviceFingerprint);
+    }
+
+    private LoginVerificationResult recordAuthFailure(Long userId,
+                                                      UserAuthFailureType failureType,
+                                                      String ip,
+                                                      String deviceFingerprint) {
+        UserAuthLockStatus lockStatus = userAuthFailureRiskService.recordFailure(
+                userId,
+                failureType,
+                ip,
+                deviceFingerprint
+        );
+        if (!lockStatus.isBlocked()) {
+            return null;
+        }
+        return lockedVerifyResult(lockStatus.getRetryAfterMs());
+    }
+
     private String normalizeVerifiedPhone(String dialCode, String phoneNumber) {
         PhoneNumberValidationService.ValidationResult validationResult =
                 phoneNumberValidationService.validateMobileLikeNumber(dialCode, phoneNumber);
@@ -692,7 +892,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
 
         UserLoginIdentity identity = userLoginIdentityMapper.findByEmail(session.getEmail());
-        if (identity == null || !isActive(identity)) {
+        if (identity == null) {
             return null;
         }
 
@@ -703,7 +903,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
 
         int requiredFactorCount = resolveRequiredFactorCount(session.getRiskLevel(), availableFactors);
         boolean requirePhoneBinding = loginChallengePolicy.shouldRequirePhoneBinding(session.getRiskLevel())
-                && !Boolean.TRUE.equals(identity.getPhoneVerified());
+                && !hasVerifiedPhone(identity);
         LoginFlowSession resolvedSession = loginFlowSessionService.resolveIdentity(
                 session.getFlowId(),
                 identity.getUserId(),
@@ -842,7 +1042,34 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .build();
     }
 
+    private LoginFlowStartResult lockedStartResult(Long retryAfterMs) {
+        return LoginFlowStartResult.builder()
+                .success(false)
+                .message(AUTH_LOCKED_MESSAGE)
+                .step(LoginFlowStep.BLOCKED)
+                .redirectPath(LOGIN_PATH)
+                .retryAfterMs(retryAfterMs)
+                .build();
+    }
+
+    private LoginFlowStartResult automationBlockedStartResult(AutomationRiskDecision decision) {
+        return LoginFlowStartResult.builder()
+                .success(false)
+                .message(decision == null ? "无法完成请求，请稍后再试。" : decision.message())
+                .step(LoginFlowStep.BLOCKED)
+                .redirectPath(LOGIN_PATH)
+                .retryAfterMs(decision == null ? null : decision.retryAfterMs())
+                .build();
+    }
+
     private LoginVerificationResult fromSession(LoginFlowSession session, boolean authenticated, String message) {
+        return fromSession(session, authenticated, message, null);
+    }
+
+    private LoginVerificationResult fromSession(LoginFlowSession session,
+                                                boolean authenticated,
+                                                String message,
+                                                Long retryAfterMs) {
         if (session == null) {
             return verifyFail("Login session expired, please restart.");
         }
@@ -851,6 +1078,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .message(message)
                 .flowId(session.getFlowId())
                 .userId(session.getUserId())
+                .email(session.getEmail())
                 .riskLevel(session.getRiskLevel())
                 .step(session.getStep())
                 .redirectPath(pathForStep(session.getStep()))
@@ -859,6 +1087,30 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .requiredFactorCount(session.getRequiredFactorCount())
                 .requirePhoneBinding(session.isRequirePhoneBinding())
                 .authenticated(authenticated)
+                .retryAfterMs(retryAfterMs)
+                .build();
+    }
+
+    private LoginVerificationResult rateLimitedFromSession(LoginFlowSession session,
+                                                           String error,
+                                                           String message,
+                                                           Long retryAfterMs) {
+        return LoginVerificationResult.builder()
+                .success(false)
+                .error(error)
+                .message(message)
+                .flowId(session == null ? null : session.getFlowId())
+                .userId(session == null ? null : session.getUserId())
+                .email(session == null ? null : session.getEmail())
+                .riskLevel(session == null ? null : session.getRiskLevel())
+                .step(session == null ? null : session.getStep())
+                .redirectPath(session == null ? null : pathForStep(session.getStep()))
+                .availableFactors(session == null ? null : session.getAvailableFactors())
+                .completedFactors(session == null ? null : session.getCompletedFactors())
+                .requiredFactorCount(session == null ? 0 : session.getRequiredFactorCount())
+                .requirePhoneBinding(session != null && session.isRequirePhoneBinding())
+                .authenticated(false)
+                .retryAfterMs(retryAfterMs)
                 .build();
     }
 
@@ -876,6 +1128,28 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .error(error)
                 .message(message)
                 .authenticated(false)
+                .build();
+    }
+
+    private LoginVerificationResult lockedVerifyResult(Long retryAfterMs) {
+        return LoginVerificationResult.builder()
+                .success(false)
+                .error(ERROR_AUTH_LOCKED)
+                .message(AUTH_LOCKED_MESSAGE)
+                .step(LoginFlowStep.BLOCKED)
+                .redirectPath(LOGIN_PATH)
+                .authenticated(false)
+                .retryAfterMs(retryAfterMs)
+                .build();
+    }
+
+    private LoginVerificationResult smsSendFail(SmsCodeSendResult sendResult) {
+        return LoginVerificationResult.builder()
+                .success(false)
+                .error(sendResult == null ? null : sendResult.getReasonCode())
+                .message(sendResult == null ? "Failed to send SMS code." : sendResult.getMessage())
+                .authenticated(false)
+                .retryAfterMs(sendResult == null ? null : sendResult.getRetryAfterMs())
                 .build();
     }
 
@@ -902,8 +1176,54 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         return status == null || "ACTIVE".equalsIgnoreCase(status);
     }
 
+    private void markIdentityActiveAfterUnlock(UserLoginIdentity identity) {
+        if (identity != null && "LOCKED".equalsIgnoreCase(StrUtil.blankToDefault(identity.getStatus(), ""))) {
+            identity.setStatus("ACTIVE");
+        }
+    }
+
     private String emailCodeKey(String flowId) {
         return LoginRedisKeys.EMAIL_CODE_PREFIX + flowId;
+    }
+
+    private long tryMarkLoginEmailCodeCooldown(String email) {
+        String key = loginEmailCodeCooldownKey(email);
+        Boolean marked = stringRedisTemplate.opsForValue().setIfAbsent(
+                key,
+                "1",
+                LoginRedisKeys.EMAIL_CODE_SEND_COOLDOWN_SECONDS,
+                TimeUnit.SECONDS
+        );
+        if (Boolean.TRUE.equals(marked)) {
+            return 0L;
+        }
+        return readCooldownTtlMs(key, LoginRedisKeys.EMAIL_CODE_SEND_COOLDOWN_SECONDS);
+    }
+
+    private long readCooldownTtlMs(String key, long fallbackSeconds) {
+        Long ttlMs = stringRedisTemplate.getExpire(key, TimeUnit.MILLISECONDS);
+        if (ttlMs == null || ttlMs <= 0L) {
+            return TimeUnit.SECONDS.toMillis(fallbackSeconds);
+        }
+        return ttlMs;
+    }
+
+    private String loginEmailCodeCooldownKey(String email) {
+        return LoginRedisKeys.EMAIL_CODE_COOLDOWN_PREFIX + sha256(normalizeEmail(email));
+    }
+
+    private String cooldownMessage(long retryAfterMs, String target) {
+        long retryAfterSeconds = Math.max(1L, (retryAfterMs + 999L) / 1000L);
+        return "Please wait " + retryAfterSeconds + "s before requesting another " + target + ".";
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(StrUtil.nullToEmpty(value).getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest is unavailable.", e);
+        }
     }
 
     private String buildWafVerifyUrl() {

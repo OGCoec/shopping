@@ -2,6 +2,7 @@ package com.example.ShoppingSystem.service.captcha.thirdparty.impl;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.example.ShoppingSystem.common.proxy.LocalProxyResolver;
 import com.example.ShoppingSystem.service.captcha.thirdparty.ThirdPartyCaptchaService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,8 +52,9 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
             @Value("${captcha.recaptcha.verify-url:https://www.google.com/recaptcha/api/siteverify}") String recaptchaVerifyUrl,
             @Value("${captcha.proxy.enabled:false}") boolean proxyEnabled,
             @Value("${captcha.proxy.host:127.0.0.1}") String proxyHost,
-            @Value("${captcha.proxy.port:0}") int proxyPort) {
-        this(buildHttpClient(proxyEnabled, proxyHost, proxyPort),
+            @Value("${captcha.proxy.port:0}") int proxyPort,
+            LocalProxyResolver localProxyResolver) {
+        this(buildHttpClient(proxyEnabled, proxyHost, proxyPort, localProxyResolver),
                 turnstileSiteKey,
                 turnstileSecretKey,
                 turnstileVerifyUrl,
@@ -86,7 +88,10 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
         this.recaptchaVerifyUrl = recaptchaVerifyUrl;
     }
 
-    private static HttpClient buildHttpClient(boolean proxyEnabled, String proxyHost, int proxyPort) {
+    private static HttpClient buildHttpClient(boolean proxyEnabled,
+                                              String proxyHost,
+                                              int proxyPort,
+                                              LocalProxyResolver localProxyResolver) {
         HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(VERIFY_TIMEOUT);
         boolean effectiveProxyEnabled = proxyEnabled && StrUtil.isNotBlank(proxyHost) && proxyPort > 0;
         log.info("Third-party captcha HTTP proxy config: enabled={}, host={}, port={}, effective={}",
@@ -95,7 +100,17 @@ public class ThirdPartyCaptchaServiceImpl implements ThirdPartyCaptchaService {
                 proxyPort,
                 effectiveProxyEnabled);
         if (effectiveProxyEnabled) {
-            builder.proxy(ProxySelector.of(new InetSocketAddress(proxyHost.trim(), proxyPort)));
+            LocalProxyResolver.ProxySelection proxySelection =
+                    localProxyResolver.resolveOrConfigured(proxyHost, proxyPort);
+            InetSocketAddress proxyAddress = proxySelection.address();
+            if (proxyAddress != null) {
+                log.info("Third-party captcha HTTP proxy selected: host={}, port={}, reachable={}, reason={}",
+                        proxyAddress.getHostString(),
+                        proxyAddress.getPort(),
+                        proxySelection.reachable(),
+                        proxySelection.reason());
+                builder.proxy(ProxySelector.of(proxyAddress));
+            }
         }
         return builder.build();
     }

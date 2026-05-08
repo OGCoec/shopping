@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js 星系动画 - 左右分栏版</title>
+    <style>
+        /* 页面整体布局：清除默认边距，使用 Flexbox 左右平分 */
+        body {
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        /* 左侧视图区：占 60% 宽度 */
+        #left-view {
+            width: 60vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+
+        /* 右侧控制面板：占 40% 宽度 */
+        #right-panel {
+            width: 40vw;
+            height: 100vh;
+            background-color: #111;
+            padding: 30px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            border-left: 1px solid #333;
+        }
+
+        /* 控制面板的 UI 样式 */
+        h1 {
+            margin-top: 0;
+            font-size: 24px;
+            color: #fff;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+        }
+
+        p {
+            color: #888;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #ddd;
+            font-weight: bold;
+        }
+
+        .val-display {
+            float: right;
+            color: #4facfe;
+            font-weight: normal;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: #4facfe;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="left-view"></div>
+
+    <div id="right-panel">
+        <h1>🌌 Galaxy Animation</h1>
+        <p>左侧是使用 Three.js WebGL 实现的星系。你可以使用<b>鼠标左键拖拽</b>旋转视角，<b>鼠标滚轮</b>缩放。通过下方滑块可以实时改变生成参数：</p>
+
+        <div class="control-group">
+            <label>粒子数量 (Count) <span id="val-count" class="val-display">50000</span></label>
+            <input type="range" id="ctrl-count" min="1000" max="150000" step="1000" value="50000">
+        </div>
+
+        <div class="control-group">
+            <label>粒子大小 (Size) <span id="val-size" class="val-display">0.015</span></label>
+            <input type="range" id="ctrl-size" min="0.001" max="0.1" step="0.001" value="0.015">
+        </div>
+
+        <div class="control-group">
+            <label>螺旋臂数量 (Branches) <span id="val-branches" class="val-display">3</span></label>
+            <input type="range" id="ctrl-branches" min="2" max="10" step="1" value="3">
+        </div>
+
+        <div class="control-group">
+            <label>螺旋扭曲度 (Spin) <span id="val-spin" class="val-display">1</span></label>
+            <input type="range" id="ctrl-spin" min="-5" max="5" step="0.1" value="1">
+        </div>
+
+        <div class="control-group">
+            <label>随机散布 (Randomness) <span id="val-randomness" class="val-display">0.2</span></label>
+            <input type="range" id="ctrl-randomness" min="0" max="2" step="0.01" value="0.2">
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0/build/three.module.js';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls.js';
+
+        // 获取左侧容器尺寸
+        const container = document.getElementById('left-view');
+        let width = container.clientWidth;
+        let height = container.clientHeight;
+
+        // 1. 初始化场景、相机和渲染器
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100);
+        camera.position.set(3, 3, 3);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        // 鼠标轨道控制器
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 2. 星系参数
+        const parameters = {
+            count: 50000,
+            size: 0.015,
+            radius: 5,
+            branches: 3,
+            spin: 1,
+            randomness: 0.2,
+            randomnessPower: 3,
+            insideColor: '#ff6030',
+            outsideColor: '#1b3984'
+        };
+
+        let geometry = null;
+        let material = null;
+        let points = null;
+
+        // 3. 生成星系的核心函数
+        const generateGalaxy = () => {
+            // 清理旧内存
+            if (points !== null) {
+                geometry.dispose();
+                material.dispose();
+                scene.remove(points);
+            }
+
+            geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(parameters.count * 3);
+            const colors = new Float32Array(parameters.count * 3);
+
+            const colorInside = new THREE.Color(parameters.insideColor);
+            const colorOutside = new THREE.Color(parameters.outsideColor);
+
+            for (let i = 0; i < parameters.count; i++) {
+                const i3 = i * 3;
+                const radius = Math.random() * parameters.radius;
+                const spinAngle = radius * parameters.spin;
+                const branchAngle = (i % parameters.branches) / parameters.branches * Math.PI * 2;
+
+                const randomX = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+                const randomY = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+                const randomZ = Math.pow(Math.random(), parameters.randomnessPower) * (Math.random() < 0.5 ? 1 : -1) * parameters.randomness * radius;
+
+                positions[i3] = Math.cos(branchAngle + spinAngle) * radius + randomX;
+                positions[i3 + 1] = randomY;
+                positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+
+                const mixedColor = colorInside.clone();
+                mixedColor.lerp(colorOutside, radius / parameters.radius);
+                colors[i3] = mixedColor.r;
+                colors[i3 + 1] = mixedColor.g;
+                colors[i3 + 2] = mixedColor.b;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            // 材质设置 (开启叠加混合发光)
+            material = new THREE.PointsMaterial({
+                size: parameters.size,
+                sizeAttenuation: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                vertexColors: true
+            });
+
+            points = new THREE.Points(geometry, material);
+            scene.add(points);
+        };
+
+        generateGalaxy();
+
+        // 4. 绑定右侧 UI 控件事件
+        const bindControl = (id, paramName, isInt = false) => {
+            const input = document.getElementById('ctrl-' + id);
+            const display = document.getElementById('val-' + id);
+            input.addEventListener('input', (e) => {
+                let val = Number(e.target.value);
+                parameters[paramName] = val;
+                display.innerText = val;
+                generateGalaxy(); // 参数改变时重新生成星系
+            });
+        };
+
+        bindControl('count', 'count', true);
+        bindControl('size', 'size');
+        bindControl('branches', 'branches', true);
+        bindControl('spin', 'spin');
+        bindControl('randomness', 'randomness');
+
+        // 5. 处理窗口大小调整
+        window.addEventListener('resize', () => {
+            width = container.clientWidth;
+            height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        });
+
+        // 6. 动画循环
+        const clock = new THREE.Clock();
+        const tick = () => {
+            const elapsedTime = clock.getElapsedTime();
+            if (points) {
+                // 让星系整体缓慢自转
+                points.rotation.y = elapsedTime * 0.1;
+            }
+            controls.update();
+            renderer.render(scene, camera);
+            window.requestAnimationFrame(tick);
+        };
+        tick();
+    </script>
+</body>
+
+</html>

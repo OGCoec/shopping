@@ -99,6 +99,14 @@
         LIMIT 1
     </select>
 
+    <select id="findByPhone" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
+        SELECT
+        <include refid="baseIdentityColumns"/>
+        FROM user_login_identity
+        WHERE phone = #{phone}
+        LIMIT 1
+    </select>
+
     <select id="findVerifiedByPhone" resultType="com.example.ShoppingSystem.entity.entity.UserLoginIdentity">
         SELECT
         <include refid="baseIdentityColumns"/>
@@ -119,6 +127,32 @@
         SELECT phone
         FROM user_login_identity
         WHERE phone IS NOT NULL
+          AND phone_verified = TRUE
+        ORDER BY id
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+
+    <select id="findPhoneVerifiedByUserId" resultType="boolean">
+        SELECT phone_verified
+        FROM user_login_identity
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="countPhoneVerifiedUsers" resultType="long">
+        SELECT COUNT(1)
+        FROM user_login_identity
+        WHERE user_id IS NOT NULL
+          AND phone IS NOT NULL
+          AND phone_verified = TRUE
+    </select>
+
+    <select id="listPhoneVerifiedUserIds" resultType="long">
+        SELECT user_id
+        FROM user_login_identity
+        WHERE user_id IS NOT NULL
+          AND phone IS NOT NULL
           AND phone_verified = TRUE
         ORDER BY id
         LIMIT #{limit}
@@ -186,6 +220,33 @@
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = #{userId}
     </update>
+
+    <update id="updateStatusByUserId">
+        UPDATE user_login_identity
+        SET status = #{status},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateStatusByUserIdAt">
+        UPDATE user_login_identity
+        SET status = #{status},
+            updated_at = #{updatedAt}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateStatusByUserIdIfStatus">
+        UPDATE user_login_identity
+        SET status = #{newStatus},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+          AND status = #{oldStatus}
+    </update>
+
+    <delete id="deleteByUserId">
+        DELETE FROM user_login_identity
+        WHERE user_id = #{userId}
+    </delete>
 
     <update id="activateTotpSecret">
         UPDATE user_login_identity

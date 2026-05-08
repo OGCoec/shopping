@@ -4,6 +4,7 @@ import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.service.user.auth.login.GithubAuthService;
 import com.example.ShoppingSystem.service.user.auth.login.GoogleAuthService;
 import com.example.ShoppingSystem.service.user.auth.login.MicrosoftAuthService;
+import com.example.ShoppingSystem.service.user.auth.login.UserAuthAccountUnavailableException;
 import com.example.ShoppingSystem.service.user.auth.login.UserProfileService;
 import com.example.ShoppingSystem.service.user.auth.login.model.UserProfileDraft;
 import com.example.ShoppingSystem.security.token.AuthTokenService;
@@ -113,6 +114,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
             authTokenService.issueLoginTokens(identity.getUserId(), "", request, response);
             response.sendRedirect(CONSOLE_PAGE_URL);
+        } catch (UserAuthAccountUnavailableException ex) {
+            response.sendRedirect(buildFailedUrl(registrationId, "account_unavailable"));
         } catch (Exception ex) {
             response.sendRedirect(buildFailedUrl(registrationId, "sys_error"));
         }

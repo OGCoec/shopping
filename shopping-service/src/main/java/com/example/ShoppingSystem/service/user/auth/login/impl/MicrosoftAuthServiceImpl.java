@@ -5,6 +5,9 @@ import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.login.MicrosoftAuthService;
+import com.example.ShoppingSystem.service.user.auth.login.UserAuthAccountUnavailableException;
+import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
+import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthLockStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,11 +20,14 @@ import java.time.OffsetDateTime;
 public class MicrosoftAuthServiceImpl implements MicrosoftAuthService {
 
     private final UserLoginIdentityMapper userLoginIdentityMapper;
+    private final UserAuthFailureRiskService userAuthFailureRiskService;
     private final SnowflakeIdWorker snowflakeIdWorker;
 
     public MicrosoftAuthServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
+                                    UserAuthFailureRiskService userAuthFailureRiskService,
                                     SnowflakeIdWorker snowflakeIdWorker) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
+        this.userAuthFailureRiskService = userAuthFailureRiskService;
         this.snowflakeIdWorker = snowflakeIdWorker;
     }
 
@@ -30,6 +36,7 @@ public class MicrosoftAuthServiceImpl implements MicrosoftAuthService {
     public UserLoginIdentity loginByMicrosoft(String microsoftId, String microsoftEmail) {
         UserLoginIdentity existingByMicrosoft = userLoginIdentityMapper.findByMicrosoftId(microsoftId);
         if (existingByMicrosoft != null) {
+            ensureLoginAllowed(existingByMicrosoft);
             userLoginIdentityMapper.updateLastLoginAtById(existingByMicrosoft.getId());
             return existingByMicrosoft;
         }
@@ -41,6 +48,7 @@ public class MicrosoftAuthServiceImpl implements MicrosoftAuthService {
 
         UserLoginIdentity existingByEmail = userLoginIdentityMapper.findByEmail(normalizedEmail);
         if (existingByEmail != null) {
+            ensureLoginAllowed(existingByEmail);
             userLoginIdentityMapper.bindMicrosoftIdById(existingByEmail.getId(), microsoftId);
             existingByEmail.setMicrosoftId(microsoftId);
             existingByEmail.setLastLoginAt(OffsetDateTime.now());
@@ -84,5 +92,18 @@ public class MicrosoftAuthServiceImpl implements MicrosoftAuthService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+    }
+
+    private void ensureLoginAllowed(UserLoginIdentity identity) {
+        UserAuthLockStatus lockStatus = userAuthFailureRiskService.checkAccountStatusAndLock(
+                identity.getUserId(),
+                identity.getStatus()
+        );
+        if (lockStatus.isBlocked()) {
+            throw new UserAuthAccountUnavailableException(lockStatus.getStatus());
+        }
+        if ("LOCKED".equalsIgnoreCase(String.valueOf(identity.getStatus()))) {
+            identity.setStatus("ACTIVE");
+        }
     }
 }
