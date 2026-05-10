@@ -13,6 +13,6 @@ public interface UserAccountDeletionService {
 
     List<MailTarget> completeExpiredSelfDeletionsBatch(OffsetDateTime cutoff, int limit);
 
-    record MailTarget(Long userId, String email) {
+    record MailTarget(Long userId, String email, String phone) {
     }
 }

@@ -1,352 +1,733 @@
+# Spring Boot 框架级配置。
 spring:
+  # Spring Security 安全相关配置。
   security:
+    # OAuth2 第三方登录配置。
     oauth2:
+      # OAuth2 客户端配置。
       client:
+        # 第三方登录应用注册信息。
         registration:
+          # GitHub 登录应用配置。
           github:
+            # GitHub OAuth Client ID，从环境变量读取。
             client-id: ${GITHUB_CLIENT_ID}
+            # GitHub OAuth Client Secret，从环境变量读取。
             client-secret: ${GITHUB_CLIENT_SECRET}
+          # Google 登录应用配置。
           google:
+            # Google OAuth Client ID，从环境变量读取。
             client-id: ${GOOGLE_CLIENT_ID}
+            # Google OAuth Client Secret，从环境变量读取。
             client-secret: ${GOOGLE_CLIENT_SECRET}
+          # Microsoft 登录应用配置。
           microsoft:
+            # Microsoft OAuth Client ID，从环境变量读取。
             client-id: ${AZURE_CLIENT_ID}
+            # Microsoft OAuth Client Secret，从环境变量读取。
             client-secret: ${AZURE_CLIENT_SECRET}
+            # OAuth2 授权码模式。
             authorization-grant-type: authorization_code
+            # OAuth2 回调地址模板。
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            # Microsoft Graph 授权范围。
             scope:
+              # 读取 Microsoft 用户基础资料。
               - User.Read
+        # OAuth2 服务提供方配置。
         provider:
+          # Microsoft OAuth2 Provider 端点配置。
           microsoft:
+            # Microsoft 授权端点。
             authorization-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+            # Microsoft token 交换端点。
             token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
+            # Microsoft 用户信息端点。
             user-info-uri: https://graph.microsoft.com/v1.0/me
+            # Microsoft 用户唯一标识字段。
             user-name-attribute: id
+  # 邮件发送配置。
   mail:
+    # SMTP 服务器地址。
     host: smtp.qq.com
+    # SMTP 服务器端口。
     port: 587
-    username: 2962943171@qq.com
+    # SMTP 登录用户名。
+    username: ${EMAIL_SMTP_USERNAME:2962943171@qq.com}
+    # SMTP 登录密码，从环境变量读取。
     password: ${EMAIL_SMTP_PASSWORD}
+    # 邮件默认编码。
     default-encoding: UTF-8
+    # JavaMail 扩展属性。
     properties:
+      # JavaMail mail 命名空间。
       mail:
+        # SMTP 协议属性。
         smtp:
+          # 是否启用 SMTP 认证。
           auth: true
+          # SMTP 连接超时时间，单位毫秒。
           connectiontimeout: 10000
+          # SMTP 读取超时时间，单位毫秒。
           timeout: 10000
+          # SMTP 写入超时时间，单位毫秒。
           writetimeout: 10000
+          # SMTP SOCKS 代理配置。
           socks:
+            # 邮件代理主机。
             host: ${MAIL_PROXY_HOST:127.0.0.1}
+            # 邮件代理端口。
             port: ${MAIL_PROXY_PORT:7892}
+          # SMTP STARTTLS 配置。
           starttls:
+            # 是否启用 STARTTLS。
             enable: true
+  # RabbitMQ 连接配置。
   rabbitmq:
+    # RabbitMQ 主机地址。
     host: 127.0.0.1
+    # RabbitMQ 端口。
     port: ${RABBITMQ_PORT:5672}
+    # RabbitMQ 用户名。
     username: admin
+    # RabbitMQ 密码。
     password: admin123
+    # RabbitMQ 虚拟主机。
     virtual-host: /
+  # Servlet 容器配置。
   servlet:
+    # 文件上传配置。
     multipart:
+      # 单个上传文件最大大小。
       max-file-size: 2MB
+      # 单次请求最大大小。
       max-request-size: 10MB
+  # Spring 应用标识配置。
   application:
+    # 应用名称。
     name: shopping
+  # JPA 配置。
   jpa:
+    # 是否在日志中输出 SQL。
     show-sql: true
+  # Spring Data 配置。
   data:
+    # Redis 主连接配置。
     redis:
+      # Redis 主机地址。
       host: 127.0.0.1
+      # Redis 端口。
       port: 6380
+      # Redis 密码。
       password: 123456
+      # Redis 数据库编号。
       database: 1
+      # Redis 操作超时时间。
       timeout: 5000ms
+      # Lettuce Redis 客户端配置。
       lettuce:
+        # Lettuce 连接池配置。
         pool:
+          # 是否启用连接池。
           enabled: true
+          # 最大活跃连接数。
           max-active: 20
+          # 最大空闲连接数。
           max-idle: 10
+          # 最小空闲连接数。
           min-idle: 5
+          # 获取连接最大等待时间。
           max-wait: 1000ms
+          # 借出连接前是否校验连接可用性。
           test-on-borrow: true
+  # PostgreSQL 数据源配置。
   datasource:
+    # JDBC 连接地址。
     url: jdbc:postgresql://127.0.0.1:5432/shopping
+    # 数据库用户名。
     username: postgres
+    # 数据库密码。
     password: 123456
+    # PostgreSQL JDBC 驱动类名。
     driver-class-name: org.postgresql.Driver
+    # HikariCP 数据库连接池配置。
     hikari:
+      # 最小空闲连接数。
       minimum-idle: 5
+      # 最大连接池大小。
       maximum-pool-size: 20
+      # 获取连接超时时间，单位毫秒。
       connection-timeout: 30000
+      # 空闲连接保留时间，单位毫秒。
       idle-timeout: 600000
 
+# 内置 Web 服务器配置。
 server:
+  # HTTPS 服务端口。
   port: 6655
+  # SSL/TLS 配置。
   ssl:
+    # 是否启用 HTTPS。
     enabled: true
+    # 本地 HTTPS 证书文件位置。
     key-store: classpath:local-https.p12
+    # 证书库类型。
     key-store-type: PKCS12
+    # 证书库密码。
     key-store-password: changeit
+    # 证书别名。
     key-alias: shopping-local
 
+# 日志配置。
 logging:
+  # 日志级别配置。
   level:
+    # 项目主包日志级别。
     com.example.ShoppingSystem: debug
 
+# MyBatis 配置。
 mybatis:
+  # Mapper XML 文件位置。
   mapper-locations: classpath:mapper/**/*.xml
+  # MyBatis 行为配置。
   configuration:
+    # 是否自动把下划线列名映射为驼峰字段。
     map-underscore-to-camel-case: true
 
+# 项目自定义业务配置。
 app:
+  # GitHub 登录业务配置。
   github:
+    # GitHub 登录回调地址。
     redirect-uri: https://localhost:6655/login/github/callback
+  # Google 登录业务配置。
   google:
+    # Google 登录回调地址。
     redirect-uri: https://localhost:6655/login/google/callback
+  # 项目邮件显示信息。
   mail:
+    # 发件人邮箱地址，默认使用 spring.mail.username。
     from-address: ${SHOPPING_MAIL_FROM_ADDRESS:${spring.mail.username}}
+    # 发件人名称。
     from-name: ${SHOPPING_MAIL_FROM_NAME:Shopping System}
+  # 项目 RabbitMQ 业务队列配置。
   rabbitmq:
+    # 注册邮箱验证码队列配置。
     register-email:
+      # 注册邮箱验证码交换机。
       exchange: ${REGISTER_EMAIL_EXCHANGE:register.email.code.exchange}
+      # 注册邮箱验证码主队列。
       queue: ${REGISTER_EMAIL_QUEUE:register.email.code.queue}
+      # 注册邮箱验证码重试队列。
       retry-queue: ${REGISTER_EMAIL_RETRY_QUEUE:register.email.code.retry.queue}
+      # 注册邮箱验证码死信队列。
       dead-letter-queue: ${REGISTER_EMAIL_DLQ:register.email.code.dlq}
+      # 注册邮箱验证码主路由键。
       routing-key: ${REGISTER_EMAIL_ROUTING_KEY:register.email.code.send}
+      # 注册邮箱验证码重试路由键。
       retry-routing-key: ${REGISTER_EMAIL_RETRY_ROUTING_KEY:register.email.code.retry}
+      # 注册邮箱验证码死信路由键。
       dead-routing-key: ${REGISTER_EMAIL_DEAD_ROUTING_KEY:register.email.code.dead}
+      # 注册邮箱验证码消费者初始并发数。
       concurrency: 2
+      # 注册邮箱验证码消费者最大并发数。
       max-concurrency: 10
+      # 注册邮箱验证码消费者预取数量。
       prefetch: 1
+      # 注册邮箱验证码最大重试次数。
       max-retry-count: 2
+    # 用户头像上传队列配置。
     user-avatar:
+      # 用户头像交换机。
       exchange: ${USER_AVATAR_EXCHANGE:user.avatar.exchange}
+      # 用户头像主队列。
       queue: ${USER_AVATAR_QUEUE:user.avatar.queue}
+      # 用户头像重试队列。
       retry-queue: ${USER_AVATAR_RETRY_QUEUE:user.avatar.retry.queue}
+      # 用户头像死信队列。
       dead-letter-queue: ${USER_AVATAR_DLQ:user.avatar.dlq}
+      # 用户头像主路由键。
       routing-key: ${USER_AVATAR_ROUTING_KEY:user.avatar.upload}
+      # 用户头像重试路由键。
       retry-routing-key: ${USER_AVATAR_RETRY_ROUTING_KEY:user.avatar.retry}
+      # 用户头像死信路由键。
       dead-routing-key: ${USER_AVATAR_DEAD_ROUTING_KEY:user.avatar.dead}
+      # 用户头像消费者初始并发数。
       concurrency: 1
+      # 用户头像消费者最大并发数。
       max-concurrency: 4
+      # 用户头像消费者预取数量。
       prefetch: 1
+      # 用户头像最大重试次数。
       max-retry-count: 2
+    # 短信验证码队列配置。
     sms-code:
+      # 短信验证码交换机。
       exchange: ${SMS_CODE_EXCHANGE:sms.code.exchange}
+      # 短信验证码主队列。
       queue: ${SMS_CODE_QUEUE:sms.code.queue}
+      # 短信验证码重试队列。
       retry-queue: ${SMS_CODE_RETRY_QUEUE:sms.code.retry.queue}
+      # 短信验证码死信队列。
       dead-letter-queue: ${SMS_CODE_DLQ:sms.code.dlq}
+      # 短信验证码主路由键。
       routing-key: ${SMS_CODE_ROUTING_KEY:sms.code.send}
+      # 短信验证码重试路由键。
       retry-routing-key: ${SMS_CODE_RETRY_ROUTING_KEY:sms.code.retry}
+      # 短信验证码死信路由键。
       dead-routing-key: ${SMS_CODE_DEAD_ROUTING_KEY:sms.code.dead}
+      # 短信验证码消费者初始并发数。
       concurrency: ${SMS_CODE_CONCURRENCY:2}
+      # 短信验证码消费者最大并发数。
       max-concurrency: ${SMS_CODE_MAX_CONCURRENCY:10}
+      # 短信验证码消费者预取数量。
       prefetch: ${SMS_CODE_PREFETCH:1}
+      # 短信验证码最大重试次数。
       max-retry-count: ${SMS_CODE_MAX_RETRY_COUNT:2}
+    # IP 风险写回队列配置。
     ip-risk-writeback:
+      # IP 风险写回交换机。
       exchange: ${IP_RISK_WRITEBACK_EXCHANGE:ip.risk.writeback.exchange}
+      # IP 风险写回主队列。
       queue: ${IP_RISK_WRITEBACK_QUEUE:ip.risk.writeback.queue}
+      # IP 风险写回重试队列。
       retry-queue: ${IP_RISK_WRITEBACK_RETRY_QUEUE:ip.risk.writeback.retry.queue}
+      # IP 风险写回死信队列。
       dead-letter-queue: ${IP_RISK_WRITEBACK_DLQ:ip.risk.writeback.dlq}
+      # IP 风险写回主路由键。
       routing-key: ${IP_RISK_WRITEBACK_ROUTING_KEY:ip.risk.writeback.execute}
+      # IP 风险写回重试路由键。
       retry-routing-key: ${IP_RISK_WRITEBACK_RETRY_ROUTING_KEY:ip.risk.writeback.retry}
+      # IP 风险写回死信路由键。
       dead-routing-key: ${IP_RISK_WRITEBACK_DEAD_ROUTING_KEY:ip.risk.writeback.dead}
+      # IP 风险写回消费者初始并发数。
       concurrency: 2
+      # IP 风险写回消费者最大并发数。
       max-concurrency: 8
+      # IP 风险写回消费者预取数量。
       prefetch: 5
+      # IP 风险写回最大重试次数。
       max-retry-count: 3
+  # 短信验证码业务配置。
   sms-code:
+    # 阿里云短信模板编号。
     template-code: ${ALIYUN_SMS_TEMPLATE_CODE:100001}
+    # 短信验证码哈希密钥。
     code-hash-secret: ${SMS_CODE_HASH_SECRET:shopping-local-sms-secret}
+    # 短信验证码有效期，单位分钟。
     code-ttl-minutes: ${SMS_CODE_TTL_MINUTES:5}
+    # 同一主体发送短信冷却时间，单位秒。
     cooldown-seconds: ${SMS_CODE_COOLDOWN_SECONDS:60}
+    # IP 维度限流统计窗口，单位分钟。
     ip-window-minutes: ${SMS_CODE_IP_WINDOW_MINUTES:60}
+    # 单手机号每日发送上限。
     phone-daily-limit: ${SMS_CODE_PHONE_DAILY_LIMIT:10}
+    # 单 IP 每小时发送上限。
     ip-hourly-limit: ${SMS_CODE_IP_HOURLY_LIMIT:60}
+    # 支持的手机号国家区号。
     supported-dial-code: ${SMS_CODE_SUPPORTED_DIAL_CODE:86}
 
+# 阿里云相关配置。
 aliyun:
+  # 阿里云 OSS 对象存储配置。
+  oss:
+    # 阿里云 OSS AccessKey ID，从 Windows 系统环境变量读取。
+    access-key-id: ${OSS_ACCESS_KEY_ID}
+    # 阿里云 OSS AccessKey Secret，从 Windows 系统环境变量读取。
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET}
+  # 阿里云短信配置。
   sms:
+    # 阿里云短信 AccessKey ID，从 Windows 系统环境变量读取。
+    access-key-id: ${ALIBABA_CLOUD_ACCESS_KEY_ID:}
+    # 阿里云短信 AccessKey Secret，从 Windows 系统环境变量读取。
+    access-key-secret: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:}
+    # 阿里云短信代理配置。
     proxy:
+      # 是否启用阿里云短信代理。
       enabled: ${ALIYUN_SMS_PROXY_ENABLED:true}
+      # 阿里云短信代理主机。
       host: ${ALIYUN_SMS_PROXY_HOST:127.0.0.1}
+      # 阿里云短信代理端口。
       port: ${ALIYUN_SMS_PROXY_PORT:7892}
 
+# Elasticsearch 连接配置。
 elasticsearch:
+  # Elasticsearch 主机地址。
   host: localhost
+  # Elasticsearch 端口。
   port: 9200
+  # Elasticsearch 访问协议。
   scheme: http
 
+# Canal 增量同步配置。
 canal:
+  # Canal 服务主机。
   host: 127.0.0.1
+  # Canal 服务端口。
   port: 11111
+  # Canal destination 名称。
   destination: example
+  # Canal 用户名，空值表示不配置。
   username:
+  # Canal 密码，空值表示不配置。
   password:
+  # Canal 同步数据写入 Redis Stream 的 key。
   stream-key: canal:sync:es
+  # Canal 消费者组名称。
   consumer-group: es_sync_group
+  # Canal 订阅表过滤表达式。
   subscribe-filter: ".*\\.(category|dish|setmeal|employee)"
 
+# 验证码配置。
 captcha:
+  # 验证码 Redis key 前缀。
   prefix: captcha
+  # 是否初始化默认验证码资源。
   init-default-resource: false
+  # 验证码链路追踪配置。
   trace:
+    # 是否启用验证码追踪。
     enabled: true
+  # Cloudflare Turnstile 配置。
   turnstile:
+    # Turnstile 前端站点 key。
     site-key: ${TURNSTILE_SITE_KEY}
+    # Turnstile 后端 secret key。
     secret-key: ${TURNSTILE_SECRET_KEY}
+    # Turnstile 服务端校验地址。
     verify-url: https://challenges.cloudflare.com/turnstile/v0/siteverify
+  # hCaptcha 配置。
   hcaptcha:
+    # hCaptcha 前端站点 key。
     site-key: ${HCAPTCHA_SITE_KEY}
+    # hCaptcha 后端 secret key。
     secret-key: ${HCAPTCHA_SECRET_KEY}
+    # hCaptcha 服务端校验地址。
     verify-url: https://api.hcaptcha.com/siteverify
+  # Google reCAPTCHA 配置。
   recaptcha:
+    # reCAPTCHA 前端站点 key。
     site-key: ${RECAPTCHA_SITE_KEY:}
+    # reCAPTCHA 后端 secret key。
     secret-key: ${RECAPTCHA_SECRET_KEY:}
+    # reCAPTCHA 服务端校验地址。
     verify-url: https://www.google.com/recaptcha/api/siteverify
+  # 第三方验证码 HTTP 代理配置。
   proxy:
+    # 是否启用验证码代理。
     enabled: ${CAPTCHA_PROXY_ENABLED:true}
+    # 验证码代理主机。
     host: ${CAPTCHA_PROXY_HOST:127.0.0.1}
+    # 验证码代理端口。
     port: ${CAPTCHA_PROXY_PORT:7892}
+  # 验证码过期时间配置。
   expire:
+    # 默认验证码过期时间，单位毫秒。
     default: 300000
 
+# 本地代理探测配置。
 local-proxy:
+  # 是否启用本地代理。
   enabled: ${LOCAL_PROXY_ENABLED:true}
+  # 本地代理主机。
   host: ${LOCAL_PROXY_HOST:127.0.0.1}
+  # 可用本地代理端口列表。
   ports: ${LOCAL_PROXY_PORTS:7892,7897}
+  # 本地代理连接超时时间，单位毫秒。
   connect-timeout-ms: ${LOCAL_PROXY_CONNECT_TIMEOUT_MS:300}
 
+# 邮件代理扩展配置。
 mail:
+  # 邮件代理配置。
   proxy:
+    # 邮件代理自动切换配置。
     auto-switch:
+      # 是否启用邮件代理自动切换。
       enabled: ${MAIL_PROXY_AUTO_SWITCH_ENABLED:true}
 
+# 管理员后台配置。
+admin:
+  # 管理员账号配置文件。
+  config:
+    # 管理员账号 YAML 文件路径。
+    path: ${ADMIN_CONFIG_PATH:config/admin.yaml}
+  # 管理员安全配置。
+  security:
+    # 管理员 Redis 会话 Cookie 名称。
+    session-cookie-name: ${ADMIN_SESSION_COOKIE_NAME:ADMIN_SESSION_TOKEN}
+    # 管理员 Redis 会话 key 前缀。
+    session-redis-key-prefix: ${ADMIN_SESSION_REDIS_KEY_PREFIX:admin:session:}
+    # 管理员会话有效期，单位分钟。
+    session-ttl-minutes: ${ADMIN_SESSION_TTL_MINUTES:480}
+    # 管理员会话 Cookie 路径。
+    session-cookie-path: ${ADMIN_SESSION_COOKIE_PATH:/shopping/admin}
+    # 管理员会话 Cookie 是否 HttpOnly。
+    session-cookie-http-only: ${ADMIN_SESSION_COOKIE_HTTP_ONLY:true}
+    # 管理员会话 Cookie 是否仅 HTTPS 传输。
+    session-cookie-secure: ${ADMIN_SESSION_COOKIE_SECURE:false}
+    # 管理员会话 Cookie SameSite 策略。
+    session-cookie-same-site: ${ADMIN_SESSION_COOKIE_SAME_SITE:Lax}
+    # 管理员首次登录邮箱验证码有效期，单位分钟。
+    email-code-ttl-minutes: ${ADMIN_EMAIL_CODE_TTL_MINUTES:5}
+    # 管理员首次登录邮箱验证码发送冷却时间，单位秒。
+    email-code-cooldown-seconds: ${ADMIN_EMAIL_CODE_COOLDOWN_SECONDS:60}
+
+# 登录链路配置。
 login:
+  # 已绑定手机号 Counting Bloom 配置。
   phone-bound-counting-bloom:
+    # 是否启用已绑定手机号 Counting Bloom。
     enabled: true
+    # 已绑定手机号 Counting Bloom 主 key。
     key: "login:phone:bound:cbf"
+    # 已绑定手机号成员辅助 key 前缀。
     member-key-prefix: "login:phone:bound:member:"
+    # 已绑定手机号 Counting Bloom 容量。
     capacity: 600000
+    # 已绑定手机号 Counting Bloom 哈希函数数量。
     hash-count: 7
+    # 已绑定手机号 Counting Bloom 单计数器字节数。
     counter-bytes: 2
+    # 启动加载已绑定手机号时的分页大小。
     page-size: 2000
+    # 已绑定手机号异步初始化核心线程数。
     async-core-pool-size: 1
+    # 已绑定手机号异步初始化最大线程数。
     async-max-pool-size: 2
+    # 已绑定手机号异步初始化队列容量。
     async-queue-capacity: 1000
+  # 已验证手机号用户 Counting Bloom 配置。
   phone-verified-user-counting-bloom:
+    # 是否启用已验证手机号用户 Counting Bloom。
     enabled: true
+    # 已验证手机号用户 Counting Bloom 主 key。
     key: "login:phone:verified-user:cbf"
+    # 已验证手机号用户成员辅助 key 前缀。
     member-key-prefix: "login:phone:verified-user:member:"
+    # 已验证手机号用户 Bloom 初始化完成标记 key。
     ready-key: "login:phone:verified-user:cbf:ready"
+    # 已验证手机号用户查询缓存 key 前缀。
     cache-key-prefix: "login:phone:verified-user:cache:"
+    # 已验证手机号用户 Redis 阳性结果缓存时间，单位分钟。
     redis-positive-ttl-minutes: 1440
+    # 已验证手机号用户 Redis 阴性结果缓存时间，单位分钟。
     redis-negative-ttl-minutes: 5
+    # 已验证手机号用户本地缓存时间，单位分钟。
     local-cache-ttl-minutes: 5
+    # 已验证手机号用户本地缓存最大条目数。
     local-cache-maximum-size: 200000
 
+# 注册链路配置。
 register:
+  # 预登录绑定配置。
   pre-auth:
+    # 是否启用预登录绑定。
     enabled: true
+    # 预登录绑定 Redis key 前缀。
     redis-key-prefix: "register:preauth:bind:"
+    # 预登录绑定有效期，单位分钟。
     ttl-minutes: 180
+    # 预登录绑定保留最近 IP 数量。
     recent-ip-limit: 3
+    # 预登录 token Cookie 名称。
     cookie-name: "PREAUTH_TOKEN"
+    # 预登录 token Cookie 路径。
     cookie-path: "/"
+    # 预登录 token Cookie 是否 HttpOnly。
     cookie-http-only: true
+    # 预登录 token Cookie 是否仅 HTTPS 传输。
     cookie-secure: false
+    # 预登录 token Cookie SameSite 策略。
     cookie-same-site: "Lax"
 
+  # 注册流程会话配置。
   flow:
+    # 注册流程 Redis key 前缀。
     redis-key-prefix: "auth:register:flow:"
+    # 注册流程有效期，单位分钟。
     ttl-minutes: 15
+    # 注册流程 Cookie 名称。
     cookie-name: "REGISTER_FLOW_ID"
+    # 注册流程 Cookie 路径。
     cookie-path: "/shopping/user"
+    # 注册流程 Cookie 是否 HttpOnly。
     cookie-http-only: true
+    # 注册流程 Cookie 是否仅 HTTPS 传输。
     cookie-secure: false
+    # 注册流程 Cookie SameSite 策略。
     cookie-same-site: "Lax"
+  # 注册密码加密配置。
   password-crypto:
+    # 是否启用注册密码前端加密。
     enabled: true
+    # 注册密码 RSA keypair Redis key 前缀。
     redis-key-prefix: "register:crypto:keypair:"
+    # 注册密码 nonce Redis key 前缀。
     nonce-key-prefix: "register:crypto:nonce:"
+    # 注册密码 RSA keypair 有效期，单位秒。
     key-ttl-seconds: 600
+    # 注册密码 nonce 有效期，单位秒。
     nonce-ttl-seconds: 600
+    # 注册密码时间戳允许窗口，单位秒。
     timestamp-window-seconds: 600
+    # 注册密码 RSA 密钥长度。
     rsa-key-size: 2048
+    # 注册密码私钥加密 KEK，空值表示使用默认或未配置。
     kek: "${REGISTER_PASSWORD_CRYPTO_KEK:}"
+  # 注册操作耗时模拟/防自动化等待配置。
   operation-timeout:
+    # 注册操作最小等待时间，单位秒。
     wait-min-seconds: 5
+    # 注册操作最大等待时间，单位秒。
     wait-max-seconds: 10
+  # 注册 IP L6 Counting Bloom 配置。
   ip-l6-counting-bloom:
+    # 是否启用 IP L6 Counting Bloom。
     enabled: true
+    # 是否启用 IP L6 实时同步。
     realtime-enabled: true
+    # L6 快速判定分数。
     l6-fast-score: 2999
+    # IP L6 分数阈值。
     score-threshold: 3000
+    # IP L6 Counting Bloom 容量。
     capacity: 150000
+    # IP L6 Counting Bloom 哈希函数数量。
     hash-count: 7
+    # IP L6 启动加载分页大小。
     page-size: 2000
+    # IPv4 L6 Counting Bloom key。
     ipv4-key: "register:ip:l6:cbf:ipv4"
+    # IPv6 L6 Counting Bloom key。
     ipv6-key: "register:ip:l6:cbf:ipv6"
+  # 注册设备 L6 Counting Bloom 配置。
   device-l6-counting-bloom:
+    # 是否启用设备 L6 Counting Bloom。
     enabled: true
+    # 是否启用设备 L6 实时同步。
     realtime-enabled: true
+    # 设备 L6 快速判定分数。
     l6-fast-score: 2999
+    # 设备 L6 分数阈值。
     score-threshold: 3000
+    # 设备 L6 Counting Bloom 容量。
     capacity: 150000
+    # 设备 L6 Counting Bloom 哈希函数数量。
     hash-count: 7
+    # 设备 L6 启动加载分页大小。
     page-size: 2000
+    # 设备 L6 Counting Bloom key。
     key: "register:device:l6:cbf"
+  # IP 多级风险缓存配置。
   ip-risk-multi-level:
+    # 是否启用 IP 多级风险缓存。
     enabled: true
+    # IP 多级风险 Redis key 前缀。
     redis-key-prefix: "register:ip:risk:v2:"
+    # IP 多级风险 Redis 基础 TTL，单位分钟。
     redis-ttl-minutes: 60
+    # IP 多级风险 Redis TTL 随机抖动，单位分钟。
     redis-ttl-jitter-minutes: 120
+    # IP 风险 DB 记录过期时间，单位小时。
     db-expire-hours: 24
+    # IP 多级风险本地缓存最大条目数。
     local-max-size: 100000
+    # IP 多级风险本地缓存最小 TTL，单位分钟。
     local-ttl-min-minutes: 10
+    # IP 多级风险本地缓存最大 TTL，单位分钟。
     local-ttl-max-minutes: 50
+  # 设备多级风险缓存配置。
   device-risk-multi-level:
+    # 设备多级风险 Redis key 前缀。
     redis-key-prefix: "register:device:risk:v2:"
+  # IP 国家/地理信息缓存配置。
   ip-country-cache:
+    # 是否启用 IP 国家/地理信息缓存。
     enabled: true
+    # IP 国家/地理信息 Redis key 前缀。
     redis-key-prefix: "register:ip:country:"
+    # IP 国家/地理信息 Redis 基础 TTL，单位分钟。
     redis-ttl-minutes: 360
+    # IP 国家/地理信息 Redis TTL 随机抖动，单位分钟。
     redis-ttl-jitter-minutes: 1080
+    # IP 国家/地理信息本地缓存最大条目数。
     local-max-size: 100000
+    # IP 国家/地理信息本地缓存最小 TTL，单位分钟。
     local-ttl-min-minutes: 10
+    # IP 国家/地理信息本地缓存最大 TTL，单位分钟。
     local-ttl-max-minutes: 50
+    # 是否启用本地 IP2Location BIN 数据库。
     bin-enabled: true
+    # 本地 IP2Location BIN 数据库路径。
     bin-path: "IP2LOCATION-LITE-DB11.IPV6.BIN"
+  # IP 风险写回配置。
   ip-risk-writeback:
+    # 是否启用 IP 风险写回。
     enabled: true
+    # IP 风险写回模式，ASYNC 表示异步。
     mode: ASYNC
+    # MQ 发布失败时是否回退为同步写回。
     fallback-sync-on-publish-failure: true
+    # IP 风险写回幂等 Redis key 前缀。
     idempotency-key-prefix: "register:ip:risk:writeback:idempotency:"
+    # IP 风险写回幂等 key TTL，单位分钟。
     idempotency-ttl-minutes: 90
+    # 不同来源触发时需要执行的写回动作。
     source-actions:
+      # API 来源时执行 DB upsert、Redis 缓存写入、Bloom 同步。
       API: "UPSERT_DB,WRITE_REDIS_CACHE,SYNC_BLOOM"
+      # DB 来源时执行 DB upsert 和 Redis 缓存写入。
       DB: "UPSERT_DB,WRITE_REDIS_CACHE"
+      # Redis 来源时不额外执行写回动作。
       REDIS: ""
+      # Caffeine 来源时不额外执行写回动作。
       CAFFEINE: ""
+      # 无来源时不额外执行写回动作。
       NONE: ""
 
+# 用户认证 token 配置。
 shopping:
+  # 登录 access/refresh token 配置。
   auth-token:
+    # Access Token 有效期，单位秒。
     access-ttl-seconds: 600
+    # Access Token Cookie 有效期，单位秒。
     access-cookie-ttl-seconds: 10800
+    # Refresh Token 有效期，单位秒。
     refresh-ttl-seconds: 10800
+    # 用户上下文缓存有效期，单位秒。
     user-context-ttl-seconds: 11100
+    # Access Token Cookie 名称。
     access-cookie-name: "ACCESS_TOKEN"
+    # Refresh Token Cookie 名称。
     refresh-cookie-name: "REFRESH_TOKEN"
+    # Access Token Cookie 路径。
     access-cookie-path: "/"
+    # Refresh Token Cookie 路径。
     refresh-cookie-path: "/"
+    # 用户 token Cookie 是否仅 HTTPS 传输。
     cookie-secure: false
+    # 用户 token Cookie SameSite 策略。
     cookie-same-site: "Lax"
+    # Refresh Token Redis key 前缀。
     refresh-redis-key-prefix: "auth:user:refresh:"
+    # 用户上下文 Redis key 前缀。
     user-context-redis-key-prefix: "auth:user:context:"
 
+# IP2Location.io 查询服务配置。
+ip2location:
+  # IP2Location.io API 配置。
+  io:
+    # IP2Location.io API 地址。
+    api-url: ${IP2LOCATION_IO_API_URL:https://api.ip2location.io/}
+
+# IP 查询服务配置。
 iping:
+  # IP 查询 API 配置。
   api:
-    enabled: true
-    url: https://api.iping.cc/v1/query
-    language: en
+    # 是否启用 IP 查询 API。
+    enabled: ${IPING_API_ENABLED:true}
+    # IP 查询 API 地址。
+    url: ${IPING_API_URL:https://api.iping.cc/v1/query}
+    # IP 查询 API 返回语言。
+    language: ${IPING_API_LANGUAGE:en}

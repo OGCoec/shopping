@@ -95,6 +95,25 @@ public class PhoneBoundCountingBloomServiceImpl implements PhoneBoundCountingBlo
         executor.execute(() -> addVerifiedPhone(phone));
     }
 
+    @Override
+    public long removeVerifiedPhones(List<String> normalizedE164Phones) {
+        if (!properties.isEnabled() || normalizedE164Phones == null || normalizedE164Phones.isEmpty()) {
+            return 0L;
+        }
+        List<String> phones = normalizePhones(normalizedE164Phones).stream()
+                .distinct()
+                .toList();
+        if (phones.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return countingBloomFilter.deleteAllItems(properties.getKey(), phones);
+        } catch (RuntimeException e) {
+            log.warn("Phone-bound counting bloom batch delete failed, count={}, reason={}", phones.size(), e.getMessage());
+            return 0L;
+        }
+    }
+
     private void addVerifiedPhone(String phone) {
         try {
             countingBloomFilter.add(properties.getKey(), phone);

@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.config;
 
+import com.example.ShoppingSystem.admin.interceptor.AdminSessionInterceptor;
 import com.example.ShoppingSystem.interceptor.LoginFlowGuardInterceptor;
 import com.example.ShoppingSystem.interceptor.PasswordResetTokenGuardInterceptor;
 import com.example.ShoppingSystem.interceptor.PhoneBindingRequiredInterceptor;
@@ -23,19 +24,22 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
     private final PasswordResetTokenGuardInterceptor passwordResetTokenGuardInterceptor;
     private final AccessTokenAuthenticationInterceptor accessTokenAuthenticationInterceptor;
     private final PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor;
+    private final AdminSessionInterceptor adminSessionInterceptor;
 
     public AuthWebMvcConfig(PreAuthInterceptor preAuthInterceptor,
                             RegisterFlowGuardInterceptor registerFlowGuardInterceptor,
                             LoginFlowGuardInterceptor loginFlowGuardInterceptor,
                             PasswordResetTokenGuardInterceptor passwordResetTokenGuardInterceptor,
                             AccessTokenAuthenticationInterceptor accessTokenAuthenticationInterceptor,
-                            PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor) {
+                            PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor,
+                            AdminSessionInterceptor adminSessionInterceptor) {
         this.preAuthInterceptor = preAuthInterceptor;
         this.registerFlowGuardInterceptor = registerFlowGuardInterceptor;
         this.loginFlowGuardInterceptor = loginFlowGuardInterceptor;
         this.passwordResetTokenGuardInterceptor = passwordResetTokenGuardInterceptor;
         this.accessTokenAuthenticationInterceptor = accessTokenAuthenticationInterceptor;
         this.phoneBindingRequiredInterceptor = phoneBindingRequiredInterceptor;
+        this.adminSessionInterceptor = adminSessionInterceptor;
     }
 
     @Override
@@ -49,6 +53,9 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/login",
                         "/shopping/user/log-in",
                         "/shopping/user/log-in/password",
+                        "/shopping/user/lojin",
+                        "/shopping/user/firstlogin",
+                        "/shopping/admin/**",
                         "/shopping/user/register",
                         "/shopping/user/create-account",
                         "/shopping/user/create-account/password",
@@ -92,9 +99,19 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                 )
                 .order(10);
 
+        registry.addInterceptor(adminSessionInterceptor)
+                .addPathPatterns("/shopping/admin/**")
+                .excludePathPatterns(
+                        "/shopping/admin/login",
+                        "/shopping/admin/firstlogin",
+                        "/shopping/admin/firstlogin/**"
+                )
+                .order(90);
+
         registry.addInterceptor(accessTokenAuthenticationInterceptor)
                 .addPathPatterns(
                         "/shopping/user/auth/me",
+                        "/shopping/user/session/page-gate",
                         "/shopping/user/auth/logout-all",
                         "/shopping/user/profile/avatar",
                         "/shopping/user/profile/deletion",
@@ -107,6 +124,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(phoneBindingRequiredInterceptor)
                 .addPathPatterns(
                         "/shopping/user/profile/avatar",
+                        "/shopping/user/session/page-gate",
                         "/shopping/user/profile/deletion",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**"

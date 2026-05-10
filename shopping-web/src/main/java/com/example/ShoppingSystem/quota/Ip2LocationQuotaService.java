@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -31,6 +32,9 @@ public class Ip2LocationQuotaService {
     private static final DefaultRedisScript<List> COMPENSATE_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<List> REBUILD_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<List> ACQUIRE_SCRIPT = new DefaultRedisScript<>();
+    private static final DefaultRedisScript<List> LIST_SCRIPT = new DefaultRedisScript<>();
+    private static final DefaultRedisScript<List> BATCH_UPSERT_SCRIPT = new DefaultRedisScript<>();
+    private static final DefaultRedisScript<List> BATCH_DELETE_SCRIPT = new DefaultRedisScript<>();
     private static final DefaultRedisScript<Long> ROUND_ROBIN_NEXT_SCRIPT = new DefaultRedisScript<>();
 
     static {
@@ -48,6 +52,15 @@ public class Ip2LocationQuotaService {
 
         ACQUIRE_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_acquire.lua")));
         ACQUIRE_SCRIPT.setResultType(List.class);
+
+        LIST_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_list.lua")));
+        LIST_SCRIPT.setResultType(List.class);
+
+        BATCH_UPSERT_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_batch_upsert.lua")));
+        BATCH_UPSERT_SCRIPT.setResultType(List.class);
+
+        BATCH_DELETE_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_quota_batch_delete.lua")));
+        BATCH_DELETE_SCRIPT.setResultType(List.class);
 
         ROUND_ROBIN_NEXT_SCRIPT.setScriptSource(new ResourceScriptSource(new ClassPathResource("lua/ip2location_round_robin_next.lua")));
         ROUND_ROBIN_NEXT_SCRIPT.setResultType(Long.class);
@@ -135,6 +148,55 @@ public class Ip2LocationQuotaService {
         );
     }
 
+    public QuotaKeyListResult listQuotaKeys() {
+        List result = quotaRedisTemplate.execute(
+                LIST_SCRIPT,
+                Collections.singletonList(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
+                Ip2LocationQuotaRedisKeys.QUOTA_PREFIX
+        );
+        return resolveQuotaKeyListResult(result);
+    }
+
+    public QuotaBatchUpsertResult batchUpsertQuotaKeys(Collection<QuotaKeyUpsertCommand> commands) {
+        if (commands == null || commands.isEmpty()) {
+            return new QuotaBatchUpsertResult(0, 0, getTotalQuotaCount());
+        }
+        List<String> args = new ArrayList<>(2 + commands.size() * 4);
+        args.add(Ip2LocationQuotaRedisKeys.QUOTA_PREFIX);
+        args.add(String.valueOf(commands.size()));
+        for (QuotaKeyUpsertCommand command : commands) {
+            args.add(command.apiKey());
+            args.add(command.quotaKey());
+            args.add(String.valueOf(Math.max(0L, command.remainingQuota())));
+            args.add(String.valueOf(command.ttlSeconds()));
+        }
+        List result = quotaRedisTemplate.execute(
+                BATCH_UPSERT_SCRIPT,
+                Collections.singletonList(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
+                args.toArray()
+        );
+        return resolveQuotaBatchUpsertResult(result);
+    }
+
+    public QuotaBatchDeleteResult batchDeleteQuotaKeys(Collection<String> quotaKeys) {
+        if (quotaKeys == null || quotaKeys.isEmpty()) {
+            return new QuotaBatchDeleteResult(0, getTotalQuotaCount());
+        }
+        List<String> args = new ArrayList<>(2 + quotaKeys.size());
+        args.add(Ip2LocationQuotaRedisKeys.QUOTA_PREFIX);
+        args.add(String.valueOf(quotaKeys.size()));
+        args.addAll(quotaKeys);
+        List result = quotaRedisTemplate.execute(
+                BATCH_DELETE_SCRIPT,
+                Arrays.asList(
+                        Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY,
+                        Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY
+                ),
+                args.toArray()
+        );
+        return resolveQuotaBatchDeleteResult(result);
+    }
+
     public String buildQuotaKey(String apiKey, LocalDateTime dateTime) {
         return buildQuotaKey(apiKey, dateTime, AccountType.STARTER);
     }
@@ -192,6 +254,44 @@ public class Ip2LocationQuotaService {
             return QuotaAcquireResult.denied(totalQuota, "quota_acquire_failed");
         }
         return QuotaAcquireResult.denied(totalQuota, readStringFromLuaResult(result, 3, "quota_acquire_failed"));
+    }
+
+    private QuotaKeyListResult resolveQuotaKeyListResult(List result) {
+        if (result == null || result.size() < 3 || readLong(result.get(0), Long.MIN_VALUE) != 0L) {
+            return new QuotaKeyListResult(0L, 0L, Collections.emptyList());
+        }
+        long aggregateTotal = readLong(result.get(1), 0L);
+        long realTotal = readLong(result.get(2), 0L);
+        List<QuotaKeySnapshot> snapshots = new ArrayList<>();
+        for (int index = 3; index + 2 < result.size(); index += 3) {
+            String quotaKey = readStringFromLuaResult(result, index, "");
+            if (quotaKey.isBlank()) {
+                continue;
+            }
+            long remainingQuota = readLong(result.get(index + 1), 0L);
+            long ttlSeconds = readLong(result.get(index + 2), -2L);
+            snapshots.add(new QuotaKeySnapshot(quotaKey, remainingQuota, ttlSeconds));
+        }
+        return new QuotaKeyListResult(aggregateTotal, realTotal, snapshots);
+    }
+
+    private QuotaBatchUpsertResult resolveQuotaBatchUpsertResult(List result) {
+        if (result == null || result.isEmpty() || readLong(result.get(0), Long.MIN_VALUE) != 0L) {
+            return new QuotaBatchUpsertResult(0, 0, getTotalQuotaCount());
+        }
+        int upserted = (int) readLongFromLuaResult(result, 1, 0L);
+        int oldDeleted = (int) readLongFromLuaResult(result, 2, 0L);
+        long totalQuotaCount = readLongFromLuaResult(result, 3, 0L);
+        return new QuotaBatchUpsertResult(upserted, oldDeleted, totalQuotaCount);
+    }
+
+    private QuotaBatchDeleteResult resolveQuotaBatchDeleteResult(List result) {
+        if (result == null || result.isEmpty() || readLong(result.get(0), Long.MIN_VALUE) != 0L) {
+            return new QuotaBatchDeleteResult(0, getTotalQuotaCount());
+        }
+        int deleted = (int) readLongFromLuaResult(result, 1, 0L);
+        long totalQuotaCount = readLongFromLuaResult(result, 2, 0L);
+        return new QuotaBatchDeleteResult(deleted, totalQuotaCount);
     }
 
     private long readLongFromLuaResult(List result, int index, long fallback) {
@@ -269,5 +369,28 @@ public class Ip2LocationQuotaService {
         public static QuotaAcquireResult denied(long totalQuotaCount, String reason) {
             return new QuotaAcquireResult(false, null, totalQuotaCount, reason);
         }
+    }
+
+    public record QuotaKeySnapshot(String quotaKey, long remainingQuota, long ttlSeconds) {
+    }
+
+    public record QuotaKeyListResult(long aggregateTotalQuotaCount,
+                                     long realTotalQuotaCount,
+                                     List<QuotaKeySnapshot> quotaKeys) {
+    }
+
+    public record QuotaKeyUpsertCommand(String apiKey,
+                                        String quotaKey,
+                                        long remainingQuota,
+                                        long ttlSeconds) {
+    }
+
+    public record QuotaBatchUpsertResult(int upsertedCount,
+                                         int oldDeletedCount,
+                                         long totalQuotaCount) {
+    }
+
+    public record QuotaBatchDeleteResult(int deletedCount,
+                                         long totalQuotaCount) {
     }
 }

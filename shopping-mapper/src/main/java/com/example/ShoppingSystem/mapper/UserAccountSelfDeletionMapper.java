@@ -62,7 +62,8 @@ public interface UserAccountSelfDeletionMapper {
             WITH due AS (
                 SELECT id,
                        user_id,
-                       email
+                       email,
+                       phone
                 FROM user_account_self_deletion
                 WHERE is_deleted = FALSE
                   AND deleted_at IS NOT NULL
@@ -90,10 +91,12 @@ public interface UserAccountSelfDeletionMapper {
                 WHERE s.id = d.id
                   AND s.is_deleted = FALSE
                 RETURNING d.user_id AS "userId",
-                          d.email AS "email"
+                          d.email AS "email",
+                          d.phone AS "phone"
             )
             SELECT "userId",
-                   email
+                   email,
+                   phone
             FROM marked
             """)
     List<CleanupMailTarget> completeDueSelfDeletionsBatch(@Param("cutoff") OffsetDateTime cutoff,
@@ -105,5 +108,6 @@ public interface UserAccountSelfDeletionMapper {
     class CleanupMailTarget {
         private Long userId;
         private String email;
+        private String phone;
     }
 }

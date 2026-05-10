@@ -1,0 +1,337 @@
+@property --gate-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@property --gate-pulse-size {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 32%;
+}
+
+@property --gate-pulse-opacity {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0.4;
+}
+
+html.page-gate-pending body > :not(.page-access-gate-overlay),
+html.page-gate-failed body > :not(.page-access-gate-overlay) {
+  visibility: hidden !important;
+}
+
+.page-access-gate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, rgb(255 255 255 / 0.96) 0 18%, rgb(247 249 252 / 0.96) 42%, #eef2f6 100%),
+    linear-gradient(135deg, #fbfcff, #edf7f3 48%, #f7f0ee);
+  color: #172033;
+  font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+  visibility: visible !important;
+}
+
+.page-access-gate-shell {
+  display: grid;
+  justify-items: center;
+  gap: 22px;
+  width: min(440px, 100%);
+  text-align: center;
+}
+
+.page-access-gate-visual {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(172px, 36vw, 248px);
+  aspect-ratio: 1;
+  isolation: isolate;
+}
+
+.page-access-gate-aura,
+.page-access-gate-ring,
+.page-access-gate-core {
+  position: absolute;
+  border-radius: 999px;
+}
+
+.page-access-gate-aura {
+  inset: 0;
+  --gate-pulse-size: 30%;
+  --gate-pulse-opacity: 0.42;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgb(23 160 134 / var(--gate-pulse-opacity)) 0,
+      rgb(43 145 216 / 0.28) var(--gate-pulse-size),
+      rgb(231 109 72 / 0.2) calc(var(--gate-pulse-size) + 18%),
+      transparent 72%
+    ),
+    conic-gradient(from var(--gate-angle), #20b486, #2878d5, #e85f6a, #f2b84b, #20b486);
+  filter: blur(18px) saturate(1.18);
+  opacity: 0.62;
+  transform: scale(0.92);
+  animation:
+    page-gate-angle 2.7s linear infinite,
+    page-gate-aura-pulse 1.7s ease-in-out infinite;
+  z-index: 0;
+}
+
+.page-access-gate-ring {
+  z-index: 1;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+}
+
+.page-access-gate-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--gate-angle),
+    transparent 0 12%,
+    #20b486 18%,
+    #2878d5 42%,
+    transparent 56%,
+    #f2b84b 72%,
+    #e85f6a 88%,
+    transparent 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.page-access-gate-ring-device {
+  inset: 9%;
+  opacity: 1;
+  animation: page-gate-angle 1.35s linear infinite;
+}
+
+.page-access-gate-ring-session {
+  inset: 22%;
+  opacity: 0.34;
+  transform: rotate(18deg) scale(0.92);
+  animation: page-gate-angle 1.9s linear infinite reverse;
+}
+
+.page-access-gate-core {
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34%;
+  aspect-ratio: 1;
+  background:
+    radial-gradient(circle at 50% 38%, #ffffff 0 23%, #dff9ee 42%, #97d7c3 100%);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.82) inset,
+    0 16px 40px rgb(22 86 96 / 0.16),
+    0 0 46px rgb(32 180 134 / 0.36);
+}
+
+.page-access-gate-core-dot {
+  display: block;
+  width: 28%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: #172033;
+  box-shadow:
+    0 0 0 7px rgb(255 255 255 / 0.9),
+    0 0 28px rgb(40 120 213 / 0.36);
+}
+
+.page-access-gate-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: min(360px, 100%);
+}
+
+.page-access-gate-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid rgb(23 32 51 / 0.1);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.62);
+  color: #637086;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-align: left;
+  box-shadow: 0 10px 32px rgb(23 32 51 / 0.05);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.page-access-gate-step-mark {
+  width: 16px;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  border: 2px solid #c8d1dc;
+  background: #ffffff;
+}
+
+.page-access-gate-step.is-active {
+  border-color: rgb(32 180 134 / 0.42);
+  background: rgb(255 255 255 / 0.86);
+  color: #172033;
+  transform: translateY(-1px);
+}
+
+.page-access-gate-step.is-active .page-access-gate-step-mark {
+  border-color: #20b486;
+  border-top-color: transparent;
+  animation: page-gate-step-spin 0.8s linear infinite;
+}
+
+.page-access-gate-step.is-done {
+  border-color: rgb(32 180 134 / 0.32);
+  color: #195b4f;
+}
+
+.page-access-gate-step.is-done .page-access-gate-step-mark {
+  border-color: #20b486;
+  background:
+    linear-gradient(135deg, transparent 0 43%, #ffffff 44% 58%, transparent 59%),
+    #20b486;
+}
+
+.page-access-gate-step.is-failed {
+  border-color: rgb(218 76 72 / 0.34);
+  color: #7d2e2b;
+}
+
+.page-access-gate-step.is-failed .page-access-gate-step-mark {
+  border-color: #da4c48;
+  background: #da4c48;
+}
+
+.page-access-gate-message {
+  min-height: 24px;
+  margin: 0;
+  color: #637086;
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 0;
+}
+
+.page-access-gate-shell.is-device-done .page-access-gate-ring-device::before,
+.page-access-gate-shell.is-session-done .page-access-gate-ring::before {
+  background: conic-gradient(from var(--gate-angle), #20b486, #7ad6ba, #20b486);
+}
+
+.page-access-gate-shell.is-session-checking .page-access-gate-ring-device {
+  opacity: 0.38;
+  animation-duration: 2.2s;
+}
+
+.page-access-gate-shell.is-session-checking .page-access-gate-ring-session {
+  opacity: 1;
+  transform: rotate(18deg) scale(1);
+  animation-duration: 1.05s;
+}
+
+.page-access-gate-shell.is-session-done .page-access-gate-aura {
+  background:
+    radial-gradient(circle, rgb(32 180 134 / 0.48) 0 28%, rgb(122 214 186 / 0.28) 45%, transparent 72%);
+  animation: page-gate-complete-pulse 520ms ease-out both;
+}
+
+html.page-gate-failed .page-access-gate-aura {
+  background:
+    radial-gradient(circle, rgb(218 76 72 / 0.4) 0 24%, rgb(242 184 75 / 0.2) 45%, transparent 72%);
+  animation: none;
+}
+
+html.page-gate-failed .page-access-gate-ring {
+  animation: none;
+}
+
+html.page-gate-failed .page-access-gate-ring::before {
+  background: conic-gradient(from 0deg, #da4c48, transparent 42%, #f2b84b, transparent 78%, #da4c48);
+}
+
+html:not(.page-gate-pending):not(.page-gate-failed) .page-access-gate-overlay {
+  display: none !important;
+}
+
+@keyframes page-gate-angle {
+  to {
+    --gate-angle: 360deg;
+  }
+}
+
+@keyframes page-gate-aura-pulse {
+  0%,
+  100% {
+    --gate-pulse-size: 30%;
+    --gate-pulse-opacity: 0.38;
+    transform: scale(0.9);
+  }
+
+  50% {
+    --gate-pulse-size: 52%;
+    --gate-pulse-opacity: 0.56;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes page-gate-complete-pulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.62;
+  }
+
+  100% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+}
+
+@keyframes page-gate-step-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 420px) {
+  .page-access-gate-overlay {
+    padding: 20px;
+  }
+
+  .page-access-gate-shell {
+    gap: 18px;
+  }
+
+  .page-access-gate-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-access-gate-aura,
+  .page-access-gate-ring,
+  .page-access-gate-step.is-active .page-access-gate-step-mark {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

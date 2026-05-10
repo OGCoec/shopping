@@ -91,7 +91,7 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
                 requestedAt
         );
         userLoginIdentityMapper.updateStatusByUserIdAt(identity.getUserId(), STATUS_DISABLED, requestedAt);
-        return new MailTarget(identity.getUserId(), email);
+        return new MailTarget(identity.getUserId(), email, phone);
     }
 
     @Override
@@ -101,7 +101,10 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
         int safeLimit = Math.max(1, Math.min(limit, 500));
         return userAccountSelfDeletionMapper.completeDueSelfDeletionsBatch(safeCutoff, safeLimit)
                 .stream()
-                .map(target -> new MailTarget(target.getUserId(), normalizeEmail(target.getEmail())))
+                .map(target -> new MailTarget(
+                        target.getUserId(),
+                        normalizeEmail(target.getEmail()),
+                        normalizePhone(target.getPhone())))
                 .toList();
     }
 
@@ -119,6 +122,17 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String normalizePhone(String phone) {
+        String normalized = normalizeText(phone);
+        if (StrUtil.isBlank(normalized)) {
+            return null;
+        }
+        return normalized.replace(" ", "")
+                .replace("-", "")
+                .replace("(", "")
+                .replace(")", "");
     }
 
     private String normalizeReason(String reason) {

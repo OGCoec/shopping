@@ -63,5 +63,16 @@
     }
   }
 
-  loadUser();
+  async function startPage() {
+    const pageGate = window.ShoppingPageAccessGate;
+    if (pageGate?.ready) {
+      const allowed = await pageGate.ready();
+      if (!allowed) {
+        return;
+      }
+    }
+    loadUser();
+  }
+
+  startPage();
 })();

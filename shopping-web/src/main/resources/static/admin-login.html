@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>管理员登录 - Shopping System</title>
+  <link rel="icon" href="/favicon.ico" />
+  <script>
+    (function () {
+      var key = "shopping:admin:parti-morph:pending:v1";
+      try {
+        if (sessionStorage.getItem(key) === "1") {
+          document.documentElement.classList.add("admin-morph-pending");
+          window.setTimeout(function () {
+            document.documentElement.classList.remove("admin-morph-pending");
+            try {
+              sessionStorage.removeItem(key);
+            } catch (_) {
+            }
+          }, 6000);
+        }
+      } catch (_) {
+      }
+    })();
+  </script>
+  <link rel="modulepreload" href="/error/three.module.min.js" />
+  <link rel="modulepreload" href="/error/three.core.min.js" />
+  <link rel="stylesheet" href="/fonts/noto-sans-sc/noto-sans-sc.css" />
+  <link rel="stylesheet" href="/css/admin-auth.css?v=4" />
+  <script defer src="/js/admin/admin-api.js"></script>
+  <script defer src="/js/vendor/html2canvas.min.js"></script>
+  <script defer src="/js/admin/admin-particle-transition.js?v=9"></script>
+  <script defer src="/js/admin/admin-login.js?v=2"></script>
+</head>
+<body>
+  <main class="admin-auth-shell">
+    <section class="admin-auth-panel">
+      <form id="admin-login-form" class="admin-auth-card admin-login-card" data-admin-source data-admin-target>
+        <div class="admin-auth-mark" aria-hidden="true"></div>
+        <header class="admin-auth-header">
+          <p>Shopping System</p>
+          <h1>管理员登录</h1>
+        </header>
+
+        <label class="admin-field">
+          <span>用户名 / 邮箱 / 手机号</span>
+          <input id="admin-login-identifier" type="text" autocomplete="username" required />
+        </label>
+
+        <label class="admin-field">
+          <span>密码</span>
+          <input id="admin-login-password" type="password" autocomplete="current-password" required />
+        </label>
+
+        <p id="admin-login-status" class="admin-status" role="status" aria-live="polite"></p>
+
+        <button id="admin-login-submit" class="admin-primary-button" type="submit">登录</button>
+      </form>
+    </section>
+  </main>
+
+</body>
+</html>

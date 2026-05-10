@@ -26,6 +26,7 @@ public class SecurityConfig {
             "/index.html",
             "/favicon.ico",
             "/shopping/**",
+            "/shopping/admin/**",
             "/oauth2/**",
             "/login/oauth2/code/**",
             "/css/**",
@@ -46,6 +47,9 @@ public class SecurityConfig {
             "/favicon.ico",
             "/shopping/user/log-in",
             "/shopping/user/log-in/password",
+            "/shopping/user/lojin",
+            "/shopping/user/firstlogin",
+            "/shopping/admin/**",
             "/shopping/user/login",
             "/shopping/user/login/**",
             "/shopping/user/create-account",
@@ -67,6 +71,7 @@ public class SecurityConfig {
             "/shopping/auth/preauth/phone-validate",
             "/shopping/auth/waf/verify",
             "/shopping/user/auth/me",
+            "/shopping/user/session/page-gate",
             "/shopping/user/auth/refresh",
             "/shopping/user/auth/logout",
             "/shopping/user/auth/logout-all",
@@ -151,6 +156,7 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .ignoringRequestMatchers(
                                 "/shopping/auth/preauth/**",
+                                "/shopping/admin/**",
                                 "/shopping/user/forgot-password",
                                 "/shopping/user/forgot-password/**"
                         ))

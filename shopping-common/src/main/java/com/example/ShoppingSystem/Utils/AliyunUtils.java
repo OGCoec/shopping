@@ -1,7 +1,10 @@
 package com.example.ShoppingSystem.Utils;
 
 import cn.hutool.core.util.StrUtil;
+import com.aliyun.auth.credentials.Credential;
 import com.aliyun.auth.credentials.provider.EnvironmentVariableCredentialProvider;
+import com.aliyun.auth.credentials.provider.ICredentialProvider;
+import com.aliyun.auth.credentials.provider.StaticCredentialProvider;
 import com.aliyun.core.http.HttpClient;
 import com.aliyun.core.http.ProxyOptions;
 import com.aliyun.httpcomponent.httpclient.ApacheAsyncHttpClientBuilder;
@@ -42,22 +45,28 @@ public class AliyunUtils {
     private final boolean smsProxyEnabled;
     private final String smsProxyHost;
     private final int smsProxyPort;
+    private final String smsAccessKeyId;
+    private final String smsAccessKeySecret;
 
     public AliyunUtils(LocalProxyResolver localProxyResolver,
                        @Value("${aliyun.sms.proxy.enabled:true}") boolean smsProxyEnabled,
                        @Value("${aliyun.sms.proxy.host:127.0.0.1}") String smsProxyHost,
-                       @Value("${aliyun.sms.proxy.port:7892}") int smsProxyPort) {
+                       @Value("${aliyun.sms.proxy.port:7892}") int smsProxyPort,
+                       @Value("${aliyun.sms.access-key-id:}") String smsAccessKeyId,
+                       @Value("${aliyun.sms.access-key-secret:}") String smsAccessKeySecret) {
         this.localProxyResolver = localProxyResolver;
         this.smsProxyEnabled = smsProxyEnabled;
         this.smsProxyHost = smsProxyHost;
         this.smsProxyPort = smsProxyPort;
+        this.smsAccessKeyId = smsAccessKeyId;
+        this.smsAccessKeySecret = smsAccessKeySecret;
     }
 
     public void sendSmsVerifyCode(String telephoneNumber,
                                   String templateCode,
                                   String code,
                                   String time) throws Exception {
-        EnvironmentVariableCredentialProvider provider = new EnvironmentVariableCredentialProvider();
+        ICredentialProvider provider = resolveSmsCredentialProvider();
 
         var clientBuilder = AsyncClient.builder()
                 .region("cn-hangzhou")
@@ -110,6 +119,18 @@ public class AliyunUtils {
                 .maxIdleTimeOut(Duration.ofSeconds(50))
                 .proxy(new ProxyOptions(ProxyOptions.Type.HTTP, proxyAddress))
                 .build();
+    }
+
+    private ICredentialProvider resolveSmsCredentialProvider() {
+        if (StrUtil.isNotBlank(smsAccessKeyId) && StrUtil.isNotBlank(smsAccessKeySecret)) {
+            return StaticCredentialProvider.create(
+                    Credential.builder()
+                            .accessKeyId(smsAccessKeyId.trim())
+                            .accessKeySecret(smsAccessKeySecret.trim())
+                            .build()
+            );
+        }
+        return new EnvironmentVariableCredentialProvider();
     }
 
     public CompletableFuture<String> uploadFile(String objectKey, byte[] fileBytes) {

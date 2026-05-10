@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>管理员控制台 - Shopping System</title>
+  <link rel="icon" href="/favicon.ico" />
+  <script>
+    (function () {
+      var key = "shopping:admin:parti-morph:pending:v1";
+      try {
+        if (sessionStorage.getItem(key) === "1") {
+          document.documentElement.classList.add("admin-morph-pending");
+          window.setTimeout(function () {
+            document.documentElement.classList.remove("admin-morph-pending");
+            try {
+              sessionStorage.removeItem(key);
+            } catch (_) {
+            }
+          }, 6000);
+        }
+      } catch (_) {
+      }
+    })();
+  </script>
+  <link rel="modulepreload" href="/error/three.module.min.js" />
+  <link rel="modulepreload" href="/error/three.core.min.js" />
+  <link rel="stylesheet" href="/fonts/noto-sans-sc/noto-sans-sc.css" />
+  <link rel="stylesheet" href="/css/admin-auth.css?v=15" />
+  <script defer src="/js/admin/admin-api.js"></script>
+  <script defer src="/js/vendor/html2canvas.min.js"></script>
+  <script defer src="/js/admin/admin-particle-transition.js?v=9"></script>
+  <script defer src="/js/admin/admin-console.js?v=24"></script>
+</head>
+<body class="admin-console-body">
+  <main class="admin-split-console" data-admin-source>
+    <aside class="admin-sidebar" data-admin-target data-admin-target-mode="difference">
+      <div class="admin-sidebar-brand">
+        <span class="admin-brand-mark" aria-hidden="true"></span>
+        <div>
+          <strong>Shopping System</strong>
+          <small>Admin Console</small>
+        </div>
+      </div>
+
+      <nav class="admin-side-menu" aria-label="管理员模块">
+        <button class="admin-side-item is-active" type="button" data-section-target="overview">
+          <span>管理概览</span>
+          <small>Dashboard</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="externalInterfaces">
+          <span>外部接口管理</span>
+          <small>External APIs</small>
+        </button>
+      </nav>
+
+      <section class="admin-sidebar-account">
+        <span>当前管理员</span>
+        <strong id="admin-console-account">管理员</strong>
+        <button id="admin-console-logout" class="admin-nav-button admin-spring-button" type="button">退出</button>
+      </section>
+    </aside>
+
+    <section class="admin-main" data-admin-target data-admin-target-mode="solid">
+      <header class="admin-console-hero">
+        <div>
+          <p class="admin-section-eyebrow" id="admin-section-eyebrow">Dashboard</p>
+          <h1 id="admin-section-title">管理概览</h1>
+          <span id="admin-section-copy">查看管理员身份、登录状态和核心管理入口。</span>
+        </div>
+        <div class="admin-hero-status">
+          <span class="admin-status-pulse" aria-hidden="true"></span>
+          <strong>安全会话</strong>
+          <small>Redis Token Active</small>
+        </div>
+      </header>
+
+      <section class="admin-panel-stack">
+        <section class="admin-panel is-active" data-admin-panel="overview">
+          <div class="admin-console-grid">
+            <article class="admin-metric-card admin-console-card" data-detail-title="账号状态" data-detail-body="当前管理员账号已经激活，可以访问后台控制台。">
+              <span>账号状态</span>
+              <strong>ACTIVE</strong>
+              <small id="admin-console-email">-</small>
+            </article>
+            <article class="admin-metric-card admin-console-card" data-detail-title="安全手机号" data-detail-body="该手机号用于管理员安全联系、首次登录验证和重要操作确认。">
+              <span>手机号</span>
+              <strong id="admin-console-phone">-</strong>
+              <small>管理员安全联系信息</small>
+            </article>
+            <article class="admin-metric-card admin-console-card" data-detail-title="会话状态" data-detail-body="管理员会话由 HttpOnly Cookie 携带 Redis token，服务端按 token 校验登录态。">
+              <span>会话</span>
+              <strong>已登录</strong>
+              <small>当前浏览器会话有效</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="externalInterfaces">
+          <div class="admin-external-grid">
+            <article class="admin-external-card admin-console-card" data-section-target="oauth2">
+              <span>第三方登录</span>
+              <strong>OAuth2</strong>
+              <small>GitHub / Google / Microsoft</small>
+            </article>
+            <article class="admin-external-card admin-console-card" data-section-target="smtp">
+              <span>邮件服务</span>
+              <strong>SMTP</strong>
+              <small>QQ 邮箱验证码与通知</small>
+            </article>
+            <article class="admin-external-card admin-console-card" data-section-target="captcha">
+              <span>第三方验证码</span>
+              <strong>Captcha</strong>
+              <small>Turnstile / hCaptcha / reCAPTCHA</small>
+            </article>
+            <article class="admin-external-card admin-console-card" data-section-target="sms">
+              <span>短信服务</span>
+              <strong>SMS</strong>
+              <small>Dypnsapi 手机验证码</small>
+            </article>
+            <article class="admin-external-card admin-console-card" data-section-target="oss">
+              <span>对象存储</span>
+              <strong>OSS</strong>
+              <small>头像和文件对象存储</small>
+            </article>
+            <article class="admin-external-card admin-console-card" data-section-target="ipRisk">
+              <span>当前使用 API</span>
+              <strong>Risk API</strong>
+              <small>IP2Location 与 iPing 降级</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="oauth2">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="externalInterfaces">返回外部接口管理</button>
+            <div class="admin-service-grid" aria-label="OAuth2 服务列表">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="oauth2Github">
+                <span>GitHub</span>
+                <strong>GitHub OAuth2 service</strong>
+                <small>GitHub third-party sign-in</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="oauth2Google">
+                <span>Google</span>
+                <strong>Google OAuth2 service</strong>
+                <small>Google third-party sign-in</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="oauth2Microsoft">
+                <span>Microsoft</span>
+                <strong>Microsoft OAuth2 service</strong>
+                <small>Microsoft account sign-in</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="oauth2Github">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="oauth2">返回 OAuth2</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>GitHub OAuth2 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <a class="admin-oauth-doc-link admin-spring-button" href="https://shopping6655.oss-cn-hongkong.aliyuncs.com/GitHub_OAuth2_ClientID_ClientSecret_%E8%8E%B7%E5%8F%96%E6%AD%A5%E9%AA%A4.docx" target="_blank" rel="noopener">获取步骤文档</a>
+                  <button id="admin-github-oauth-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-github-oauth-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 clientId 和 clientSecret。</p>
+              <div id="admin-github-oauth-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>clientId</span>
+                  <div>
+                    <strong id="admin-github-client-id-value">-</strong>
+                    <small id="admin-github-client-id-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>clientSecret</span>
+                  <div>
+                    <strong id="admin-github-client-secret-value">-</strong>
+                    <small id="admin-github-client-secret-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-github-oauth-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 clientId</span>
+                    <input id="admin-github-client-id-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 clientSecret</span>
+                    <input id="admin-github-client-secret-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，OAuth2 登录客户端重启应用后生效。</small>
+                  <button id="admin-github-oauth-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="oauth2Google">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="oauth2">返回 OAuth2</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>Google OAuth2 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <a class="admin-oauth-doc-link admin-spring-button" href="https://shopping6655.oss-cn-hongkong.aliyuncs.com/Google_OAuth2_ClientID_ClientSecret_%E8%8E%B7%E5%8F%96%E6%AD%A5%E9%AA%A4.docx" target="_blank" rel="noopener">获取步骤文档</a>
+                  <button id="admin-google-oauth-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-google-oauth-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 clientId 和 clientSecret。</p>
+              <div id="admin-google-oauth-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>clientId</span>
+                  <div>
+                    <strong id="admin-google-client-id-value">-</strong>
+                    <small id="admin-google-client-id-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>clientSecret</span>
+                  <div>
+                    <strong id="admin-google-client-secret-value">-</strong>
+                    <small id="admin-google-client-secret-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-google-oauth-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 clientId</span>
+                    <input id="admin-google-client-id-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 clientSecret</span>
+                    <input id="admin-google-client-secret-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，OAuth2 登录客户端重启应用后生效。</small>
+                  <button id="admin-google-oauth-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="oauth2Microsoft">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="oauth2">返回 OAuth2</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>Microsoft OAuth2 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <a class="admin-oauth-doc-link admin-spring-button" href="https://shopping6655.oss-cn-hongkong.aliyuncs.com/%E5%BE%AE%E8%BD%AFAzure_OAuth2_ClientID_ClientSecret_%E8%8E%B7%E5%8F%96%E6%AD%A5%E9%AA%A4.docx" target="_blank" rel="noopener">获取步骤文档</a>
+                  <button id="admin-microsoft-oauth-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-microsoft-oauth-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 clientId 和 clientSecret。</p>
+              <div id="admin-microsoft-oauth-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>clientId</span>
+                  <div>
+                    <strong id="admin-microsoft-client-id-value">-</strong>
+                    <small id="admin-microsoft-client-id-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>clientSecret</span>
+                  <div>
+                    <strong id="admin-microsoft-client-secret-value">-</strong>
+                    <small id="admin-microsoft-client-secret-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-microsoft-oauth-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 clientId</span>
+                    <input id="admin-microsoft-client-id-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 clientSecret</span>
+                    <input id="admin-microsoft-client-secret-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，OAuth2 登录客户端重启应用后生效。</small>
+                  <button id="admin-microsoft-oauth-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="smtp">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="externalInterfaces">返回外部接口管理</button>
+            <p id="admin-smtp-provider-status" class="admin-oauth-config-status">正在读取当前 SMTP 服务商...</p>
+            <div class="admin-service-grid" aria-label="SMTP 服务商列表">
+              <button id="admin-smtp-provider-qq" class="admin-service-card admin-console-card" type="button" data-smtp-provider="qq" data-section-target="smtpQq">
+                <span>QQ</span>
+                <em class="admin-smtp-current-badge" hidden>当前使用</em>
+                <strong>QQ 邮箱 SMTP</strong>
+                <small>QQ 邮箱验证码与通知发送</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="smtpQq">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="smtp">返回 SMTP</button>
+            <div class="admin-oauth-config-card admin-smtp-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>QQ 邮箱 SMTP 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-smtp-qq-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-smtp-qq-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的 QQ 邮箱 SMTP 相关配置。</p>
+              <div id="admin-smtp-qq-config-fields" class="admin-oauth-config-fields" hidden></div>
+              <form id="admin-smtp-qq-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 username</span>
+                    <input id="admin-smtp-qq-username-input" type="email" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 password</span>
+                    <input id="admin-smtp-qq-password-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，需要后端以管理员身份运行，重启应用后 SMTP 客户端生效。</small>
+                  <button id="admin-smtp-qq-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="captcha">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="externalInterfaces">返回外部接口管理</button>
+            <div class="admin-service-grid" aria-label="验证码类型列表">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="captchaTurnstile">
+                <span>Cloudflare</span>
+                <strong>Cloudflare Turnstile</strong>
+                <small>旋转阀门验证</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="captchaRecaptcha">
+                <span>Google</span>
+                <strong>Google reCAPTCHA</strong>
+                <small>reCAPTCHA v2 验证</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="captchaHcaptcha">
+                <span>hCaptcha</span>
+                <strong>hCaptcha</strong>
+                <small>hCaptcha 验证</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="captchaTurnstile">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="captcha">返回第三方验证码</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>Cloudflare Turnstile 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-captcha-turnstile-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-captcha-turnstile-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 siteKey 和 secretKey。</p>
+              <div id="admin-captcha-turnstile-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>siteKey</span>
+                  <div>
+                    <strong id="admin-captcha-turnstile-site-key-value">-</strong>
+                    <small id="admin-captcha-turnstile-site-key-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>secretKey</span>
+                  <div>
+                    <strong id="admin-captcha-turnstile-secret-key-value">-</strong>
+                    <small id="admin-captcha-turnstile-secret-key-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-captcha-turnstile-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 siteKey</span>
+                    <input id="admin-captcha-turnstile-site-key-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 secretKey</span>
+                    <input id="admin-captcha-turnstile-secret-key-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存会写入 Windows 系统环境变量，需要以管理员身份运行 Spring Boot；重启应用后验证码服务生效。</small>
+                  <button id="admin-captcha-turnstile-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="captchaRecaptcha">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="captcha">返回第三方验证码</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>Google reCAPTCHA 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-captcha-recaptcha-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-captcha-recaptcha-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 siteKey 和 secretKey。</p>
+              <div id="admin-captcha-recaptcha-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>siteKey</span>
+                  <div>
+                    <strong id="admin-captcha-recaptcha-site-key-value">-</strong>
+                    <small id="admin-captcha-recaptcha-site-key-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>secretKey</span>
+                  <div>
+                    <strong id="admin-captcha-recaptcha-secret-key-value">-</strong>
+                    <small id="admin-captcha-recaptcha-secret-key-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-captcha-recaptcha-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 siteKey</span>
+                    <input id="admin-captcha-recaptcha-site-key-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 secretKey</span>
+                    <input id="admin-captcha-recaptcha-secret-key-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存会写入 Windows 系统环境变量，需要以管理员身份运行 Spring Boot；重启应用后验证码服务生效。</small>
+                  <button id="admin-captcha-recaptcha-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="captchaHcaptcha">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="captcha">返回第三方验证码</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>hCaptcha 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-captcha-hcaptcha-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-captcha-hcaptcha-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 siteKey 和 secretKey。</p>
+              <div id="admin-captcha-hcaptcha-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>siteKey</span>
+                  <div>
+                    <strong id="admin-captcha-hcaptcha-site-key-value">-</strong>
+                    <small id="admin-captcha-hcaptcha-site-key-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>secretKey</span>
+                  <div>
+                    <strong id="admin-captcha-hcaptcha-secret-key-value">-</strong>
+                    <small id="admin-captcha-hcaptcha-secret-key-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-captcha-hcaptcha-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 siteKey</span>
+                    <input id="admin-captcha-hcaptcha-site-key-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 secretKey</span>
+                    <input id="admin-captcha-hcaptcha-secret-key-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存会写入 Windows 系统环境变量，需要以管理员身份运行 Spring Boot；重启应用后验证码服务生效。</small>
+                  <button id="admin-captcha-hcaptcha-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="sms">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="externalInterfaces">返回外部接口管理</button>
+            <div class="admin-service-grid" aria-label="短信服务列表">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="smsAliyun">
+                <span>Aliyun</span>
+                <strong>阿里云 Dypnsapi 短信服务</strong>
+                <small>手机号验证码发送</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="smsAliyun">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="sms">返回短信服务</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>阿里云 Dypnsapi 短信服务配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-aliyun-sms-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-aliyun-sms-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 accessKeyId 和 accessKeySecret。</p>
+              <div id="admin-aliyun-sms-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>accessKeyId</span>
+                  <div>
+                    <strong id="admin-aliyun-sms-access-key-id-value">-</strong>
+                    <small id="admin-aliyun-sms-access-key-id-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>accessKeySecret</span>
+                  <div>
+                    <strong id="admin-aliyun-sms-access-key-secret-value">-</strong>
+                    <small id="admin-aliyun-sms-access-key-secret-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-aliyun-sms-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 accessKeyId</span>
+                    <input id="admin-aliyun-sms-access-key-id-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 accessKeySecret</span>
+                    <input id="admin-aliyun-sms-access-key-secret-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，需要后端以管理员身份运行，重启应用后短信客户端生效。</small>
+                  <button id="admin-aliyun-sms-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="oss">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="externalInterfaces">返回外部接口管理</button>
+            <div class="admin-service-grid" aria-label="对象存储服务列表">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="ossAliyun">
+                <span>Aliyun</span>
+                <strong>阿里云 OSS 对象存储服务</strong>
+                <small>头像和文件对象存储</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="ossAliyun">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="oss">返回 OSS</button>
+            <div class="admin-oauth-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>阿里云 OSS 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-aliyun-oss-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-aliyun-oss-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 accessKeyId 和 accessKeySecret。</p>
+              <div id="admin-aliyun-oss-config-fields" class="admin-oauth-config-fields" hidden>
+                <div class="admin-oauth-config-row">
+                  <span>accessKeyId</span>
+                  <div>
+                    <strong id="admin-aliyun-oss-access-key-id-value">-</strong>
+                    <small id="admin-aliyun-oss-access-key-id-meta">-</small>
+                  </div>
+                </div>
+                <div class="admin-oauth-config-row">
+                  <span>accessKeySecret</span>
+                  <div>
+                    <strong id="admin-aliyun-oss-access-key-secret-value">-</strong>
+                    <small id="admin-aliyun-oss-access-key-secret-meta">-</small>
+                  </div>
+                </div>
+              </div>
+              <form id="admin-aliyun-oss-config-form" class="admin-oauth-config-form" hidden>
+                <div class="admin-oauth-config-inputs">
+                  <label>
+                    <span>新的 accessKeyId</span>
+                    <input id="admin-aliyun-oss-access-key-id-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+                  </label>
+                  <label>
+                    <span>新的 accessKeySecret</span>
+                    <input id="admin-aliyun-oss-access-key-secret-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，需要后端以管理员身份运行，重启应用后 OSS 客户端生效。</small>
+                  <button id="admin-aliyun-oss-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="ipRisk">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="externalInterfaces">返回外部接口管理</button>
+            <div class="admin-service-grid" aria-label="Risk API 服务列表">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="riskApiIp2Location">
+                <span>IP2Location</span>
+                <strong>IP2Location API</strong>
+                <small>https://api.ip2location.io/</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="riskApiIping">
+                <span>iPing</span>
+                <strong>iPing 降级 API</strong>
+                <small>https://api.iping.cc/v1/query</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="riskApiIp2Location">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="ipRisk">返回 Risk API</button>
+            <div class="admin-oauth-config-card admin-risk-api-key-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Redis quota keys</span>
+                  <strong>IP2Location API Keys</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-risk-api-ip2location-mail-tool-open" class="admin-ghost-button admin-spring-button" type="button">注册邮箱工具</button>
+                  <button id="admin-risk-api-ip2location-config-toggle" class="admin-ghost-button admin-spring-button" type="button" aria-expanded="false" aria-controls="admin-risk-api-ip2location-config-card">API 配置</button>
+                  <button id="admin-risk-api-ip2location-keys-load" class="admin-ghost-button admin-spring-button" type="button">刷新列表</button>
+                  <button id="admin-risk-api-ip2location-keys-delete" class="admin-ghost-button admin-spring-button" type="button">批量删除</button>
+                </div>
+              </div>
+              <p id="admin-risk-api-ip2location-keys-status" class="admin-oauth-config-status">API key 存在 Redis DB 2 的 quota key 中，不写入 Windows 环境变量。</p>
+              <div class="admin-risk-api-key-summary">
+                <div><span>Redis DB</span><strong id="admin-risk-api-ip2location-keys-db">-</strong></div>
+                <div><span>Key 前缀</span><strong id="admin-risk-api-ip2location-keys-prefix">-</strong></div>
+                <div><span>总剩余额度</span><strong id="admin-risk-api-ip2location-keys-total">-</strong></div>
+              </div>
+              <div id="admin-risk-api-ip2location-keys-list" class="admin-risk-api-key-list" hidden></div>
+              <form id="admin-risk-api-ip2location-keys-add-form" class="admin-oauth-config-form">
+                <div class="admin-risk-api-key-add-grid">
+                  <label class="admin-risk-api-key-textarea-label">
+                    <span>批量 API key</span>
+                    <textarea id="admin-risk-api-ip2location-keys-input" rows="6" spellcheck="false" placeholder="一行一个 API key"></textarea>
+                  </label>
+                  <label>
+                    <span>账户类型</span>
+                    <select id="admin-risk-api-ip2location-keys-account-type">
+                      <option value="STARTER">STARTER</option>
+                      <option value="FREE">FREE</option>
+                      <option value="PLUS">PLUS</option>
+                      <option value="SECURITY">SECURITY</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>剩余额度</span>
+                    <input id="admin-risk-api-ip2location-keys-quota" type="number" min="0" step="1" placeholder="留空使用账户默认额度" />
+                  </label>
+                </div>
+                <div class="admin-oauth-config-actions">
+                  <small>批量添加会一次写入 Redis，并替换同 API key 的旧 quota key。</small>
+                  <button id="admin-risk-api-ip2location-keys-add" class="admin-ghost-button admin-spring-button" type="submit">批量添加</button>
+                </div>
+              </form>
+            </div>
+            <div id="admin-risk-api-ip2location-config-card" class="admin-oauth-config-card admin-risk-api-config-card" hidden>
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>IP2Location API 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-risk-api-ip2location-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-risk-api-ip2location-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 IP2Location API 配置。</p>
+              <div id="admin-risk-api-ip2location-config-fields" class="admin-oauth-config-fields" hidden></div>
+              <form id="admin-risk-api-ip2location-config-form" class="admin-oauth-config-form" hidden>
+                <div id="admin-risk-api-ip2location-config-inputs" class="admin-oauth-config-inputs"></div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，需要后端以管理员身份运行，重启应用后 Risk API 客户端生效。</small>
+                  <button id="admin-risk-api-ip2location-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="riskApiIping">
+          <div class="admin-api-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="ipRisk">返回 Risk API</button>
+            <div class="admin-oauth-config-card admin-risk-api-config-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Configuration</span>
+                  <strong>iPing 降级 API 配置</strong>
+                </div>
+                <div class="admin-oauth-config-tools">
+                  <button id="admin-risk-api-iping-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+                </div>
+              </div>
+              <p id="admin-risk-api-iping-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 iPing 降级 API 配置。</p>
+              <div id="admin-risk-api-iping-config-fields" class="admin-oauth-config-fields" hidden></div>
+              <form id="admin-risk-api-iping-config-form" class="admin-oauth-config-form" hidden>
+                <div id="admin-risk-api-iping-config-inputs" class="admin-oauth-config-inputs"></div>
+                <div class="admin-oauth-config-actions">
+                  <small>保存后写入 Windows 系统环境变量，需要后端以管理员身份运行，重启应用后 Risk API 客户端生效。</small>
+                  <button id="admin-risk-api-iping-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </section>
+    </section>
+
+    <div id="admin-ip2location-mail-tool" class="admin-ip2location-mail-tool" aria-hidden="true" hidden>
+      <button class="admin-ip2location-mail-tool-backdrop" type="button" data-ip2location-mail-tool-close aria-label="关闭注册邮箱工具"></button>
+      <section class="admin-ip2location-mail-tool-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-ip2location-mail-tool-title">
+        <header class="admin-ip2location-mail-tool-header">
+          <div>
+            <span>IP2Location registration mail</span>
+            <strong id="admin-ip2location-mail-tool-title">注册邮箱工具</strong>
+          </div>
+          <button id="admin-ip2location-mail-tool-close" class="admin-detail-close admin-spring-button" type="button" aria-label="关闭注册邮箱工具">&times;</button>
+        </header>
+        <div class="admin-ip2location-mail-tool-grid">
+          <section class="admin-ip2location-mail-tool-panel">
+            <div class="admin-ip2location-mail-tool-panel-heading">
+              <div>
+                <span>Step 1</span>
+                <strong>批量鉴定是否注册过</strong>
+              </div>
+              <label>
+                <span>线程数</span>
+                <input id="admin-ip2location-mail-check-threads" type="number" min="1" max="16" step="1" value="4" />
+              </label>
+            </div>
+            <textarea id="admin-ip2location-mail-check-input" rows="7" spellcheck="false" placeholder="一行一个账号：email----password----client_id----refresh_token"></textarea>
+            <div class="admin-ip2location-mail-tool-actions">
+              <p id="admin-ip2location-mail-check-status" class="admin-oauth-config-status">用于判断邮箱里是否已有 IP2Location 发件痕迹。</p>
+              <button id="admin-ip2location-mail-check-run" class="admin-ghost-button admin-spring-button" type="button">开始鉴定</button>
+            </div>
+            <div class="admin-ip2location-mail-results">
+              <div>
+                <span>已注册</span>
+                <div id="admin-ip2location-mail-check-registered"></div>
+              </div>
+              <div>
+                <span>未注册</span>
+                <div id="admin-ip2location-mail-check-unregistered"></div>
+              </div>
+              <div>
+                <span>失败</span>
+                <div id="admin-ip2location-mail-check-failed"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="admin-ip2location-mail-tool-panel">
+            <div class="admin-ip2location-mail-tool-panel-heading">
+              <div>
+                <span>Step 2</span>
+                <strong>批量获取验证 URL</strong>
+              </div>
+              <label>
+                <span>线程数</span>
+                <input id="admin-ip2location-mail-verify-threads" type="number" min="1" max="16" step="1" value="4" />
+              </label>
+            </div>
+            <textarea id="admin-ip2location-mail-verify-input" rows="7" spellcheck="false" placeholder="最多 10 行：email----password----client_id----refresh_token"></textarea>
+            <div class="admin-ip2location-mail-tool-actions">
+              <p id="admin-ip2location-mail-verify-status" class="admin-oauth-config-status">用于读取 IP2Location 注册邮件里的验证 URL 和临牌。</p>
+              <button id="admin-ip2location-mail-verify-run" class="admin-ghost-button admin-spring-button" type="button">获取验证 URL</button>
+            </div>
+            <div class="admin-ip2location-mail-results">
+              <div>
+                <span>已找到 URL</span>
+                <div id="admin-ip2location-mail-verify-found"></div>
+              </div>
+              <div>
+                <span>未找到 URL</span>
+                <div id="admin-ip2location-mail-verify-not-found"></div>
+              </div>
+              <div>
+                <span>失败</span>
+                <div id="admin-ip2location-mail-verify-failed"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <aside class="admin-detail-drawer" aria-live="polite" aria-hidden="true">
+      <button class="admin-detail-close admin-spring-button" type="button" aria-label="关闭详情">&times;</button>
+      <span>模块详情</span>
+      <strong id="admin-detail-title">选择一个模块</strong>
+      <p id="admin-detail-body">点击右侧任意卡片查看详情。</p>
+    </aside>
+  </main>
+
+</body>
+</html>

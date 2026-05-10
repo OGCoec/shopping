@@ -204,10 +204,12 @@ public interface UserRiskProfileMapper {
                     metadata,
                     created_at
                 )
-                SELECT (((((EXTRACT(EPOCH FROM CAST(#{now} AS TIMESTAMPTZ)) * 1000)::BIGINT - 1767225600000) << 22)
-                         | (31::BIGINT << 17)
-                         | (CAST(#{lockCount} AS BIGINT) << 12)
-                         | numbered.event_sequence) AS id,
+                SELECT (
+                           (((EXTRACT(EPOCH FROM CAST(#{now} AS TIMESTAMPTZ)) * 1000)::BIGINT - 1767225600000) << 22)
+                           | (31::BIGINT << 17)
+                           | (CAST(#{lockCount} AS BIGINT) << 12)
+                           | numbered.event_sequence
+                       ) AS id,
                        numbered.user_id,
                        'AUTH_LOCK_RECOVERY',
                        numbered.score_before,

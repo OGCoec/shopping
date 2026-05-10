@@ -1,0 +1,7 @@
+admin:
+  initialized: true
+  username: root
+  email: a2962943171@gmail.com
+  phone: '18060978626'
+  passwordHash: $2a$10$o6ne6mu8Tt/mCU9YBC9wwunMfrfJem/fXT1pRAqlYrpp/XUGWaiEe
+  updatedAt: '2026-05-08T18:05:50.630976200-07:00'

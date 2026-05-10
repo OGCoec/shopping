@@ -1,14 +1,8 @@
 package com.example.ShoppingSystem.tools.ip2location.verify;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.net.http.HttpClient;
-import java.util.List;
 import java.util.Locale;
 
 /**
@@ -17,11 +11,7 @@ import java.util.Locale;
 public class Ip2LocationVerifyMailReaderMain {
 
     static {
-        try {
-            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
-            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
-        } catch (Exception ignored) {
-        }
+        Ip2LocationVerifyMailMainSupport.configureUtf8Console();
     }
 
     public static void main(String[] args) throws Exception {
@@ -29,21 +19,8 @@ public class Ip2LocationVerifyMailReaderMain {
         System.out.print("Enter credentials (email----password----client_id----refresh_token): ");
         String credentials = reader.readLine().trim();
 
-        Ip2LocationVerifyMailReaderService service = new Ip2LocationVerifyMailReaderService(
-                new ObjectMapper(),
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(12)).build(),
-                "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-                "imap-mail.outlook.com",
-                993,
-                "https://outlook.office.com/IMAP.AccessAsUser.All offline_access",
-                20,
-                List.of("Junk Email", "INBOX"),
-                "ip2location.io",
-                "ip2location",
-                "127.0.0.1",
-                7892,
-                0
-        );
+        Ip2LocationVerifyMailReaderService service =
+                Ip2LocationVerifyMailMainSupport.createMailReaderService();
 
         long startNanos = System.nanoTime();
         Ip2LocationVerifyMailReaderService.VerifyLinkReadResult result =

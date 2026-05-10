@@ -10,6 +10,7 @@ com\example\ShoppingSystem\service\user\auth\passwordreset\impl\PasswordResetSer
 com\example\ShoppingSystem\service\user\auth\risk\AuthRiskSnapshotService.class
 com\example\ShoppingSystem\service\user\auth\login\LoginFlowSessionService.class
 com\example\ShoppingSystem\service\user\auth\register\risk\impl\L6IpCountingBloomInitializerService$PageLoader.class
+com\example\ShoppingSystem\config\AsyncExecutorConfig.class
 com\example\ShoppingSystem\service\user\auth\phone\impl\PhoneVerifiedUserBloomInitListener.class
 com\example\ShoppingSystem\service\user\auth\totp\model\TotpSetupStartResult.class
 com\example\ShoppingSystem\service\user\auth\login\GoogleAuthService.class
@@ -42,6 +43,7 @@ com\example\ShoppingSystem\service\user\auth\register\model\RegisterCompletionRe
 com\example\ShoppingSystem\service\user\profile\impl\UserAccountDeletionMessagePublisherImpl.class
 com\example\ShoppingSystem\service\captcha\tianai\generator\SliderTemplateImageGenerator.class
 com\example\ShoppingSystem\config\PhoneBoundCountingBloomConfig.class
+com\example\ShoppingSystem\service\user\auth\register\RegisterWelcomeMailSender.class
 com\example\ShoppingSystem\service\user\auth\register\RegisterPhoneBindingService.class
 com\example\ShoppingSystem\service\captcha\tianai\interceptor\SelectiveTrackCaptchaInterceptor.class
 com\example\ShoppingSystem\service\user\auth\login\impl\UserPasswordLoginServiceImpl$1.class
@@ -59,6 +61,7 @@ com\example\ShoppingSystem\service\user\auth\phone\model\AuthenticatedPhoneBindi
 com\example\ShoppingSystem\service\user\auth\risk\IpRiskCacheInvalidator.class
 com\example\ShoppingSystem\service\user\auth\risk\UserAuthFailureRiskService.class
 com\example\ShoppingSystem\service\user\auth\login\impl\UserPasswordLoginServiceImpl.class
+com\example\ShoppingSystem\service\user\auth\register\impl\RegisterCompletionServiceImpl$1.class
 com\example\ShoppingSystem\service\user\auth\sms\impl\PhoneSmsRiskGateServiceImpl.class
 com\example\ShoppingSystem\service\user\auth\sms\mq\SmsCodeMessage.class
 com\example\ShoppingSystem\service\user\profile\mq\UserAccountDeletionMessageConsumer$1.class
@@ -134,6 +137,7 @@ com\example\ShoppingSystem\service\user\auth\phone\impl\PhoneBindingAvailability
 com\example\ShoppingSystem\config\RegisterEmailCodeRabbitProperties.class
 com\example\ShoppingSystem\service\user\auth\register\impl\RiskSnapshotService.class
 com\example\ShoppingSystem\service\user\profile\impl\UserAccountDeletionServiceImpl.class
+com\example\ShoppingSystem\service\user\auth\register\impl\RegisterWelcomeMailSenderImpl.class
 com\example\ShoppingSystem\service\user\auth\risk\DeviceRiskProfileWriteService.class
 com\example\ShoppingSystem\service\user\profile\impl\UserAvatarUploadMessagePublisherImpl.class
 com\example\ShoppingSystem\service\user\auth\register\model\RegisterCompletionResult$RegisterCompletionResultBuilder.class
@@ -213,6 +217,7 @@ com\example\ShoppingSystem\service\user\auth\phone\PhoneVerifiedUserLookupServic
 com\example\ShoppingSystem\service\user\auth\register\model\RegisterFlowSession.class
 com\example\ShoppingSystem\service\user\auth\sms\model\PhoneSmsRiskGateResult$PhoneSmsRiskGateResultBuilder.class
 com\example\ShoppingSystem\service\user\auth\register\RegisterPrecheckService.class
+com\example\ShoppingSystem\service\mail\ShoppingMailSender.class
 com\example\ShoppingSystem\service\user\auth\phone\PhoneBindingWriteService$PhoneBindingResult.class
 com\example\ShoppingSystem\service\user\auth\login\MicrosoftAuthService.class
 com\example\ShoppingSystem\service\user\auth\login\model\LoginFlowValidationResult.class

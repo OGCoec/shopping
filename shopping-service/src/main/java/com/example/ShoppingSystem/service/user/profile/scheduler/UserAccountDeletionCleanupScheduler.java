@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.service.user.profile.scheduler;
 
+import cn.hutool.core.util.StrUtil;
+import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
 import com.example.ShoppingSystem.service.user.profile.UserAccountDeletionMessagePublisher;
 import com.example.ShoppingSystem.service.user.profile.UserAccountDeletionService;
 import org.slf4j.Logger;
@@ -18,13 +20,16 @@ public class UserAccountDeletionCleanupScheduler {
 
     private final UserAccountDeletionService userAccountDeletionService;
     private final UserAccountDeletionMessagePublisher userAccountDeletionMessagePublisher;
+    private final PhoneBoundCountingBloomService phoneBoundCountingBloomService;
     private final int batchSize;
 
     public UserAccountDeletionCleanupScheduler(UserAccountDeletionService userAccountDeletionService,
                                                UserAccountDeletionMessagePublisher userAccountDeletionMessagePublisher,
+                                               PhoneBoundCountingBloomService phoneBoundCountingBloomService,
                                                @Value("${app.user-account-deletion.cleanup-batch-size:100}") int batchSize) {
         this.userAccountDeletionService = userAccountDeletionService;
         this.userAccountDeletionMessagePublisher = userAccountDeletionMessagePublisher;
+        this.phoneBoundCountingBloomService = phoneBoundCountingBloomService;
         this.batchSize = batchSize;
     }
 
@@ -43,6 +48,14 @@ public class UserAccountDeletionCleanupScheduler {
             return;
         }
         log.info("User account self deletion cleanup completed db batch, count={}, cutoff={}", targets.size(), cutoff);
+        List<String> phones = targets.stream()
+                .map(UserAccountDeletionService.MailTarget::phone)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .toList();
+        long removedPhones = phoneBoundCountingBloomService.removeVerifiedPhones(phones);
+        log.info("Phone-bound counting bloom cleanup completed, requested={}, removed={}",
+                phones.size(), removedPhones);
         for (UserAccountDeletionService.MailTarget target : targets) {
             try {
                 userAccountDeletionMessagePublisher.publishSelfDeletionCompleted(target.userId(), target.email());
