@@ -11,6 +11,8 @@ import com.example.ShoppingSystem.filter.preauth.support.PreAuthProperties;
 import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.mapper.UserProfileMapper;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteService;
+import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
+import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthLockStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -71,6 +73,7 @@ public class AuthTokenService {
     private final AuthTokenProperties properties;
     private final PreAuthProperties preAuthProperties;
     private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
+    private final UserAuthFailureRiskService userAuthFailureRiskService;
 
     public AuthTokenService(JwtUtils jwtUtils,
                             StringRedisTemplate stringRedisTemplate,
@@ -79,7 +82,8 @@ public class AuthTokenService {
                             UserProfileMapper userProfileMapper,
                             AuthTokenProperties properties,
                             PreAuthProperties preAuthProperties,
-                            DeviceRiskProfileWriteService deviceRiskProfileWriteService) {
+                            DeviceRiskProfileWriteService deviceRiskProfileWriteService,
+                            UserAuthFailureRiskService userAuthFailureRiskService) {
         this.jwtUtils = jwtUtils;
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
@@ -88,6 +92,7 @@ public class AuthTokenService {
         this.properties = properties;
         this.preAuthProperties = preAuthProperties;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
+        this.userAuthFailureRiskService = userAuthFailureRiskService;
     }
 
     public void issueLoginTokens(Long userId,
@@ -195,7 +200,14 @@ public class AuthTokenService {
                     "Refresh token has expired.");
         }
 
-        UserLoginIdentity identity = requireActiveIdentity(session.userId());
+        UserLoginIdentity identity;
+        try {
+            identity = requireActiveIdentity(session.userId());
+        } catch (AuthTokenException e) {
+            stringRedisTemplate.delete(refreshKey);
+            clearAuthCookies(response, request);
+            return AuthTokenRefreshResult.failed(e.status(), e.error(), e.getMessage());
+        }
         if (!StrUtil.equals(session.tokenVersion(), identity.getTokenVersion())) {
             stringRedisTemplate.delete(refreshKey);
             clearAuthCookies(response, request);
@@ -252,7 +264,15 @@ public class AuthTokenService {
         String cached = stringRedisTemplate.opsForValue().get(key);
         if (StrUtil.isNotBlank(cached)) {
             try {
-                return objectMapper.readValue(cached, AuthUserContext.class);
+                AuthUserContext cachedContext = objectMapper.readValue(cached, AuthUserContext.class);
+                UserLoginIdentity identity = requireActiveIdentity(userId);
+                if (StrUtil.equals(cachedContext.tokenVersion(), identity.getTokenVersion())
+                        && ACTIVE_STATUS.equals(cachedContext.status())) {
+                    return cachedContext;
+                }
+                AuthUserContext rebuiltContext = buildUserContext(identity, riskLevel);
+                saveUserContext(rebuiltContext);
+                return rebuiltContext;
             } catch (Exception ignored) {
                 stringRedisTemplate.delete(key);
             }
@@ -282,12 +302,36 @@ public class AuthTokenService {
                     "USER_NOT_FOUND",
                     "User does not exist.");
         }
+        UserAuthLockStatus lockStatus = userAuthFailureRiskService.checkAccountStatusAndLock(
+                userId,
+                identity.getStatus()
+        );
+        if (lockStatus.isBlocked()) {
+            throw new AuthTokenException(
+                    HttpServletResponse.SC_FORBIDDEN,
+                    resolveAccountBlockedError(lockStatus),
+                    resolveAccountBlockedMessage(lockStatus)
+            );
+        }
+        if ("LOCKED".equalsIgnoreCase(String.valueOf(identity.getStatus()))) {
+            identity.setStatus(ACTIVE_STATUS);
+        }
         if (!ACTIVE_STATUS.equals(identity.getStatus())) {
             throw new AuthTokenException(HttpServletResponse.SC_FORBIDDEN,
                     "USER_STATUS_ERROR",
                     "User is not active.");
         }
         return identity;
+    }
+
+    private String resolveAccountBlockedError(UserAuthLockStatus lockStatus) {
+        String reason = lockStatus == null ? null : StrUtil.blankToDefault(lockStatus.getReason(), "").trim();
+        return StrUtil.isBlank(reason) ? "USER_STATUS_ERROR" : reason;
+    }
+
+    private String resolveAccountBlockedMessage(UserAuthLockStatus lockStatus) {
+        String message = lockStatus == null ? null : StrUtil.blankToDefault(lockStatus.getMessage(), "").trim();
+        return StrUtil.isBlank(message) ? "User is not active." : message;
     }
 
     private AuthUserContext buildUserContext(UserLoginIdentity identity, String riskLevel) {

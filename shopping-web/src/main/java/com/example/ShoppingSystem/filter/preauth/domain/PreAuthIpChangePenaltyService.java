@@ -111,7 +111,11 @@ public class PreAuthIpChangePenaltyService {
                 appliedPenalty > 0 ? transition : existing.lastPenalizedIpTransition(),
                 appliedPenalty > 0 ? nowMillis : existing.lastPenaltyAtEpochMillis(),
                 appliedPenalty > 0 ? appliedPenalty : existing.lastPenaltyScore(),
-                appliedPenalty > 0 ? normalizeReason(decision.reason()) : existing.lastPenaltyReason()
+                appliedPenalty > 0 ? normalizeReason(decision.reason()) : existing.lastPenaltyReason(),
+                existing.webRtcIp(),
+                existing.webRtcStatus(),
+                existing.webRtcSeenAtEpochMillis(),
+                existing.webRtcMismatchCount()
         );
     }
 

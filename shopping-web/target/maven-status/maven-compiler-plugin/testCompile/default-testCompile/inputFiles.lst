@@ -1,0 +1,10 @@
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\admin\service\AdminLoginServiceTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\config\SchedulingErrorHandlerTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\controller\GlobalExceptionHandlerTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\DatabaseConnectionTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\filter\preauth\domain\PreAuthRiskStateSyncServiceTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\filter\preauth\domain\WebRtcIpConsistencyServiceTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\filter\preauth\PreAuthBindingServiceTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\quota\Ip2LocationQuotaBootstrapTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\quota\Ip2LocationQuotaLuaScriptTest.java
+C:\Users\damn\Desktop\shopping\shopping-web\src\test\java\com\example\ShoppingSystem\quota\Ip2LocationQuotaWriteInRedisTest.java

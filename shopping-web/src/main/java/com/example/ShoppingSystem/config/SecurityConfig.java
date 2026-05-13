@@ -3,6 +3,7 @@ package com.example.ShoppingSystem.config;
 import cn.hutool.core.util.IdUtil;
 import com.example.ShoppingSystem.security.OAuth2LoginFailureHandler;
 import com.example.ShoppingSystem.security.OAuth2LoginSuccessHandler;
+import com.example.ShoppingSystem.security.OAuth2PreAuthRiskFilter;
 import com.example.ShoppingSystem.security.RedisStateAuthorizationRequestRepository;
 import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Bean;
@@ -13,6 +14,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -33,6 +35,13 @@ public class SecurityConfig {
             "/js/**",
             "/images/**",
             "/fragments/**",
+            "/shopping/css/**",
+            "/shopping/js/**",
+            "/shopping/images/**",
+            "/shopping/fragments/**",
+            "/shopping/error/**",
+            "/shopping/fonts/**",
+            "/shopping/favicon.ico",
             "/webjars/**",
             "/v3/api-docs",
             "/v3/api-docs/**",
@@ -66,6 +75,7 @@ public class SecurityConfig {
             "/shopping/user/forgot-password/**",
             "/shopping/user/reset-password-url",
             "/shopping/user/reset-password-code",
+            "/shopping/auth/network-check-failed",
             "/shopping/auth/preauth/bootstrap",
             "/shopping/auth/preauth/phone-country",
             "/shopping/auth/preauth/phone-validate",
@@ -85,6 +95,13 @@ public class SecurityConfig {
             "/js/**",
             "/images/**",
             "/fragments/**",
+            "/shopping/css/**",
+            "/shopping/js/**",
+            "/shopping/images/**",
+            "/shopping/fragments/**",
+            "/shopping/error/**",
+            "/shopping/fonts/**",
+            "/shopping/favicon.ico",
             "/webjars/**",
             "/v3/api-docs",
             "/v3/api-docs/**",
@@ -135,7 +152,8 @@ public class SecurityConfig {
                                                       OAuth2LoginSuccessHandler successHandler,
                                                       OAuth2LoginFailureHandler failureHandler,
                                                       RedisStateAuthorizationRequestRepository redisStateAuthorizationRequestRepository,
-                                                      OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver) throws Exception {
+                                                      OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver,
+                                                      OAuth2PreAuthRiskFilter oauth2PreAuthRiskFilter) throws Exception {
         return http
                 .securityMatcher(APP_SECURITY_PATHS)
                 .authorizeHttpRequests(auth -> auth
@@ -151,6 +169,7 @@ public class SecurityConfig {
                                 .authorizationRequestRepository(redisStateAuthorizationRequestRepository))
                         .successHandler(successHandler)
                         .failureHandler(failureHandler))
+                .addFilterBefore(oauth2PreAuthRiskFilter, OAuth2AuthorizationRequestRedirectFilter.class)
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())

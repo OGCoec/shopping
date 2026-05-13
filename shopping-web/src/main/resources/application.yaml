@@ -326,6 +326,12 @@ app:
     ip-hourly-limit: ${SMS_CODE_IP_HOURLY_LIMIT:60}
     # 支持的手机号国家区号。
     supported-dial-code: ${SMS_CODE_SUPPORTED_DIAL_CODE:86}
+  # 风控封号账号身份表清理配置。
+  risk-terminated-identity-cleanup:
+    # 每 6 小时清理一次超过 7 天的 RISK_TERMINATED 原身份记录。
+    cron: ${RISK_TERMINATED_IDENTITY_CLEANUP_CRON:0 0 0/6 * * ?}
+    # 单次批量删除上限。
+    batch-size: ${RISK_TERMINATED_IDENTITY_CLEANUP_BATCH_SIZE:500}
 
 # 阿里云相关配置。
 aliyun:
@@ -480,8 +486,6 @@ login:
     enabled: true
     # 已绑定手机号 Counting Bloom 主 key。
     key: "login:phone:bound:cbf"
-    # 已绑定手机号成员辅助 key 前缀。
-    member-key-prefix: "login:phone:bound:member:"
     # 已绑定手机号 Counting Bloom 容量。
     capacity: 600000
     # 已绑定手机号 Counting Bloom 哈希函数数量。
@@ -502,8 +506,6 @@ login:
     enabled: true
     # 已验证手机号用户 Counting Bloom 主 key。
     key: "login:phone:verified-user:cbf"
-    # 已验证手机号用户成员辅助 key 前缀。
-    member-key-prefix: "login:phone:verified-user:member:"
     # 已验证手机号用户 Bloom 初始化完成标记 key。
     ready-key: "login:phone:verified-user:cbf:ready"
     # 已验证手机号用户查询缓存 key 前缀。
@@ -517,6 +519,28 @@ login:
     # 已验证手机号用户本地缓存最大条目数。
     local-cache-maximum-size: 200000
 
+# 风控封号邮箱 Counting Bloom 配置。
+risk:
+  terminated-account-email-counting-bloom:
+    # 是否启用封号邮箱 Counting Bloom。
+    enabled: true
+    # 封号邮箱 Counting Bloom key。
+    key: "risk:account:terminated:email:cbf"
+    # 封号邮箱 Counting Bloom 容量。
+    capacity: 600000
+    # 封号邮箱 Counting Bloom 哈希函数数量。
+    hash-count: 7
+    # 封号邮箱 Counting Bloom 单计数器字节数。
+    counter-bytes: 2
+    # 启动加载封号邮箱 hash 的分页大小。
+    page-size: 2000
+    # 异步写入 Bloom 核心线程数。
+    async-core-pool-size: 1
+    # 异步写入 Bloom 最大线程数。
+    async-max-pool-size: 2
+    # 异步写入 Bloom 队列容量。
+    async-queue-capacity: 1000
+
 # 注册链路配置。
 register:
   # 预登录绑定配置。
@@ -529,6 +553,8 @@ register:
     ttl-minutes: 180
     # 预登录绑定保留最近 IP 数量。
     recent-ip-limit: 3
+    trusted-exit-ip-groups:
+      - "47.129.194.36,2406:da18:8ae:ed00:4434:cdc3:a0ed:590a"
     # 预登录 token Cookie 名称。
     cookie-name: "PREAUTH_TOKEN"
     # 预登录 token Cookie 路径。
@@ -684,6 +710,15 @@ register:
       CAFFEINE: ""
       # 无来源时不额外执行写回动作。
       NONE: ""
+
+# PageHelper 分页插件配置。
+pagehelper:
+  # 当前项目使用 PostgreSQL。
+  helper-dialect: postgresql
+  # 管理端分页不自动修正页码，避免隐藏前端参数问题。
+  reasonable: false
+  # 不从 Mapper 方法参数自动推断分页参数，由 Service 显式调用 PageHelper。
+  support-methods-arguments: false
 
 # 用户认证 token 配置。
 shopping:

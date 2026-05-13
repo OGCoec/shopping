@@ -125,6 +125,108 @@ public interface IpReputationProfileMapper {
     Map<String, Object> findIpv6RiskCacheByIp(@Param("ip") String ip);
 
     /**
+     * 管理端分页读取 IPv4 信誉画像。
+     */
+    @Select("""
+            <script>
+            SELECT ip AS "ip",
+                   current_score AS "currentScore",
+                   country AS "country",
+                   region AS "region",
+                   city AS "city",
+                   asn AS "asn",
+                   provider_name AS "providerName",
+                   ip_type AS "ipType",
+                   is_datacenter AS "datacenter",
+                   is_vpn AS "vpn",
+                   is_proxy AS "proxy",
+                   is_tor AS "tor",
+                   source_provider AS "sourceProvider",
+                   last_seen_at AS "lastSeenAt",
+                   queried_at AS "queriedAt",
+                   expires_at AS "expiresAt"
+            FROM ipv4_reputation_profile
+            <where>
+                <if test="country != null and country != ''">
+                    UPPER(country) = #{country}
+                </if>
+                <if test="minScore != null">
+                    AND current_score &gt;= #{minScore}
+                </if>
+                <if test="maxScoreExclusive != null">
+                    AND current_score &lt; #{maxScoreExclusive}
+                </if>
+                <if test="ipQueryPattern != null and ipQueryPattern != ''">
+                    AND LOWER(ip) LIKE LOWER(#{ipQueryPattern})
+                </if>
+            </where>
+            ORDER BY current_score ASC,
+                     is_tor DESC,
+                     is_proxy DESC,
+                     is_vpn DESC,
+                     is_datacenter DESC,
+                     last_seen_at DESC NULLS LAST,
+                     queried_at DESC NULLS LAST,
+                     ip ASC
+            </script>
+            """)
+    List<Map<String, Object>> listIpv4AdminRiskProfiles(@Param("country") String country,
+                                                        @Param("minScore") Integer minScore,
+                                                        @Param("maxScoreExclusive") Integer maxScoreExclusive,
+                                                        @Param("ipQueryPattern") String ipQueryPattern);
+
+    /**
+     * 管理端分页读取 IPv6 信誉画像。
+     */
+    @Select("""
+            <script>
+            SELECT ip AS "ip",
+                   current_score AS "currentScore",
+                   country AS "country",
+                   region AS "region",
+                   city AS "city",
+                   asn AS "asn",
+                   provider_name AS "providerName",
+                   ip_type AS "ipType",
+                   is_datacenter AS "datacenter",
+                   is_vpn AS "vpn",
+                   is_proxy AS "proxy",
+                   is_tor AS "tor",
+                   source_provider AS "sourceProvider",
+                   last_seen_at AS "lastSeenAt",
+                   queried_at AS "queriedAt",
+                   expires_at AS "expiresAt"
+            FROM ipv6_reputation_profile
+            <where>
+                <if test="country != null and country != ''">
+                    UPPER(country) = #{country}
+                </if>
+                <if test="minScore != null">
+                    AND current_score &gt;= #{minScore}
+                </if>
+                <if test="maxScoreExclusive != null">
+                    AND current_score &lt; #{maxScoreExclusive}
+                </if>
+                <if test="ipQueryPattern != null and ipQueryPattern != ''">
+                    AND LOWER(ip) LIKE LOWER(#{ipQueryPattern})
+                </if>
+            </where>
+            ORDER BY current_score ASC,
+                     is_tor DESC,
+                     is_proxy DESC,
+                     is_vpn DESC,
+                     is_datacenter DESC,
+                     last_seen_at DESC NULLS LAST,
+                     queried_at DESC NULLS LAST,
+                     ip ASC
+            </script>
+            """)
+    List<Map<String, Object>> listIpv6AdminRiskProfiles(@Param("country") String country,
+                                                        @Param("minScore") Integer minScore,
+                                                        @Param("maxScoreExclusive") Integer maxScoreExclusive,
+                                                        @Param("ipQueryPattern") String ipQueryPattern);
+
+    /**
      * IPv4 画像 Upsert。
      */
     @Update("""
@@ -297,4 +399,40 @@ public interface IpReputationProfileMapper {
     Integer applyIpv6AutomationPenalty(@Param("ip") String ip,
                                        @Param("penaltyScore") int penaltyScore,
                                        @Param("seenAt") OffsetDateTime seenAt);
+
+    /**
+     * 管理端批量更新 IPv4 IP 分数（一次 SQL）。
+     */
+    @Update("""
+            <script>
+            UPDATE ipv4_reputation_profile
+            SET current_score = #{targetScore},
+                source_provider = COALESCE(source_provider, 'ADMIN'),
+                last_seen_at = NOW()
+            WHERE ip IN
+            <foreach item="ip" collection="ips" open="(" separator="," close=")">
+                #{ip}
+            </foreach>
+            </script>
+            """)
+    int batchUpdateIpv4Scores(@Param("ips") List<String> ips,
+                              @Param("targetScore") int targetScore);
+
+    /**
+     * 管理端批量更新 IPv6 IP 分数（一次 SQL）。
+     */
+    @Update("""
+            <script>
+            UPDATE ipv6_reputation_profile
+            SET current_score = #{targetScore},
+                source_provider = COALESCE(source_provider, 'ADMIN'),
+                last_seen_at = NOW()
+            WHERE ip IN
+            <foreach item="ip" collection="ips" open="(" separator="," close=")">
+                #{ip}
+            </foreach>
+            </script>
+            """)
+    int batchUpdateIpv6Scores(@Param("ips") List<String> ips,
+                              @Param("targetScore") int targetScore);
 }

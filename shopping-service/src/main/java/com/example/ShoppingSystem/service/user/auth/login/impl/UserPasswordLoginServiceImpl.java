@@ -25,6 +25,7 @@ import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingWriteServi
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneVerifiedUserLookupService;
 import com.example.ShoppingSystem.service.user.auth.risk.AutomationRiskGateService;
+import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
 import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskDecision;
 import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthFailureType;
@@ -103,6 +104,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
     private final PhoneVerifiedUserLookupService phoneVerifiedUserLookupService;
     private final UserAuthFailureRiskService userAuthFailureRiskService;
     private final AutomationRiskGateService automationRiskGateService;
+    private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
 
     public UserPasswordLoginServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
                                         LoginFlowSessionService loginFlowSessionService,
@@ -123,7 +125,8 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                                         PhoneBoundCountingBloomService phoneBoundCountingBloomService,
                                         PhoneVerifiedUserLookupService phoneVerifiedUserLookupService,
                                         UserAuthFailureRiskService userAuthFailureRiskService,
-                                        AutomationRiskGateService automationRiskGateService) {
+                                        AutomationRiskGateService automationRiskGateService,
+                                        TerminatedAccountEmailBloomService terminatedAccountEmailBloomService) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.loginFlowSessionService = loginFlowSessionService;
         this.loginChallengePolicy = loginChallengePolicy;
@@ -144,6 +147,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         this.phoneVerifiedUserLookupService = phoneVerifiedUserLookupService;
         this.userAuthFailureRiskService = userAuthFailureRiskService;
         this.automationRiskGateService = automationRiskGateService;
+        this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
     }
 
     @Override
@@ -165,6 +169,9 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
         if (StrUtil.hasBlank(normalizedDeviceFingerprint, normalizedPreAuthToken)) {
             return startFail("Login context is missing, please refresh and try again.");
+        }
+        if (terminatedAccountEmailBloomService.isTerminatedEmail(normalizedEmail)) {
+            return terminatedAccountStartResult();
         }
 
         UserLoginIdentity existingIdentity = userLoginIdentityMapper.findByEmail(normalizedEmail);
@@ -825,7 +832,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             markIdentityActiveAfterUnlock(identity);
             return null;
         }
-        return lockedStartResult(lockStatus.getRetryAfterMs());
+        return lockedStartResult(lockStatus);
     }
 
     private LoginVerificationResult blockedVerifyIfNecessary(UserLoginIdentity identity) {
@@ -840,7 +847,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             markIdentityActiveAfterUnlock(identity);
             return null;
         }
-        return lockedVerifyResult(lockStatus.getRetryAfterMs());
+        return lockedVerifyResult(lockStatus);
     }
 
     private LoginVerificationResult blockedVerifyIfNecessary(Long userId) {
@@ -874,7 +881,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         if (!lockStatus.isBlocked()) {
             return null;
         }
-        return lockedVerifyResult(lockStatus.getRetryAfterMs());
+        return lockedVerifyResult(lockStatus);
     }
 
     private String normalizeVerifiedPhone(String dialCode, String phoneNumber) {
@@ -1052,6 +1059,16 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .build();
     }
 
+    private LoginFlowStartResult lockedStartResult(UserAuthLockStatus lockStatus) {
+        return LoginFlowStartResult.builder()
+                .success(false)
+                .message(resolveLockMessage(lockStatus))
+                .step(LoginFlowStep.BLOCKED)
+                .redirectPath(LOGIN_PATH)
+                .retryAfterMs(lockStatus == null ? null : lockStatus.getRetryAfterMs())
+                .build();
+    }
+
     private LoginFlowStartResult automationBlockedStartResult(AutomationRiskDecision decision) {
         return LoginFlowStartResult.builder()
                 .success(false)
@@ -1059,6 +1076,15 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .step(LoginFlowStep.BLOCKED)
                 .redirectPath(LOGIN_PATH)
                 .retryAfterMs(decision == null ? null : decision.retryAfterMs())
+                .build();
+    }
+
+    private LoginFlowStartResult terminatedAccountStartResult() {
+        return LoginFlowStartResult.builder()
+                .success(false)
+                .message(TerminatedAccountEmailBloomService.MESSAGE_ACCOUNT_RISK_TERMINATED)
+                .step(LoginFlowStep.BLOCKED)
+                .redirectPath(LOGIN_PATH)
                 .build();
     }
 
@@ -1141,6 +1167,28 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .authenticated(false)
                 .retryAfterMs(retryAfterMs)
                 .build();
+    }
+
+    private LoginVerificationResult lockedVerifyResult(UserAuthLockStatus lockStatus) {
+        return LoginVerificationResult.builder()
+                .success(false)
+                .error(resolveLockReason(lockStatus))
+                .message(resolveLockMessage(lockStatus))
+                .step(LoginFlowStep.BLOCKED)
+                .redirectPath(LOGIN_PATH)
+                .authenticated(false)
+                .retryAfterMs(lockStatus == null ? null : lockStatus.getRetryAfterMs())
+                .build();
+    }
+
+    private String resolveLockReason(UserAuthLockStatus lockStatus) {
+        String reason = lockStatus == null ? null : normalizeText(lockStatus.getReason());
+        return reason == null ? ERROR_AUTH_LOCKED : reason;
+    }
+
+    private String resolveLockMessage(UserAuthLockStatus lockStatus) {
+        String message = lockStatus == null ? null : normalizeText(lockStatus.getMessage());
+        return message == null ? AUTH_LOCKED_MESSAGE : message;
     }
 
     private LoginVerificationResult smsSendFail(SmsCodeSendResult sendResult) {

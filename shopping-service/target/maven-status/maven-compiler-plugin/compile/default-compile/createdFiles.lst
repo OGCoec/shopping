@@ -47,6 +47,7 @@ com\example\ShoppingSystem\service\user\auth\register\RegisterWelcomeMailSender.
 com\example\ShoppingSystem\service\user\auth\register\RegisterPhoneBindingService.class
 com\example\ShoppingSystem\service\captcha\tianai\interceptor\SelectiveTrackCaptchaInterceptor.class
 com\example\ShoppingSystem\service\user\auth\login\impl\UserPasswordLoginServiceImpl$1.class
+com\example\ShoppingSystem\service\user\auth\risk\TerminatedAccountEmailBloomService$TerminatedAccountEmailLookupResult.class
 com\example\ShoppingSystem\service\user\auth\risk\DeviceL6CountingBloomDecisionService.class
 com\example\ShoppingSystem\config\UserAvatarRabbitProperties.class
 com\example\ShoppingSystem\service\user\auth\login\impl\GoogleAuthServiceImpl.class
@@ -87,6 +88,7 @@ com\example\ShoppingSystem\service\captcha\tianai\interceptor\rule\AdvancedTrack
 com\example\ShoppingSystem\service\captcha\tianai\interceptor\rule\TrackValidationRule.class
 com\example\ShoppingSystem\service\user\profile\UserAccountDeletionMessagePublisher.class
 com\example\ShoppingSystem\service\user\auth\risk\impl\UserAuthFailureRiskServiceImpl.class
+com\example\ShoppingSystem\service\user\auth\risk\scheduler\RiskTerminatedIdentityCleanupScheduler.class
 com\example\ShoppingSystem\service\user\auth\login\model\LoginFlowValidationError.class
 com\example\ShoppingSystem\service\captcha\tianai\generator\StrictConcatImageCaptchaGenerator.class
 com\example\ShoppingSystem\service\user\auth\login\impl\LoginChallengeSessionService.class
@@ -181,10 +183,12 @@ com\example\ShoppingSystem\service\user\auth\totp\model\TotpVerificationResult.c
 com\example\ShoppingSystem\service\user\auth\passwordreset\model\PasswordResetResult.class
 com\example\ShoppingSystem\service\user\auth\register\impl\RegisterPrecheckServiceImpl.class
 com\example\ShoppingSystem\service\user\auth\register\risk\impl\L6IpCountingBloomInitializerService.class
+com\example\ShoppingSystem\service\user\auth\risk\impl\TerminatedAccountEmailBloomServiceImpl.class
 com\example\ShoppingSystem\service\user\auth\register\risk\impl\IpL6CountingBloomDecisionService.class
 com\example\ShoppingSystem\service\user\auth\login\UserPasswordLoginService.class
 com\example\ShoppingSystem\service\captcha\tianai\generator\RatioWordClickImageCaptchaGeneratorProvider.class
 com\example\ShoppingSystem\service\user\auth\register\risk\impl\L6IpCountingBloomInitListener.class
+com\example\ShoppingSystem\service\user\auth\risk\TerminatedAccountEmailBloomService.class
 com\example\ShoppingSystem\service\user\profile\UserAccountDeletionService.class
 com\example\ShoppingSystem\service\user\auth\risk\model\UserAuthFailureType.class
 com\example\ShoppingSystem\service\user\auth\totp\UserTotpService.class
@@ -194,6 +198,7 @@ com\example\ShoppingSystem\config\SmsCodeProperties.class
 com\example\ShoppingSystem\service\user\profile\mq\UserAccountDeletionMessage.class
 com\example\ShoppingSystem\service\user\auth\passwordreset\model\PasswordResetCryptoKey.class
 com\example\ShoppingSystem\service\user\auth\sms\model\SmsCodeVerifyResult.class
+com\example\ShoppingSystem\config\TerminatedAccountEmailCountingBloomConfig.class
 com\example\ShoppingSystem\service\user\auth\register\mq\RegisterEmailCodeMessage.class
 com\example\ShoppingSystem\service\user\profile\mq\UserAccountDeletionMessage$UserAccountDeletionMessageBuilder.class
 com\example\ShoppingSystem\service\captcha\tianai\impl\TianaiCaptchaServiceImpl.class
@@ -205,6 +210,7 @@ com\example\ShoppingSystem\service\captcha\tianai\generator\RatioWordClickImageC
 com\example\ShoppingSystem\service\user\auth\register\RegisterCompletionService.class
 com\example\ShoppingSystem\service\user\auth\register\model\RegisterFlowSession$RegisterFlowSessionBuilder.class
 com\example\ShoppingSystem\service\user\auth\passwordreset\impl\PasswordResetServiceImpl$PasswordResetVerifiedPayload.class
+com\example\ShoppingSystem\config\TerminatedAccountEmailCountingBloomProperties.class
 com\example\ShoppingSystem\service\user\auth\register\impl\ChallengePolicy.class
 com\example\ShoppingSystem\service\user\auth\register\impl\RegisterFlowSessionServiceImpl.class
 com\example\ShoppingSystem\service\user\profile\UserAvatarUploadMessagePublisher.class
@@ -215,6 +221,7 @@ com\example\ShoppingSystem\service\user\profile\mq\UserAvatarUploadMessage$UserA
 com\example\ShoppingSystem\service\captcha\tianai\generator\StrictConcatImageCaptchaGeneratorProvider.class
 com\example\ShoppingSystem\service\user\auth\phone\PhoneVerifiedUserLookupService.class
 com\example\ShoppingSystem\service\user\auth\register\model\RegisterFlowSession.class
+com\example\ShoppingSystem\service\user\auth\risk\impl\TerminatedAccountEmailCountingBloomInitListener.class
 com\example\ShoppingSystem\service\user\auth\sms\model\PhoneSmsRiskGateResult$PhoneSmsRiskGateResultBuilder.class
 com\example\ShoppingSystem\service\user\auth\register\RegisterPrecheckService.class
 com\example\ShoppingSystem\service\mail\ShoppingMailSender.class

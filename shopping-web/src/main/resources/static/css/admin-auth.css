@@ -46,7 +46,8 @@ body {
     linear-gradient(160deg, #f4f7f4 0%, #edf3ef 54%, #f7f0e9 100%);
 }
 
-html.admin-morph-pending body {
+html.admin-morph-pending body,
+html.admin-session-checking body {
   overflow: hidden;
   background:
     linear-gradient(135deg, rgba(15, 139, 110, 0.08), transparent 34%),
@@ -54,21 +55,25 @@ html.admin-morph-pending body {
 }
 
 html.admin-morph-pending body::before,
-html.admin-morph-pending body::after {
+html.admin-morph-pending body::after,
+html.admin-session-checking body::before,
+html.admin-session-checking body::after {
   position: fixed;
   z-index: 2147482000;
   pointer-events: none;
   content: "";
 }
 
-html.admin-morph-pending body::before {
+html.admin-morph-pending body::before,
+html.admin-session-checking body::before {
   inset: 0;
   background:
     linear-gradient(135deg, rgba(15, 139, 110, 0.08), transparent 34%),
     linear-gradient(160deg, #f4f7f4 0%, #edf3ef 54%, #f7f0e9 100%);
 }
 
-html.admin-morph-pending body::after {
+html.admin-morph-pending body::after,
+html.admin-session-checking body::after {
   top: 50%;
   left: 50%;
   width: 76px;
@@ -85,7 +90,8 @@ html.admin-morph-pending body::after {
 
 html.admin-morph-pending .admin-auth-shell,
 html.admin-morph-pending .admin-console-shell,
-html.admin-morph-pending .admin-split-console {
+html.admin-morph-pending .admin-split-console,
+html.admin-session-checking .admin-split-console {
   visibility: hidden;
 }
 
@@ -1116,6 +1122,514 @@ html.admin-morph-pending .admin-split-console {
   grid-row: span 2;
 }
 
+.admin-credit-score-detail {
+  align-content: start;
+}
+
+.admin-risk-ip-card {
+  align-content: start;
+}
+
+.admin-risk-ip-current {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.admin-risk-ip-current span {
+  overflow-wrap: anywhere;
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.admin-risk-ip-current strong {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.admin-risk-ip-filter-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.15fr) minmax(160px, 0.62fr) minmax(180px, 0.85fr) minmax(100px, 0.38fr) minmax(170px, auto);
+  gap: 14px;
+  align-items: end;
+  min-width: 0;
+}
+
+.admin-risk-ip-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-risk-ip-field > span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.admin-risk-ip-field input,
+.admin-risk-ip-field select,
+.admin-risk-country-search {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.16);
+  border-radius: 8px;
+  padding: 12px 13px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--admin-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.admin-risk-ip-field input:focus,
+.admin-risk-ip-field select:focus,
+.admin-risk-country-search:focus {
+  border-color: rgba(50, 119, 77, 0.58);
+  box-shadow: 0 0 0 3px rgba(50, 119, 77, 0.12);
+}
+
+.admin-risk-country-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.admin-risk-country-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(21, 32, 24, 0.16);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--admin-ink);
+  text-align: left;
+}
+
+.admin-risk-country-trigger[aria-expanded="true"],
+.admin-risk-country-trigger:focus-visible {
+  border-color: rgba(50, 119, 77, 0.58);
+  box-shadow: 0 0 0 3px rgba(50, 119, 77, 0.12);
+  outline: none;
+}
+
+.admin-risk-country-trigger-main {
+  display: inline-grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.admin-risk-country-trigger-main .fi,
+.admin-risk-country-option .fi {
+  width: 22px;
+  height: 16px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(21, 32, 24, 0.1);
+}
+
+.admin-risk-country-flag {
+  display: inline-block;
+  width: 22px;
+  height: 16px;
+}
+
+.admin-risk-country-trigger-main span:last-child,
+.admin-risk-country-option-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-risk-country-dial,
+.admin-risk-country-option-code {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.admin-risk-country-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 14;
+  display: none;
+  width: min(360px, calc(100vw - 56px));
+  overflow: hidden;
+  border: 1px solid rgba(21, 32, 24, 0.14);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 42px rgba(26, 40, 31, 0.18);
+}
+
+.admin-risk-country-picker[data-open="true"] .admin-risk-country-popover {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-risk-country-search {
+  min-height: 42px;
+}
+
+.admin-risk-country-list {
+  display: grid;
+  gap: 4px;
+  max-height: 264px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-risk-country-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+
+.admin-risk-country-option-main {
+  display: inline-grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.admin-risk-country-option:hover,
+.admin-risk-country-option.is-highlighted {
+  background: rgba(232, 243, 236, 0.88);
+}
+
+.admin-risk-country-option[aria-selected="true"] {
+  color: var(--admin-green);
+}
+
+.admin-risk-country-empty {
+  padding: 12px 10px;
+  color: var(--admin-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-risk-ip-actions {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-risk-ip-actions .admin-nav-button,
+.admin-risk-ip-actions .admin-api-back {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.admin-risk-ip-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-risk-ip-summary div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.admin-risk-ip-summary span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.admin-risk-ip-summary strong {
+  overflow-wrap: anywhere;
+  color: var(--admin-ink);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.admin-risk-ip-list {
+  display: grid;
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.admin-risk-ip-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(100px, 0.42fr) minmax(150px, 0.58fr) minmax(170px, 0.72fr) minmax(170px, 0.78fr) minmax(170px, 0.75fr) minmax(90px, 0.35fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(21, 32, 24, 0.08);
+}
+
+.admin-risk-ip-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-risk-ip-row.is-header {
+  background: rgba(238, 244, 238, 0.72);
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-risk-ip-row span,
+.admin-risk-ip-row strong,
+.admin-risk-ip-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-risk-ip-row strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.admin-risk-ip-row span,
+.admin-risk-ip-row small {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.admin-risk-ip-country-cell {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-risk-ip-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-risk-ip-badge {
+  display: inline-flex;
+  min-height: 22px;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 4px;
+  padding: 2px 7px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+.admin-risk-ip-badge.is-risk {
+  border-color: rgba(180, 35, 24, 0.24);
+  background: rgba(255, 238, 235, 0.82);
+  color: #b42318;
+}
+
+.admin-risk-ip-empty {
+  padding: 32px 18px;
+  color: var(--admin-muted);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.admin-risk-ip-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-risk-ip-action-cell {
+  min-width: 0;
+}
+
+.admin-risk-ip-action-btn {
+  min-height: 32px;
+  border: 1px solid rgba(21, 32, 24, 0.12);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 180ms ease;
+}
+
+.admin-risk-ip-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.admin-risk-ip-action-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.admin-risk-ip-action-btn.is-remove {
+  border-color: rgba(15, 139, 110, 0.24);
+  color: var(--admin-green);
+}
+
+.admin-risk-ip-action-btn.is-remove:hover {
+  border-color: rgba(15, 139, 110, 0.45);
+  background: rgba(231, 247, 240, 0.82);
+}
+
+.admin-risk-ip-action-btn.is-add {
+  border-color: rgba(180, 35, 24, 0.2);
+  color: #b42318;
+}
+
+.admin-risk-ip-action-btn.is-add:hover {
+  border-color: rgba(180, 35, 24, 0.4);
+  background: rgba(255, 238, 235, 0.82);
+}
+
+.admin-risk-score-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(21, 32, 24, 0.38);
+  backdrop-filter: blur(4px);
+  animation: adminPanelIn 220ms ease both;
+}
+
+.admin-risk-score-dialog {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  border: 1px solid rgba(21, 32, 24, 0.12);
+  border-radius: 10px;
+  padding: 24px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 248, 0.92)),
+    var(--admin-panel-solid);
+  box-shadow:
+    0 30px 68px rgba(28, 45, 33, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.admin-risk-score-dialog > strong {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.admin-risk-score-ip {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--admin-muted);
+  word-break: break-all;
+}
+
+.admin-risk-score-field {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-risk-score-field > span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-risk-score-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.16);
+  border-radius: 8px;
+  padding: 12px 13px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--admin-ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.admin-risk-score-input:focus {
+  border-color: rgba(50, 119, 77, 0.58);
+  box-shadow: 0 0 0 3px rgba(50, 119, 77, 0.12);
+}
+
+.admin-risk-score-hint {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.admin-risk-score-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.admin-risk-shortcut-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 0 4px;
+}
+
+.admin-risk-shortcut-label {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-risk-shortcut-btn {
+  min-height: 36px;
+  font-size: 13px;
+}
+.admin-risk-ip-country-cell .fi {
+  width: 22px;
+  height: 16px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(21, 32, 24, 0.1);
+}
+
 .admin-ip2location-mail-tool {
   position: fixed;
   inset: 0;
@@ -1586,6 +2100,22 @@ html.admin-morph-pending .admin-split-console {
   .admin-side-item {
     min-width: 142px;
   }
+
+  .admin-risk-ip-filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-risk-ip-actions {
+    grid-column: span 2;
+  }
+
+  .admin-risk-ip-row {
+    grid-template-columns: minmax(150px, 1fr) minmax(90px, 0.42fr) minmax(140px, 0.58fr);
+  }
+
+  .admin-risk-ip-row > :nth-child(n+4) {
+    display: none;
+  }
 }
 
 @media (max-width: 760px) {
@@ -1647,6 +2177,10 @@ html.admin-morph-pending .admin-split-console {
     flex-direction: column;
   }
 
+  .admin-risk-ip-current {
+    justify-items: start;
+  }
+
   .admin-oauth-config-tools {
     justify-content: stretch;
     min-width: 0;
@@ -1681,9 +2215,20 @@ html.admin-morph-pending .admin-split-console {
   }
 
   .admin-risk-api-key-summary,
+  .admin-risk-ip-summary,
   .admin-risk-api-key-add-grid,
+  .admin-risk-ip-filter-form,
   .admin-ip2location-mail-tool-grid {
     grid-template-columns: 1fr;
+  }
+
+  .admin-risk-ip-actions {
+    grid-column: auto;
+    flex-direction: column;
+  }
+
+  .admin-risk-country-popover {
+    width: min(100%, calc(100vw - 48px));
   }
 
   .admin-ip2location-mail-tool {
@@ -1710,6 +2255,23 @@ html.admin-morph-pending .admin-split-console {
 
   .admin-risk-api-key-row.is-header {
     display: none;
+  }
+
+  .admin-risk-ip-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .admin-risk-ip-row.is-header {
+    display: none;
+  }
+
+  .admin-risk-ip-row > :nth-child(n+4) {
+    display: block;
+  }
+
+  .admin-risk-ip-pagination {
+    flex-direction: column;
   }
 
   .admin-oauth-config-actions {

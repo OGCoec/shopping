@@ -30,6 +30,12 @@ public final class PreAuthHeaders {
      */
     public static final String HEADER_DEVICE_FINGERPRINT = "X-Device-Fingerprint";
 
+    public static final String HEADER_WEBRTC_IP = "X-WebRTC-IP";
+
+    public static final String HEADER_WEBRTC_IPS = "X-WebRTC-IPs";
+
+    public static final String HEADER_WEBRTC_STATUS = "X-WebRTC-Status";
+
     /**
      * 预登录 token 的 Cookie 名称。
      * <p>

@@ -6,6 +6,7 @@ import com.example.ShoppingSystem.filter.preauth.domain.PreAuthBindingFactory;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthIpChangePenaltyService;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskService;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskStateSyncService;
+import com.example.ShoppingSystem.filter.preauth.domain.WebRtcIpConsistencyService;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBinding;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBootstrapOutcome;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthRiskProfile;
@@ -57,6 +58,7 @@ public class PreAuthBindingService {
     private final PreAuthBindingFactory bindingFactory;
     private final PreAuthIpChangePenaltyService ipChangePenaltyService;
     private final PreAuthRiskStateSyncService riskStateSyncService;
+    private final WebRtcIpConsistencyService webRtcIpConsistencyService;
 
     /**
      * 注入 preauth 流程所需的全部依赖。
@@ -69,7 +71,8 @@ public class PreAuthBindingService {
                                  PreAuthRiskService riskService,
                                  PreAuthBindingFactory bindingFactory,
                                  PreAuthIpChangePenaltyService ipChangePenaltyService,
-                                 PreAuthRiskStateSyncService riskStateSyncService) {
+                                 PreAuthRiskStateSyncService riskStateSyncService,
+                                 WebRtcIpConsistencyService webRtcIpConsistencyService) {
         this.properties = properties;
         this.requestResolver = requestResolver;
         this.cookieFactory = cookieFactory;
@@ -79,6 +82,7 @@ public class PreAuthBindingService {
         this.bindingFactory = bindingFactory;
         this.ipChangePenaltyService = ipChangePenaltyService;
         this.riskStateSyncService = riskStateSyncService;
+        this.webRtcIpConsistencyService = webRtcIpConsistencyService;
     }
 
     /**
@@ -139,6 +143,7 @@ public class PreAuthBindingService {
 
                 // 复用旧绑定时刷新上下文并刷新 Redis TTL。
                 PreAuthBinding refreshed = bindingFactory.refreshExistingBinding(existing, ip, normalizedFingerprint);
+                refreshed = webRtcIpConsistencyService.applyRequestState(refreshed, request);
                 bindingRepository.save(refreshed);
                 riskStateSyncService.syncAfterBindingSaved(existing, refreshed, request);
                 return PreAuthBootstrapOutcome.allowed(toSnapshot(refreshed));
@@ -153,6 +158,7 @@ public class PreAuthBindingService {
                 ip,
                 normalizedFingerprint
         );
+        created = webRtcIpConsistencyService.applyRequestState(created, request);
         bindingRepository.save(created);
         return PreAuthBootstrapOutcome.allowed(toSnapshot(created));
     }
@@ -250,6 +256,7 @@ public class PreAuthBindingService {
 
         // 校验通过后刷新绑定并续期，确保活跃上下文保持最新。
         PreAuthBinding updated = bindingFactory.refreshExistingBinding(existing, currentIp, normalizedFingerprint);
+        updated = webRtcIpConsistencyService.applyRequestState(updated, request);
         bindingRepository.save(updated);
         riskStateSyncService.syncAfterBindingSaved(existing, updated, request);
         return PreAuthValidationOutcome.valid(updated);
@@ -314,7 +321,11 @@ public class PreAuthBindingService {
                 existing.lastPenalizedIpTransition(),
                 existing.lastPenaltyAtEpochMillis(),
                 existing.lastPenaltyScore(),
-                existing.lastPenaltyReason()
+                existing.lastPenaltyReason(),
+                existing.webRtcIp(),
+                existing.webRtcStatus(),
+                existing.webRtcSeenAtEpochMillis(),
+                existing.webRtcMismatchCount()
         );
         bindingRepository.save(blocked);
         riskStateSyncService.forceClearDerivedState(blocked, request);
@@ -368,6 +379,7 @@ public class PreAuthBindingService {
             return;
         }
         PreAuthBinding refreshed = bindingFactory.refreshExistingBinding(existing, currentIp);
+        refreshed = webRtcIpConsistencyService.applyRequestState(refreshed, request);
         bindingRepository.save(refreshed);
         riskStateSyncService.syncAfterBindingSaved(existing, refreshed, request);
     }

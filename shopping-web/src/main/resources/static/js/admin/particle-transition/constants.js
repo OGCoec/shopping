@@ -14,7 +14,7 @@ export const SYNTHETIC_SOURCE_AREA_THRESHOLD = 560000;
 export const CAMERA_Z = 820;
 export const PLANE_Z = 0;
 export const BACKGROUND_DIFF_THRESHOLD = 0.018;
-export const THREE_MODULE_PATH = "/error/three.module.min.js";
+export const THREE_MODULE_PATH = "/shopping/error/three.module.min.js";
 
 export const PENDING_FALLBACK_MS = 2800;
 export const SOURCE_CAPTURE_TIMEOUT_MS = 180;

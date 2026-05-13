@@ -8,6 +8,7 @@ import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.mapper.UserRiskAccountTerminationMapper;
 import com.example.ShoppingSystem.mapper.UserRiskProfileMapper;
 import com.example.ShoppingSystem.redisdata.UserAuthRiskRedisKeys;
+import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
 import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthFailureType;
 import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthLockStatus;
@@ -34,6 +35,7 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
     private static final int SINGLE_FAILURE_LOCK_THRESHOLD = 8;
     private static final int TOTAL_FAILURE_LOCK_THRESHOLD = 15;
     private static final int DEFAULT_ENV_SCORE = 10000;
+    private static final int ACCOUNT_SCORE_L6_THRESHOLD = 3000;
     private static final String LOCK_MESSAGE =
             "For security reasons, this account is temporarily unavailable. Please try again later.";
     private static final String REASON_AUTH_FAIL_LOCK = "AUTH_FAIL_LOCK_30M";
@@ -49,17 +51,20 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
     private final UserRiskProfileMapper userRiskProfileMapper;
     private final UserLoginIdentityMapper userLoginIdentityMapper;
     private final UserRiskAccountTerminationMapper userRiskAccountTerminationMapper;
+    private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
     private final SnowflakeIdWorker snowflakeIdWorker;
 
     public UserAuthFailureRiskServiceImpl(StringRedisTemplate stringRedisTemplate,
                                           UserRiskProfileMapper userRiskProfileMapper,
                                           UserLoginIdentityMapper userLoginIdentityMapper,
                                           UserRiskAccountTerminationMapper userRiskAccountTerminationMapper,
+                                          TerminatedAccountEmailBloomService terminatedAccountEmailBloomService,
                                           SnowflakeIdWorker snowflakeIdWorker) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.userRiskProfileMapper = userRiskProfileMapper;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.userRiskAccountTerminationMapper = userRiskAccountTerminationMapper;
+        this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
         this.snowflakeIdWorker = snowflakeIdWorker;
     }
 
@@ -98,7 +103,12 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
             return blockedStatus(STATUS_RISK_TERMINATED, null, true);
         }
         if (STATUS_LOCKED.equals(status)) {
-            return checkLockedStatus(userId);
+            UserAuthLockStatus lockedStatus = checkLockedStatus(userId);
+            return lockedStatus.isBlocked() ? lockedStatus : checkAccountScore(userId);
+        }
+        UserAuthLockStatus scoreStatus = checkAccountScore(userId);
+        if (scoreStatus.isBlocked()) {
+            return scoreStatus;
         }
         return checkLock(userId);
     }
@@ -275,6 +285,28 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
                 .build();
     }
 
+    private UserAuthLockStatus checkAccountScore(Long userId) {
+        if (userId == null) {
+            return UserAuthLockStatus.allowed();
+        }
+        Map<String, Object> state = userRiskProfileMapper.findUserRiskStateByUserId(userId);
+        if (state == null || state.isEmpty()) {
+            return UserAuthLockStatus.allowed();
+        }
+        int currentScore = readInteger(state, "currentScore", DEFAULT_ENV_SCORE);
+        if (currentScore >= ACCOUNT_SCORE_L6_THRESHOLD) {
+            return UserAuthLockStatus.allowed();
+        }
+        return UserAuthLockStatus.builder()
+                .blocked(true)
+                .terminationRequired(false)
+                .retryAfterMs(null)
+                .message(MESSAGE_ACCOUNT_SCORE_L6_BLOCKED)
+                .status(REASON_ACCOUNT_SCORE_L6_BLOCKED)
+                .reason(REASON_ACCOUNT_SCORE_L6_BLOCKED)
+                .build();
+    }
+
     private void upsertRiskTermination(Long userId, OffsetDateTime now, String reason) {
         UserLoginIdentity identity = userLoginIdentityMapper.findByUserId(userId);
         if (identity == null) {
@@ -284,18 +316,20 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
         if (StrUtil.isBlank(email)) {
             return;
         }
+        String emailHash = sha256(email);
         String phone = Boolean.TRUE.equals(identity.getPhoneVerified()) ? normalizeText(identity.getPhone()) : null;
         userRiskAccountTerminationMapper.upsertRiskTermination(
                 snowflakeIdWorker.nextId(),
                 userId,
                 email,
-                sha256(email),
+                emailHash,
                 phone,
                 phone == null ? null : sha256(phone),
                 reason,
                 now,
                 now
         );
+        terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(emailHash);
     }
 
     private FailureWindowSnapshot readSnapshot(Long userId) {

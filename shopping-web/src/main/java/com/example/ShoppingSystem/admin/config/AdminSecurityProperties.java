@@ -15,6 +15,11 @@ public class AdminSecurityProperties {
     private final String sessionCookieSameSite;
     private final long emailCodeTtlMinutes;
     private final long emailCodeCooldownSeconds;
+    private final boolean loginLockEnabled;
+    private final int loginLockMaxFailures;
+    private final long loginLockFailureWindowSeconds;
+    private final long loginLockSeconds;
+    private final String loginLockKeySecret;
 
     public AdminSecurityProperties(
             @Value("${admin.security.session-cookie-name:ADMIN_SESSION_TOKEN}") String sessionCookieName,
@@ -25,7 +30,12 @@ public class AdminSecurityProperties {
             @Value("${admin.security.session-cookie-secure:false}") boolean sessionCookieSecure,
             @Value("${admin.security.session-cookie-same-site:Lax}") String sessionCookieSameSite,
             @Value("${admin.security.email-code-ttl-minutes:5}") long emailCodeTtlMinutes,
-            @Value("${admin.security.email-code-cooldown-seconds:60}") long emailCodeCooldownSeconds) {
+            @Value("${admin.security.email-code-cooldown-seconds:60}") long emailCodeCooldownSeconds,
+            @Value("${admin.security.login-lock.enabled:true}") boolean loginLockEnabled,
+            @Value("${admin.security.login-lock.max-failures:5}") int loginLockMaxFailures,
+            @Value("${admin.security.login-lock.failure-window-seconds:600}") long loginLockFailureWindowSeconds,
+            @Value("${admin.security.login-lock.lock-seconds:1800}") long loginLockSeconds,
+            @Value("${admin.security.login-lock.key-secret:${ADMIN_LOGIN_LOCK_KEY_SECRET:shopping-admin-login-lock-dev-secret}}") String loginLockKeySecret) {
         this.sessionCookieName = sessionCookieName;
         this.sessionRedisKeyPrefix = sessionRedisKeyPrefix;
         this.sessionTtlMinutes = sessionTtlMinutes;
@@ -35,6 +45,11 @@ public class AdminSecurityProperties {
         this.sessionCookieSameSite = sessionCookieSameSite;
         this.emailCodeTtlMinutes = emailCodeTtlMinutes;
         this.emailCodeCooldownSeconds = emailCodeCooldownSeconds;
+        this.loginLockEnabled = loginLockEnabled;
+        this.loginLockMaxFailures = loginLockMaxFailures;
+        this.loginLockFailureWindowSeconds = loginLockFailureWindowSeconds;
+        this.loginLockSeconds = loginLockSeconds;
+        this.loginLockKeySecret = loginLockKeySecret;
     }
 
     public String getSessionCookieName() {
@@ -71,5 +86,25 @@ public class AdminSecurityProperties {
 
     public long getEmailCodeCooldownSeconds() {
         return emailCodeCooldownSeconds;
+    }
+
+    public boolean isLoginLockEnabled() {
+        return loginLockEnabled;
+    }
+
+    public int getLoginLockMaxFailures() {
+        return loginLockMaxFailures;
+    }
+
+    public long getLoginLockFailureWindowSeconds() {
+        return loginLockFailureWindowSeconds;
+    }
+
+    public long getLoginLockSeconds() {
+        return loginLockSeconds;
+    }
+
+    public String getLoginLockKeySecret() {
+        return loginLockKeySecret;
     }
 }

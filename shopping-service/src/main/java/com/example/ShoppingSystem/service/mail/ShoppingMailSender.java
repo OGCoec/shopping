@@ -32,6 +32,16 @@ public class ShoppingMailSender {
         });
     }
 
+    public void sendHtmlAlternative(String to, String subject, String plainText, String html) {
+        mailSender.send(mimeMessage -> {
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "UTF-8");
+            helper.setFrom(new InternetAddress(fromAddress, displayName(), "UTF-8"));
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(plainText, html);
+        });
+    }
+
     private String displayName() {
         return StrUtil.blankToDefault(fromName, "Shopping System").trim();
     }

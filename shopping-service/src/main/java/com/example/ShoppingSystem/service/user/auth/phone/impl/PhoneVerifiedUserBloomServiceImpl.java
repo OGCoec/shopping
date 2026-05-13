@@ -11,9 +11,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executor;
 
 @Service
@@ -70,7 +68,6 @@ public class PhoneVerifiedUserBloomServiceImpl implements PhoneVerifiedUserBloom
                 break;
             }
             loadedRows += countingBloomFilter.addAllLongs(properties.getKey(), page);
-            saveMemberKeys(page);
             offset += page.size();
         }
         stringRedisTemplate.opsForValue().set(properties.getReadyKey(), READY_VALUE);
@@ -112,28 +109,9 @@ public class PhoneVerifiedUserBloomServiceImpl implements PhoneVerifiedUserBloom
 
     private void addPhoneVerifiedUser(Long userId) {
         try {
-            Boolean firstSeen = stringRedisTemplate.opsForValue().setIfAbsent(memberKey(userId), READY_VALUE);
-            if (Boolean.TRUE.equals(firstSeen)) {
-                countingBloomFilter.add(properties.getKey(), userId);
-            }
+            countingBloomFilter.addIfAbsentLong(properties.getKey(), userId);
         } catch (RuntimeException e) {
             log.warn("Phone-verified-user counting bloom add failed, userId={}, reason={}", userId, e.getMessage());
         }
-    }
-
-    private void saveMemberKeys(List<Long> userIds) {
-        Map<String, String> members = new HashMap<>(userIds.size());
-        for (Long userId : userIds) {
-            if (userId != null && userId > 0) {
-                members.put(memberKey(userId), READY_VALUE);
-            }
-        }
-        if (!members.isEmpty()) {
-            stringRedisTemplate.opsForValue().multiSet(members);
-        }
-    }
-
-    private String memberKey(Long userId) {
-        return properties.getMemberKeyPrefix() + userId;
     }
 }

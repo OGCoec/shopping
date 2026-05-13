@@ -249,15 +249,28 @@ public class AdminRiskApiConfigService {
         if (!StringUtils.hasText(quotaKey)) {
             return new ParsedQuotaKey("", "", "");
         }
-        String[] parts = quotaKey.split(":", 5);
-        if (parts.length < 5) {
+        String safeQuotaKey = quotaKey.trim();
+        if (!safeQuotaKey.startsWith(Ip2LocationQuotaRedisKeys.QUOTA_PREFIX)) {
             return new ParsedQuotaKey(
-                    Ip2LocationQuotaRedisKeys.extractApiKey(quotaKey),
+                    Ip2LocationQuotaRedisKeys.extractApiKey(safeQuotaKey),
                     "",
                     ""
             );
         }
-        return new ParsedQuotaKey(parts[4], parts[2], parts[3]);
+        String payload = safeQuotaKey.substring(Ip2LocationQuotaRedisKeys.QUOTA_PREFIX.length());
+        int accountTypeDelimiter = payload.indexOf(':');
+        int apiKeyDelimiter = payload.lastIndexOf(':');
+        if (accountTypeDelimiter <= 0 || apiKeyDelimiter <= accountTypeDelimiter) {
+            return new ParsedQuotaKey(
+                    Ip2LocationQuotaRedisKeys.extractApiKey(safeQuotaKey),
+                    "",
+                    ""
+            );
+        }
+        String accountType = payload.substring(0, accountTypeDelimiter);
+        String createdAtMinute = payload.substring(accountTypeDelimiter + 1, apiKeyDelimiter);
+        String apiKey = payload.substring(apiKeyDelimiter + 1);
+        return new ParsedQuotaKey(apiKey, accountType, createdAtMinute);
     }
 
     private Ip2LocationQuotaAddDraft toAddDraft(AdminIp2LocationQuotaBatchAddItem item) {

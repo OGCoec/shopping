@@ -16,6 +16,7 @@ import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteS
 import com.example.ShoppingSystem.service.user.auth.register.RegisterCompletionService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterWelcomeMailSender;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterCompletionResult;
+import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -45,6 +46,7 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
     private final SnowflakeIdWorker snowflakeIdWorker;
     private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
     private final RegisterWelcomeMailSender registerWelcomeMailSender;
+    private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
 
     public RegisterCompletionServiceImpl(StringRedisTemplate stringRedisTemplate,
                                           UserLoginIdentityMapper userLoginIdentityMapper,
@@ -52,7 +54,8 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
                                           RegisterRiskProfileMapper registerRiskProfileMapper,
                                           SnowflakeIdWorker snowflakeIdWorker,
                                           DeviceRiskProfileWriteService deviceRiskProfileWriteService,
-                                          RegisterWelcomeMailSender registerWelcomeMailSender) {
+                                          RegisterWelcomeMailSender registerWelcomeMailSender,
+                                          TerminatedAccountEmailBloomService terminatedAccountEmailBloomService) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.userProfileService = userProfileService;
@@ -60,6 +63,7 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
         this.snowflakeIdWorker = snowflakeIdWorker;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
         this.registerWelcomeMailSender = registerWelcomeMailSender;
+        this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
     }
 
     @Override
@@ -71,6 +75,9 @@ public class RegisterCompletionServiceImpl implements RegisterCompletionService 
         String normalizedEmail = normalizeEmail(email);
         if (!Validator.isEmail(normalizedEmail)) {
             return fail("Please enter a valid email address.");
+        }
+        if (terminatedAccountEmailBloomService.isTerminatedEmail(normalizedEmail)) {
+            return fail(TerminatedAccountEmailBloomService.MESSAGE_ACCOUNT_RISK_TERMINATED);
         }
         String normalizedEmailCode = normalizeEmailCode(emailCode);
         if (!EMAIL_CODE_PATTERN.matcher(normalizedEmailCode).matches()) {

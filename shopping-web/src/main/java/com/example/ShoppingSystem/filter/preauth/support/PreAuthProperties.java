@@ -3,6 +3,9 @@ package com.example.ShoppingSystem.filter.preauth.support;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * preauth 模块的配置承载对象。
  * <p>
@@ -21,6 +24,7 @@ public class PreAuthProperties {
     private int ttlMinutes = 180;
     /** recentIps 最多保留多少个 IP。 */
     private int recentIpLimit = 3;
+    private List<String> trustedExitIpGroups = new ArrayList<>();
     /** PREAUTH_TOKEN 的 Cookie 名。 */
     private String cookieName = "PREAUTH_TOKEN";
     /** PREAUTH_TOKEN Cookie 的路径。 */
@@ -74,6 +78,14 @@ public class PreAuthProperties {
     /** 设置 recentIps 的最大保留数量。 */
     public void setRecentIpLimit(int recentIpLimit) {
         this.recentIpLimit = recentIpLimit;
+    }
+
+    public List<String> getTrustedExitIpGroups() {
+        return trustedExitIpGroups;
+    }
+
+    public void setTrustedExitIpGroups(List<String> trustedExitIpGroups) {
+        this.trustedExitIpGroups = trustedExitIpGroups == null ? new ArrayList<>() : trustedExitIpGroups;
     }
 
     /** 返回 token Cookie 名。 */

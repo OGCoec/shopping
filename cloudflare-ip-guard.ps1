@@ -60,7 +60,7 @@ function Start-CloudflaredProcess {
 
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $ExePath
-  $psi.Arguments = "tunnel run $RunTunnelId"
+  $psi.Arguments = "tunnel --ha-connections 2 run $RunTunnelId"
   $psi.UseShellExecute = $false
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true

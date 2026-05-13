@@ -1,0 +1,303 @@
+登录后账号网络/IP 风险扣分与封号实现方案
+
+一、目标
+
+登录成功之后，用户已经有可信 userId。此时如果用户在账号内乱切 IP、使用 VPN/代理、触发 WebRTC IP 不一致、短时间跨国家或不可能旅行，需要进入账号网络/IP 风险分控。
+
+这套分控不是登录前分控，也不是密码/验证码失败分控。它属于登录后的账号网络环境风险分控。
+
+核心目标：
+1. 登录前不扣账号分，避免攻击者拿别人的邮箱/手机号污染账号风险。
+2. 登录后可以扣账号分，因为此时已经确认 userId。
+3. 账号网络/IP 风险使用 30 分钟累计风险扣分窗口。
+4. 30 分钟累计风险扣分 > 600 时触发账号锁定。
+5. 锁定次数 1/2/3 分别锁 1 天、3 天、1 周。
+6. 锁定次数 > 3 时进入现有封号逻辑，封号是立即不可用，不设置一周缓冲期。
+7. 解封后稳定一段时间无新风险，再由定时任务加分恢复。
+
+二、边界
+
+登录前：
+- 不写 user_risk_profile 扣分。
+- 不写账号网络风险窗口。
+- 只允许处理 IP 分、设备分、preauth 临时风险、WAF。
+
+登录后：
+- 通过 access token 或已认证上下文拿到 userId。
+- 可以写账号网络/IP 风险窗口。
+- 可以扣 user_risk_profile.current_score。
+- 可以写 user_risk_score_event。
+- 可以触发账号锁定或封号。
+
+三、风险事件
+
+登录后的账号网络/IP 风险事件包括：
+
+1. WEBRTC_IP_MISMATCH
+   HTTP IP 与浏览器 WebRTC IP 明确不一致。
+
+2. VPN_PROXY_SUSPECTED
+   当前 IP 命中 VPN、代理、机房、匿名网络等高风险标签。
+
+3. ACCOUNT_IP_CHANGED
+   当前请求 IP 与账号最近登录/最近活跃 IP 不一致。
+
+4. COUNTRY_CHANGED
+   当前 IP 国家与账号最近可信 IP 国家不一致。
+
+5. IMPOSSIBLE_TRAVEL
+   短时间内从一个地理位置切换到另一个距离很远的位置，速度超过合理阈值。
+
+6. WAF_REPEATED_AFTER_LOGIN
+   登录后短时间内反复触发 WAF 或网络环境验证。
+
+四、扣分建议
+
+账号分只做中小幅度累计，设备分/IP 分承担更重风险。
+
+建议账号网络风险扣分：
+
+WEBRTC_IP_MISMATCH:
+  50 - 100
+
+VPN_PROXY_SUSPECTED:
+  50 - 100
+
+ACCOUNT_IP_CHANGED:
+  20 - 50
+
+COUNTRY_CHANGED:
+  80 - 150
+
+IMPOSSIBLE_TRAVEL:
+  150 - 300
+
+WAF_REPEATED_AFTER_LOGIN:
+  100 - 200
+
+重复触发同类事件：
+  可以按 1.0x、1.5x、2.0x 做阶梯，但单次扣分要设置上限，避免一次请求扣爆账号分。
+
+五、Redis 30 分钟窗口
+
+新增账号网络/IP 风险窗口 key：
+
+risk:user:{userId}:window:30m:network:score
+risk:user:{userId}:window:30m:network:webrtc_mismatch
+risk:user:{userId}:window:30m:network:vpn_proxy
+risk:user:{userId}:window:30m:network:ip_changed
+risk:user:{userId}:window:30m:network:country_changed
+risk:user:{userId}:window:30m:network:impossible_travel
+risk:user:{userId}:window:30m:network:waf_repeated
+
+每次登录后命中网络/IP 风险事件：
+
+1. INCRBY risk:user:{userId}:window:30m:network:score {penaltyScore}
+2. INCR 对应事件计数 key。
+3. 如果 key 第一次创建，设置 EXPIRE 30 分钟。
+4. 读取 risk:user:{userId}:window:30m:network:score。
+5. 如果累计分数 > 600，触发账号网络风险锁定。
+
+六、账号锁定规则
+
+当 30 分钟账号网络风险累计分数 > 600：
+
+1. 查询 user_risk_profile 当前状态。
+2. lock_count + 1。
+3. 根据 lock_count 决定锁定时长：
+
+lock_count = 1:
+  锁定 1 天
+
+lock_count = 2:
+  锁定 3 天
+
+lock_count = 3:
+  锁定 1 周
+
+lock_count > 3:
+  进入 ACCOUNT_TERMINATION_REQUIRED 封号逻辑，账号立即不可用
+
+七、账号扣分写入
+
+触发账号网络风险锁定时，写 user_risk_profile：
+
+current_env_score:
+  保持当前环境分或按现有账号风险表逻辑更新。
+
+behavior_score_delta:
+  减去本次账号网络风险锁定扣分。
+
+current_score:
+  current_env_score + behavior_score_delta，最低为 0，最高为 10000。
+
+risk_level:
+  根据 current_score 重新计算 L1 - L6。
+
+lock_count:
+  加 1。
+
+lock_until:
+  按 1 天、3 天、1 周写入。
+
+lock_reason:
+  NETWORK_RISK_LOCK_30M。
+
+last_risk_penalty_at:
+  当前时间。
+
+updated_at:
+  当前时间。
+
+八、事件流水
+
+每次触发账号网络风险锁定，写 user_risk_score_event：
+
+event_type:
+  NETWORK_RISK_LOCK_30M
+
+reason:
+  NETWORK_RISK_LOCK_30M
+
+metadata:
+  {
+    "networkScore30m": 780,
+    "webrtcMismatch": 2,
+    "vpnProxy": 1,
+    "ipChanged": 3,
+    "countryChanged": 1,
+    "impossibleTravel": 1,
+    "wafRepeated": 0,
+    "lockCount": 1,
+    "lockDays": 1,
+    "penaltyScore": 600,
+    "terminationRequired": false
+  }
+
+ip:
+  当前请求 IP。
+
+device_fingerprint:
+  当前设备指纹。
+
+九、封号逻辑
+
+当 lock_count > 3：
+
+1. user_login_identity.status 更新为 RISK_TERMINATED。
+2. user_risk_profile.current_score 写为 0。
+3. user_risk_profile.risk_level 写为 L6。
+4. user_risk_profile.lock_reason 写 ACCOUNT_TERMINATION_REQUIRED。
+5. 写 user_risk_account_termination。
+6. 写 user_risk_score_event：
+   event_type = ACCOUNT_TERMINATION_REQUIRED
+   reason = ACCOUNT_TERMINATION_REQUIRED
+
+封号逻辑复用现有账号登录失败分控里的 ACCOUNT_TERMINATION_REQUIRED，不新建另一套封号系统。
+这里的封号不是临时停用，也不是等待一周后再处理；写入 RISK_TERMINATED 后账号立即不可用。
+
+十、解封与恢复
+
+账号锁定到期后：
+
+1. 用户再次访问或登录时，检查 lock_until。
+2. 如果 lock_until 已经过期，账号状态从 LOCKED 恢复为 ACTIVE。
+3. user_risk_profile.risk_recovery_started_at 写当前时间。
+
+定时任务定期扫描已解封且稳定的账号：
+
+lock_count = 1:
+  稳定 1 周无新风险，账号加 400 分。
+
+lock_count = 2:
+  稳定 2 周无新风险，账号加 300 分。
+
+lock_count = 3:
+  稳定 1 个月无新风险，账号加 200 分。
+
+稳定条件：
+1. user_login_identity.status = ACTIVE。
+2. risk_recovery_started_at 不为空。
+3. last_risk_penalty_at 为空，或者 last_risk_penalty_at <= risk_recovery_started_at。
+4. 观察期内没有新的账号网络/IP 风险扣分。
+
+恢复后：
+1. current_score 增加恢复分，最高 10000。
+2. behavior_score_delta 增加恢复分。
+3. lock_count 减 1。
+4. 写 user_risk_score_event：
+   event_type = NETWORK_RISK_RECOVERY
+   reason = NETWORK_RISK_RECOVERY
+
+十一、接入点
+
+推荐新增登录后账号网络风险拦截器或服务：
+
+PostLoginAccountNetworkRiskInterceptor
+或
+AccountNetworkRiskService
+
+执行位置：
+1. 必须在用户已认证之后执行。
+2. 可以放在 AccessTokenAuthenticationInterceptor 之后。
+3. 只处理已登录用户请求。
+4. 不处理登录前请求。
+5. 不处理静态资源。
+6. 不处理 network-check-failed 页面。
+
+执行流程：
+
+1. 读取 userId。
+2. 读取当前 IP。
+3. 读取设备指纹。
+4. 读取 WebRTC 状态和 WebRTC IP。
+5. 读取账号上次可信 IP 和地理信息。
+6. 判断风险事件。
+7. 计算本次 penaltyScore。
+8. 如果 penaltyScore <= 0，放行。
+9. 写 Redis 30 分钟账号网络风险窗口。
+10. 如果累计风险分 <= 600，放行。
+11. 如果累计风险分 > 600，触发账号网络风险锁定。
+12. 锁定后当前请求返回账号锁定错误。
+
+十二、与设备分/IP 分关系
+
+设备分：
+  登录前和登录后都可以扣，承担主要网络环境风险。
+
+IP 分：
+  对高风险 IP、VPN/代理 IP 可以扣或降低信誉。
+
+账号分：
+  只在登录后扣。
+  扣分幅度小于设备分。
+  用 30 分钟累计风险分来决定是否锁定。
+
+十三、与登录失败分控关系
+
+账号网络/IP 风险分控和账号密码/验证码失败分控分开计数。
+
+登录失败分控：
+  risk:user:{userId}:window:30m:auth:...
+
+账号网络/IP 风险分控：
+  risk:user:{userId}:window:30m:network:...
+
+二者可以共用：
+1. user_risk_profile
+2. user_risk_score_event
+3. user_risk_account_termination
+4. 定时恢复任务
+
+但 Redis 窗口和 event_type 必须分开，方便排查。
+
+十四、注意事项
+
+1. 登录前不能扣账号分。
+2. 账号不存在时不能扣账号分。
+3. 对外不能暴露账号是否存在。
+4. WebRTC timeout 不应直接当作 VPN，只能作为弱信号。
+5. WEBRTC_IP_MISMATCH 是强信号，但仍建议按累计风险处理。
+6. Cloudflare Tunnel、本机调试、移动网络切换容易误判，要通过累计阈值和恢复机制降低误伤。
+7. 同一 IP transition 要做去重，避免同一个 IP 切换链路重复扣分。
+8. 账号锁定和封号必须写事件流水，便于管理员审计。

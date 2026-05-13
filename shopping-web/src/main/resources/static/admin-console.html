@@ -4,9 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>管理员控制台 - Shopping System</title>
-  <link rel="icon" href="/favicon.ico" />
+  <link rel="icon" href="/shopping/favicon.ico" />
   <script>
     (function () {
+      document.documentElement.classList.add("admin-session-checking");
       var key = "shopping:admin:parti-morph:pending:v1";
       try {
         if (sessionStorage.getItem(key) === "1") {
@@ -23,14 +24,28 @@
       }
     })();
   </script>
-  <link rel="modulepreload" href="/error/three.module.min.js" />
-  <link rel="modulepreload" href="/error/three.core.min.js" />
-  <link rel="stylesheet" href="/fonts/noto-sans-sc/noto-sans-sc.css" />
-  <link rel="stylesheet" href="/css/admin-auth.css?v=15" />
-  <script defer src="/js/admin/admin-api.js"></script>
-  <script defer src="/js/vendor/html2canvas.min.js"></script>
-  <script defer src="/js/admin/admin-particle-transition.js?v=9"></script>
-  <script defer src="/js/admin/admin-console.js?v=24"></script>
+  <link rel="modulepreload" href="/shopping/error/three.module.min.js" />
+  <link rel="modulepreload" href="/shopping/error/three.core.min.js" />
+  <link rel="stylesheet" href="/shopping/fonts/noto-sans-sc/noto-sans-sc.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons/css/flag-icons.min.css" />
+  <link rel="stylesheet" href="/shopping/css/admin-auth.css?v=17" />
+  <script defer src="/shopping/js/admin/admin-api.js?v=11"></script>
+  <script defer src="/shopping/js/vendor/html2canvas.min.js"></script>
+  <script defer src="/shopping/js/admin/admin-particle-transition.js?v=9"></script>
+  <script defer src="/shopping/js/admin/admin-dom.js"></script>
+  <script defer src="/shopping/js/admin/admin-modal.js"></script>
+  <script defer src="/shopping/js/admin/admin-router.js?v=2"></script>
+  <script defer src="/shopping/js/admin/modules/oauth-config.js"></script>
+  <script defer src="/shopping/js/admin/modules/captcha-config.js"></script>
+  <script defer src="/shopping/js/admin/modules/smtp-config.js"></script>
+  <script defer src="/shopping/js/admin/modules/sms-config.js"></script>
+  <script defer src="/shopping/js/admin/modules/oss-config.js"></script>
+  <script defer src="/shopping/js/admin/modules/risk-api-config.js"></script>
+  <script defer src="/shopping/js/admin/modules/ip2location-quota-keys.js"></script>
+  <script defer src="/shopping/js/admin/modules/ip2location-mail-tool.js"></script>
+  <script defer src="/shopping/js/admin/modules/risk-ip-score.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/risk-device-score.js?v=1"></script>
+  <script defer src="/shopping/js/admin/admin-console.js?v=29"></script>
 </head>
 <body class="admin-console-body">
   <main class="admin-split-console" data-admin-source>
@@ -51,6 +66,10 @@
         <button class="admin-side-item" type="button" data-section-target="externalInterfaces">
           <span>外部接口管理</span>
           <small>External APIs</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="riskCreditScore">
+          <span>IP与设备指纹信用分</span>
+          <small>Credit Scores</small>
         </button>
       </nav>
 
@@ -92,6 +111,312 @@
               <span>会话</span>
               <strong>已登录</strong>
               <small>当前浏览器会话有效</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="riskCreditScore">
+          <div class="admin-api-detail admin-credit-score-detail">
+            <div class="admin-service-grid" aria-label="信用分管理类型">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="riskIpScore">
+                <span>IP</span>
+                <strong>IP 分数</strong>
+                <small>IP score</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="riskDeviceScore">
+                <span>Device</span>
+                <strong>设备分数</strong>
+                <small>Device score</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="riskDeviceScore">
+          <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score" data-risk-device-family="device">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="riskCreditScore">返回信用分管理</button>
+            <article class="admin-oauth-config-card admin-risk-ip-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Device score</span>
+                  <strong>设备分数</strong>
+                </div>
+                <div class="admin-risk-ip-current">
+                  <span id="admin-risk-device-current-level">全部分数区间</span>
+                  <strong id="admin-risk-device-current-sort">风险优先</strong>
+                </div>
+              </div>
+
+              <form id="admin-risk-device-filter-form" class="admin-risk-ip-filter-form">
+                <label class="admin-risk-ip-field">
+                  <span>分数区间</span>
+                  <select id="admin-risk-device-level">
+                    <option value="">全部区间</option>
+                    <option value="L1">L1 · 8500+</option>
+                    <option value="L2">L2 · 7500-8499</option>
+                    <option value="L3">L3 · 6000-7499</option>
+                    <option value="L4">L4 · 4800-5999</option>
+                    <option value="L5">L5 · 3000-4799</option>
+                    <option value="L6">L6 · 0-2999</option>
+                  </select>
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>设备查询</span>
+                  <input id="admin-risk-device-query" type="search" autocomplete="off" inputmode="text" placeholder="deviceId / IP 前缀" />
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>每页</span>
+                  <select id="admin-risk-device-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>排序</span>
+                  <select id="admin-risk-device-sort">
+                    <option value="risk_first">风险优先</option>
+                    <option value="recent_first">最近活跃</option>
+                  </select>
+                </label>
+
+                <div class="admin-risk-ip-actions">
+                  <button id="admin-risk-device-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+                  <button id="admin-risk-device-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </form>
+
+              <div class="admin-risk-ip-summary">
+                <div>
+                  <span>总数</span>
+                  <strong id="admin-risk-device-total">-</strong>
+                </div>
+                <div>
+                  <span>当前页</span>
+                  <strong id="admin-risk-device-page-label">1</strong>
+                </div>
+                <div>
+                  <span>数据来源</span>
+                  <strong id="admin-risk-device-source">-</strong>
+                </div>
+              </div>
+
+              <p id="admin-risk-device-status" class="admin-oauth-config-status"></p>
+              <div id="admin-risk-device-list" class="admin-risk-ip-list"></div>
+              <div class="admin-risk-ip-pagination">
+                <button id="admin-risk-device-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+                <button id="admin-risk-device-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="riskIpScore">
+          <div class="admin-api-detail admin-credit-score-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="riskCreditScore">返回信用分管理</button>
+            <div class="admin-service-grid" aria-label="IP 分数类型">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="riskIpScoreIpv4">
+                <span>IPv4</span>
+                <strong>IPv4</strong>
+                <small>IPv4 score</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="riskIpScoreIpv6">
+                <span>IPv6</span>
+                <strong>IPv6</strong>
+                <small>IPv6 score</small>
+              </button>
+            </div>
+            <div class="admin-risk-shortcut-bar">
+              <span class="admin-risk-shortcut-label">快捷查看</span>
+              <button class="admin-ghost-button admin-spring-button admin-risk-shortcut-btn" type="button" data-shortcut-family="ipv4" data-shortcut-level="L6" data-section-target="riskIpScoreIpv4">⚠ IPv4 L6 风险 IP</button>
+              <button class="admin-ghost-button admin-spring-button admin-risk-shortcut-btn" type="button" data-shortcut-family="ipv6" data-shortcut-level="L6" data-section-target="riskIpScoreIpv6">⚠ IPv6 L6 风险 IP</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="riskIpScoreIpv4">
+          <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score" data-risk-ip-family="ipv4">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="riskIpScore">返回 IP 分数</button>
+            <article class="admin-oauth-config-card admin-risk-ip-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>IPv4 score</span>
+                  <strong>IPv4 IP 分数</strong>
+                </div>
+                <div class="admin-risk-ip-current">
+                  <span id="admin-risk-ip-ipv4-current-country">全部国家/地区</span>
+                  <strong id="admin-risk-ip-ipv4-current-level">全部分数区间</strong>
+                </div>
+              </div>
+
+              <form id="admin-risk-ip-ipv4-filter-form" class="admin-risk-ip-filter-form">
+                <label class="admin-risk-ip-field">
+                  <span>国家 / 区号</span>
+                  <input id="admin-risk-ip-ipv4-country-code" type="hidden" value="" />
+                  <div id="admin-risk-ip-ipv4-country-picker" class="admin-risk-country-picker" data-open="false">
+                    <button id="admin-risk-ip-ipv4-country-trigger" class="admin-risk-country-trigger admin-spring-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+                      <span class="admin-risk-country-trigger-main">
+                        <span id="admin-risk-ip-ipv4-country-flag" class="admin-risk-country-flag"></span>
+                        <span id="admin-risk-ip-ipv4-country-name">全部国家/地区</span>
+                      </span>
+                      <span id="admin-risk-ip-ipv4-country-dial" class="admin-risk-country-dial">All</span>
+                    </button>
+                    <div id="admin-risk-ip-ipv4-country-popover" class="admin-risk-country-popover">
+                      <input id="admin-risk-ip-ipv4-country-search" class="admin-risk-country-search" type="search" autocomplete="off" placeholder="输入国家、ISO2 或区号" />
+                      <ul id="admin-risk-ip-ipv4-country-list" class="admin-risk-country-list" role="listbox"></ul>
+                    </div>
+                  </div>
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>分数区间</span>
+                  <select id="admin-risk-ip-ipv4-level">
+                    <option value="">全部区间</option>
+                    <option value="L1">L1 · 8500+</option>
+                    <option value="L2">L2 · 7500-8499</option>
+                    <option value="L3">L3 · 6000-7499</option>
+                    <option value="L4">L4 · 4800-5999</option>
+                    <option value="L5">L5 · 3000-4799</option>
+                    <option value="L6">L6 · 0-2999</option>
+                  </select>
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>IP</span>
+                  <input id="admin-risk-ip-ipv4-query" type="search" autocomplete="off" inputmode="decimal" placeholder="IPv4 前缀" />
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>每页</span>
+                  <select id="admin-risk-ip-ipv4-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+
+                <div class="admin-risk-ip-actions">
+                  <button id="admin-risk-ip-ipv4-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+                  <button id="admin-risk-ip-ipv4-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </form>
+
+              <div class="admin-risk-ip-summary">
+                <div>
+                  <span>总数</span>
+                  <strong id="admin-risk-ip-ipv4-total">-</strong>
+                </div>
+                <div>
+                  <span>当前页</span>
+                  <strong id="admin-risk-ip-ipv4-page-label">1</strong>
+                </div>
+                <div>
+                  <span>排序</span>
+                  <strong>风险优先</strong>
+                </div>
+              </div>
+
+              <p id="admin-risk-ip-ipv4-status" class="admin-oauth-config-status"></p>
+              <div id="admin-risk-ip-ipv4-list" class="admin-risk-ip-list"></div>
+              <div class="admin-risk-ip-pagination">
+                <button id="admin-risk-ip-ipv4-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+                <button id="admin-risk-ip-ipv4-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="riskIpScoreIpv6">
+          <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score" data-risk-ip-family="ipv6">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="riskIpScore">返回 IP 分数</button>
+            <article class="admin-oauth-config-card admin-risk-ip-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>IPv6 score</span>
+                  <strong>IPv6 IP 分数</strong>
+                </div>
+                <div class="admin-risk-ip-current">
+                  <span id="admin-risk-ip-ipv6-current-country">全部国家/地区</span>
+                  <strong id="admin-risk-ip-ipv6-current-level">全部分数区间</strong>
+                </div>
+              </div>
+
+              <form id="admin-risk-ip-ipv6-filter-form" class="admin-risk-ip-filter-form">
+                <label class="admin-risk-ip-field">
+                  <span>国家 / 区号</span>
+                  <input id="admin-risk-ip-ipv6-country-code" type="hidden" value="" />
+                  <div id="admin-risk-ip-ipv6-country-picker" class="admin-risk-country-picker" data-open="false">
+                    <button id="admin-risk-ip-ipv6-country-trigger" class="admin-risk-country-trigger admin-spring-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+                      <span class="admin-risk-country-trigger-main">
+                        <span id="admin-risk-ip-ipv6-country-flag" class="admin-risk-country-flag"></span>
+                        <span id="admin-risk-ip-ipv6-country-name">全部国家/地区</span>
+                      </span>
+                      <span id="admin-risk-ip-ipv6-country-dial" class="admin-risk-country-dial">All</span>
+                    </button>
+                    <div id="admin-risk-ip-ipv6-country-popover" class="admin-risk-country-popover">
+                      <input id="admin-risk-ip-ipv6-country-search" class="admin-risk-country-search" type="search" autocomplete="off" placeholder="输入国家、ISO2 或区号" />
+                      <ul id="admin-risk-ip-ipv6-country-list" class="admin-risk-country-list" role="listbox"></ul>
+                    </div>
+                  </div>
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>分数区间</span>
+                  <select id="admin-risk-ip-ipv6-level">
+                    <option value="">全部区间</option>
+                    <option value="L1">L1 · 8500+</option>
+                    <option value="L2">L2 · 7500-8499</option>
+                    <option value="L3">L3 · 6000-7499</option>
+                    <option value="L4">L4 · 4800-5999</option>
+                    <option value="L5">L5 · 3000-4799</option>
+                    <option value="L6">L6 · 0-2999</option>
+                  </select>
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>IP</span>
+                  <input id="admin-risk-ip-ipv6-query" type="search" autocomplete="off" inputmode="text" placeholder="IPv6 前缀" />
+                </label>
+
+                <label class="admin-risk-ip-field">
+                  <span>每页</span>
+                  <select id="admin-risk-ip-ipv6-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+
+                <div class="admin-risk-ip-actions">
+                  <button id="admin-risk-ip-ipv6-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+                  <button id="admin-risk-ip-ipv6-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </form>
+
+              <div class="admin-risk-ip-summary">
+                <div>
+                  <span>总数</span>
+                  <strong id="admin-risk-ip-ipv6-total">-</strong>
+                </div>
+                <div>
+                  <span>当前页</span>
+                  <strong id="admin-risk-ip-ipv6-page-label">1</strong>
+                </div>
+                <div>
+                  <span>排序</span>
+                  <strong>风险优先</strong>
+                </div>
+              </div>
+
+              <p id="admin-risk-ip-ipv6-status" class="admin-oauth-config-status"></p>
+              <div id="admin-risk-ip-ipv6-list" class="admin-risk-ip-list"></div>
+              <div class="admin-risk-ip-pagination">
+                <button id="admin-risk-ip-ipv6-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+                <button id="admin-risk-ip-ipv6-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+              </div>
             </article>
           </div>
         </section>

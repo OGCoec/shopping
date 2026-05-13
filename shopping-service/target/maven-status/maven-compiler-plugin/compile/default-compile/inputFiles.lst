@@ -7,6 +7,8 @@ C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\Shoppi
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\SmsCodeProperties.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\SmsCodeRabbitConfig.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\SmsCodeRabbitProperties.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\TerminatedAccountEmailCountingBloomConfig.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\TerminatedAccountEmailCountingBloomProperties.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\TianaiCaptchaConfig.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\UserAccountDeletionRabbitConfig.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\config\UserAccountDeletionRabbitProperties.java
@@ -130,6 +132,8 @@ C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\Shoppi
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\DeviceRiskCacheInvalidator.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\DeviceRiskProfileWriteService.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\impl\AutomationRiskGateServiceImpl.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\impl\TerminatedAccountEmailBloomServiceImpl.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\impl\TerminatedAccountEmailCountingBloomInitListener.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\impl\UserAuthFailureRiskServiceImpl.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\impl\UserRiskLockRecoveryServiceImpl.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\IpRiskCacheInvalidator.java
@@ -139,7 +143,9 @@ C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\Shoppi
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\model\AutomationRiskScene.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\model\UserAuthFailureType.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\model\UserAuthLockStatus.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\scheduler\RiskTerminatedIdentityCleanupScheduler.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\scheduler\UserRiskLockRecoveryScheduler.java
+C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\TerminatedAccountEmailBloomService.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\UserAuthFailureRiskService.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\risk\UserRiskLockRecoveryService.java
 C:\Users\damn\Desktop\shopping\shopping-service\src\main\java\com\example\ShoppingSystem\service\user\auth\sms\impl\PhoneSmsRiskGateServiceImpl.java

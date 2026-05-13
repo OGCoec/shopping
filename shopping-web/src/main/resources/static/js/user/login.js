@@ -33,19 +33,19 @@ const signupLinkWrap = document.getElementById("signup-link-wrap");
 const routeFragments = {
   register: {
     container: registerView,
-    path: "/fragments/register-view.html",
+    path: "/shopping/fragments/register-view.html",
     loaded: false,
     loadingTask: null
   },
   "register-password": {
     container: registerPasswordView,
-    path: "/fragments/register-password-view.html",
+    path: "/shopping/fragments/register-password-view.html",
     loaded: false,
     loadingTask: null
   },
   "forgot-password": {
     container: forgotPasswordView,
-    path: "/fragments/forgot-password-view.html",
+    path: "/shopping/fragments/forgot-password-view.html",
     loaded: false,
     loadingTask: null
   }
@@ -219,8 +219,24 @@ if (phoneBtn) {
 function bindOAuthLogin(button, provider) {
   if (!button) return;
 
-  button.addEventListener("click", () => {
-    window.location.href = `/oauth2/${provider}/login`;
+  button.addEventListener("click", async () => {
+    const originalDisabled = button.disabled;
+    button.disabled = true;
+    try {
+      const payload = await preAuthClientApi.bootstrapPreAuthToken(true);
+      const riskLevel = String(payload?.riskLevel || "").toUpperCase();
+      if (payload?.blocked || riskLevel === "L6") {
+        showEmailError?.("当前操作过于频繁，请稍后重试");
+        triggerLoginError();
+        return;
+      }
+      window.location.href = `/oauth2/${provider}/login`;
+    } catch (_) {
+      showEmailError?.("登录环境校验失败，请刷新页面后重试");
+      triggerLoginError();
+    } finally {
+      button.disabled = originalDisabled;
+    }
   });
 }
 

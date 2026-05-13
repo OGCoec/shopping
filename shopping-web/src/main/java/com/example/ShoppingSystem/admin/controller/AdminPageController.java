@@ -47,7 +47,8 @@ public class AdminPageController {
     @GetMapping({
             "/shopping/admin/console",
             "/shopping/admin/console/{section}",
-            "/shopping/admin/console/{section}/{subsection}"
+            "/shopping/admin/console/{section}/{subsection}",
+            "/shopping/admin/console/{section}/{subsection}/{sub2}"
     })
     public ResponseEntity<Resource> adminConsolePage() {
         return htmlPage("admin-console.html");

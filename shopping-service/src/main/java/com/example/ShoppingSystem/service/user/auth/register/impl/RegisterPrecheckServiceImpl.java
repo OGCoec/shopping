@@ -11,6 +11,7 @@ import com.example.ShoppingSystem.service.user.auth.register.model.RegisterChall
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
 import com.example.ShoppingSystem.service.user.auth.register.model.RiskSnapshot;
 import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
+import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -48,19 +49,22 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
     private final RiskSnapshotService riskSnapshotService;
     private final ChallengePolicy challengePolicy;
     private final StringRedisTemplate stringRedisTemplate;
+    private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
 
     public RegisterPrecheckServiceImpl(ChallengeSessionService challengeSessionService,
                                        CaptchaVerificationService captchaVerificationService,
                                        EmailCodeDispatchService emailCodeDispatchService,
                                        RiskSnapshotService riskSnapshotService,
                                        ChallengePolicy challengePolicy,
-                                       StringRedisTemplate stringRedisTemplate) {
+                                       StringRedisTemplate stringRedisTemplate,
+                                       TerminatedAccountEmailBloomService terminatedAccountEmailBloomService) {
         this.challengeSessionService = challengeSessionService;
         this.captchaVerificationService = captchaVerificationService;
         this.emailCodeDispatchService = emailCodeDispatchService;
         this.riskSnapshotService = riskSnapshotService;
         this.challengePolicy = challengePolicy;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
     }
 
     @Override
@@ -88,6 +92,10 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
         RegisterPrecheckResult validationFailure = validateRegisterInput(email, username, rawPassword, deviceFingerprint);
         if (validationFailure != null) {
             return validationFailure;
+        }
+        RegisterPrecheckResult terminatedFailure = terminatedAccountFailureIfNecessary(email);
+        if (terminatedFailure != null) {
+            return terminatedFailure;
         }
 
         ChallengeSelection pendingChallengeSelection = normalizePendingChallengeSelection(
@@ -160,6 +168,10 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
         RegisterPrecheckResult validationFailure = validateRegisterInput(email, username, rawPassword, deviceFingerprint);
         if (validationFailure != null) {
             return validationFailure;
+        }
+        RegisterPrecheckResult terminatedFailure = terminatedAccountFailureIfNecessary(email);
+        if (terminatedFailure != null) {
+            return terminatedFailure;
         }
 
         ChallengeSelection pendingChallengeSelection = normalizePendingChallengeSelection(
@@ -496,6 +508,13 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 .emailCodeSent(false)
                 .requirePhoneBinding(false)
                 .build();
+    }
+
+    private RegisterPrecheckResult terminatedAccountFailureIfNecessary(String email) {
+        if (!terminatedAccountEmailBloomService.isTerminatedEmail(email)) {
+            return null;
+        }
+        return fail(TerminatedAccountEmailBloomService.MESSAGE_ACCOUNT_RISK_TERMINATED);
     }
 
     /**

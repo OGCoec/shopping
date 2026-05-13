@@ -113,4 +113,44 @@ public class IpL6CountingBloomDecisionService {
             // Ignore sync failure; real-time main flow should not be interrupted.
         }
     }
+
+    /**
+     * 批量同步 L6 成员（管理端操作，一次 Lua 往返）。
+     *
+     * @param family "ipv4" 或 "ipv6"
+     * @param ips    IP 列表
+     * @param score  目标分数（score < 3000 → 添加，score >= 3000 → 移除）
+     * @return 同步成功的元素数量
+     */
+    public long batchSyncMembershipByScore(String family, java.util.List<String> ips, int score) {
+        if (ips == null || ips.isEmpty()) {
+            return 0;
+        }
+        String filterKey = resolveFilterKeyForFamily(family);
+        if (filterKey == null) {
+            return 0;
+        }
+        try {
+            if (score < 3000) {
+                return countingBloomFilter.addAllItems(filterKey, ips);
+            } else {
+                return countingBloomFilter.deleteAllItems(filterKey, ips);
+            }
+        } catch (RuntimeException ignored) {
+            return 0;
+        }
+    }
+
+    /**
+     * 根据 family 返回对应的布隆过滤器 Redis key。
+     */
+    public String resolveFilterKeyForFamily(String family) {
+        if ("ipv4".equalsIgnoreCase(family)) {
+            return ipv4FilterKey;
+        }
+        if ("ipv6".equalsIgnoreCase(family)) {
+            return ipv6FilterKey;
+        }
+        return null;
+    }
 }

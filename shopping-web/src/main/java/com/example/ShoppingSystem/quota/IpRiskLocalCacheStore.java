@@ -5,6 +5,8 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -71,6 +73,27 @@ public class IpRiskLocalCacheStore {
                 : localTtlMinMinutes + ThreadLocalRandom.current().nextInt(ttlRange + 1);
         long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(ttl);
         cache.put(ip, new LocalRiskEntry(score, normalizeCountry(country), expiresAt));
+    }
+
+    public void putRisks(Map<String, LocalRiskSnapshot> risks) {
+        if (risks == null || risks.isEmpty()) {
+            return;
+        }
+        int ttlRange = localTtlMaxMinutes - localTtlMinMinutes;
+        int ttl = ttlRange == 0
+                ? localTtlMinMinutes
+                : localTtlMinMinutes + ThreadLocalRandom.current().nextInt(ttlRange + 1);
+        long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(ttl);
+        Map<String, LocalRiskEntry> entries = new LinkedHashMap<>();
+        risks.forEach((ip, snapshot) -> {
+            if (ip == null || ip.isBlank() || snapshot == null) {
+                return;
+            }
+            entries.put(ip, new LocalRiskEntry(snapshot.score(), normalizeCountry(snapshot.country()), expiresAt));
+        });
+        if (!entries.isEmpty()) {
+            cache.putAll(entries);
+        }
     }
 
     public void invalidate(String ip) {

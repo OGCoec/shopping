@@ -102,6 +102,11 @@ public class StaticController {
         return htmlPage("login.html");
     }
 
+    @GetMapping("/shopping/auth/network-check-failed")
+    public ResponseEntity<Resource> networkCheckFailedPage() {
+        return htmlPage("network-check-failed.html");
+    }
+
     /**
      * 统一构造 HTML 响应。
      * HTML 文件位于 resources/static 目录下，因此这里使用 static/<fileName> 加载。

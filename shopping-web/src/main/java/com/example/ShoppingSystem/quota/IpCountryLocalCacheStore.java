@@ -6,7 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
@@ -85,6 +87,45 @@ public class IpCountryLocalCacheStore {
                 normalized.longitude(),
                 expiresAt
         ));
+    }
+
+    public void putGeos(Map<String, IpGeoSnapshot> geos) {
+        if (geos == null || geos.isEmpty()) {
+            return;
+        }
+        int ttlRange = localTtlMaxMinutes - localTtlMinMinutes;
+        int ttl = ttlRange == 0
+                ? localTtlMinMinutes
+                : localTtlMinMinutes + ThreadLocalRandom.current().nextInt(ttlRange + 1);
+        long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(ttl);
+        Map<String, LocalGeoEntry> entries = new LinkedHashMap<>();
+        geos.forEach((ip, geo) -> {
+            if (ip == null || ip.isBlank()) {
+                return;
+            }
+            IpGeoSnapshot normalized = normalizeGeo(geo);
+            if (normalized == null || !normalized.hasAnyGeo()) {
+                return;
+            }
+            entries.put(ip, new LocalGeoEntry(
+                    normalized.country(),
+                    normalized.region(),
+                    normalized.city(),
+                    normalized.latitude(),
+                    normalized.longitude(),
+                    expiresAt
+            ));
+        });
+        if (!entries.isEmpty()) {
+            cache.putAll(entries);
+        }
+    }
+
+    public void invalidate(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return;
+        }
+        cache.invalidate(ip);
     }
 
     private IpGeoSnapshot normalizeGeo(IpGeoSnapshot geo) {

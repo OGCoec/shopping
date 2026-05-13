@@ -1,4 +1,4 @@
-import * as THREE from "/error/three.module.min.js";
+import * as THREE from "/shopping/error/three.module.min.js";
 
 const SIM_SIZE = 256;
 const SIM_LENGTH = SIM_SIZE * SIM_SIZE;

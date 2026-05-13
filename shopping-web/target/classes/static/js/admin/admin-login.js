@@ -29,9 +29,10 @@
     transition?.prewarm?.(form);
     api.setStatus(statusNode, "正在登录...");
     try {
+      const encryptedPassword = await api.encryptPassword(passwordInput.value);
       const response = await api.request("/shopping/admin/login", {
         identifier: identifierInput.value.trim(),
-        password: passwordInput.value
+        ...encryptedPassword
       });
       api.setStatus(statusNode, "登录成功。", "ok");
       const redirectPath = response.data?.redirectPath || "/shopping/admin/console";

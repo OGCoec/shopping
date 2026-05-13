@@ -4,6 +4,7 @@ import com.example.ShoppingSystem.filter.preauth.domain.PreAuthBindingFactory;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthIpChangePenaltyService;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskService;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskStateSyncService;
+import com.example.ShoppingSystem.filter.preauth.domain.WebRtcIpConsistencyService;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBinding;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationError;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationOutcome;
@@ -44,7 +45,8 @@ class PreAuthBindingServiceTest {
             mock(PreAuthRiskService.class),
             mock(PreAuthBindingFactory.class),
             mock(PreAuthIpChangePenaltyService.class),
-            mock(PreAuthRiskStateSyncService.class)
+            mock(PreAuthRiskStateSyncService.class),
+            mock(WebRtcIpConsistencyService.class)
     );
 
     @Test

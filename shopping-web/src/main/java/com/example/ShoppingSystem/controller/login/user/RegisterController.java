@@ -36,6 +36,7 @@ import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPhone
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterPrecheckResult;
 import com.example.ShoppingSystem.service.user.auth.risk.AutomationRiskGateService;
 import com.example.ShoppingSystem.service.user.auth.risk.AuthRiskSnapshot;
+import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskDecision;
 import com.example.ShoppingSystem.service.user.auth.risk.model.AutomationRiskScene;
 import io.swagger.v3.oas.annotations.Operation;
@@ -84,6 +85,7 @@ public class RegisterController {
     private final PreAuthBindingService preAuthBindingService;
     private final AuthTokenService authTokenService;
     private final AutomationRiskGateService automationRiskGateService;
+    private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
 
     public RegisterController(RegisterPrecheckService registerPrecheckService,
                               RegisterCompletionService registerCompletionService,
@@ -95,7 +97,8 @@ public class RegisterController {
                               RegisterFlowCookieFactory registerFlowCookieFactory,
                               PreAuthBindingService preAuthBindingService,
                               AuthTokenService authTokenService,
-                              AutomationRiskGateService automationRiskGateService) {
+                              AutomationRiskGateService automationRiskGateService,
+                              TerminatedAccountEmailBloomService terminatedAccountEmailBloomService) {
         this.registerPrecheckService = registerPrecheckService;
         this.registerCompletionService = registerCompletionService;
         this.registerFlowSessionService = registerFlowSessionService;
@@ -107,6 +110,7 @@ public class RegisterController {
         this.preAuthBindingService = preAuthBindingService;
         this.authTokenService = authTokenService;
         this.automationRiskGateService = automationRiskGateService;
+        this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
     }
 
     @Operation(summary = "Start or restart the server-side register flow after the email step.")
@@ -119,6 +123,11 @@ public class RegisterController {
             return ResponseEntity.badRequest()
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new RegisterFlowStartResponse(false, "Please enter a valid email address.", null));
+        }
+        if (terminatedAccountEmailBloomService.isTerminatedEmail(email)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new RegisterFlowStartResponse(false, TerminatedAccountEmailBloomService.MESSAGE_ACCOUNT_RISK_TERMINATED, null));
         }
         String deviceFingerprint = normalizeText(request.getDeviceFingerprint());
         if (StrUtil.isBlank(deviceFingerprint)) {

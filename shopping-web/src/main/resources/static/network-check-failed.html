@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>访问被阻止 - Shopping System</title>
+  <link rel="icon" href="/shopping/favicon.ico" />
+  <link rel="stylesheet" href="/shopping/fonts/noto-sans-sc/noto-sans-sc.css" />
+  <link rel="stylesheet" href="/shopping/css/network-check-failed.css?v=8" />
+  <script defer src="/shopping/js/network-check-failed.js?v=8"></script>
+</head>
+<body>
+  <main class="network-check-page" aria-labelledby="network-check-title">
+    <section class="network-check-card">
+      <header class="network-check-chrome">
+        <span class="network-check-chrome-icon" aria-hidden="true">‹</span>
+        <span id="network-check-eyebrow" class="network-check-chrome-title">安全准入</span>
+        <span class="network-check-chrome-icon" aria-hidden="true">×</span>
+      </header>
+
+      <div class="network-check-stepper" aria-hidden="true">
+        <div class="network-check-step is-failed" data-network-step="device">
+          <span class="network-check-step-circle">
+            <span class="network-check-step-spinner" aria-hidden="true"></span>
+            <span class="network-check-step-spinner-dot" aria-hidden="true"></span>
+            <span class="network-check-step-number">1</span>
+            <span class="network-check-step-check">✓</span>
+          </span>
+          <span id="network-check-device-label" class="network-check-step-label">设备环境</span>
+        </div>
+        <span class="network-check-connector is-failed"></span>
+        <div class="network-check-step is-muted" data-network-step="network">
+          <span class="network-check-step-circle">
+            <span class="network-check-step-spinner" aria-hidden="true"></span>
+            <span class="network-check-step-spinner-dot" aria-hidden="true"></span>
+            <span class="network-check-step-number">2</span>
+            <span class="network-check-step-check">✓</span>
+          </span>
+          <span id="network-check-network-label" class="network-check-step-label">网络一致性</span>
+        </div>
+      </div>
+
+      <div class="network-check-copy">
+        <h1 id="network-check-title">访问被暂时阻止</h1>
+        <p id="network-check-copy">
+          请求被网络环境校验拦截。请关闭 VPN、代理、加速器，或调整分流规则后关闭此页面并重新打开站点。
+        </p>
+      </div>
+
+      <dl id="network-check-details" class="network-check-details" aria-label="拦截信息"></dl>
+      <p id="network-check-note" class="network-check-note">
+        此页面不会自动跳转，也不提供继续访问入口。环境调整完成后，请重新打开登录页。
+      </p>
+      <div class="network-check-particles" aria-hidden="true"></div>
+      <div class="network-check-bloom" aria-hidden="true"></div>
+    </section>
+  </main>
+</body>
+</html>

@@ -254,6 +254,45 @@ public class CountingBloomFilter {
             "end " +
             "return 1";
 
+    private static final String LUA_ADD_IF_ABSENT = "local offsets = {} " +
+            "local vals = {} " +
+            "local missing = 0 " +
+            "for i=1,#ARGV do " +
+            "  local offset = tonumber(ARGV[i]) " +
+            "  offsets[i] = offset " +
+            "  local cur = redis.call('GETRANGE', KEYS[1], offset, offset) " +
+            "  local val = (cur == '' or #cur == 0) and 0 or string.byte(cur) " +
+            "  vals[i] = val " +
+            "  if val == 0 then missing = 1 end " +
+            "end " +
+            "if missing == 0 then return 0 end " +
+            "for i=1,#ARGV do " +
+            "  if vals[i] < 255 then " +
+            "    redis.call('SETRANGE', KEYS[1], offsets[i], string.char(vals[i] + 1)) " +
+            "  end " +
+            "end " +
+            "return 1";
+
+    private static final String LUA_ADD_IF_ABSENT_2BYTE = "local offsets = {} " +
+            "local vals = {} " +
+            "local missing = 0 " +
+            "for i=1,#ARGV do " +
+            "  local offset = tonumber(ARGV[i]) " +
+            "  offsets[i] = offset " +
+            "  local cur = redis.call('GETRANGE', KEYS[1], offset, offset + 1) " +
+            "  local val = (#cur < 2) and 0 or (string.byte(cur, 1) * 256 + string.byte(cur, 2)) " +
+            "  vals[i] = val " +
+            "  if val == 0 then missing = 1 end " +
+            "end " +
+            "if missing == 0 then return 0 end " +
+            "for i=1,#ARGV do " +
+            "  if vals[i] < 65535 then " +
+            "    local val = vals[i] + 1 " +
+            "    redis.call('SETRANGE', KEYS[1], offsets[i], string.char(math.floor(val / 256), val % 256)) " +
+            "  end " +
+            "end " +
+            "return 1";
+
     private static final String LUA_ADD_ALL_2BYTE = "local k = tonumber(ARGV[1]) " +
             "local total = #ARGV - 1 " +
             "local count = 0 " +
@@ -469,6 +508,25 @@ public class CountingBloomFilter {
      */
     public Boolean add(String key, byte[] id) {
         return add(key, new String(id, StandardCharsets.UTF_8));
+    }
+
+    public Boolean addIfAbsent(String key, String item) {
+        FilterMeta meta = getMeta(key);
+        long[] buckets = getBuckets(item, meta.capacity, meta.hashCount);
+        String[] args = toStringArray(buckets, meta.counterBytes);
+
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(
+                meta.counterBytes == 2 ? LUA_ADD_IF_ABSENT_2BYTE : LUA_ADD_IF_ABSENT,
+                Long.class);
+        Long result = stringRedisTemplate.execute(script, Collections.singletonList(key), (Object[]) args);
+        return result != null && result == 1L;
+    }
+
+    public Boolean addIfAbsentLong(String key, Long id) {
+        if (id == null) {
+            return false;
+        }
+        return addIfAbsent(key, String.valueOf(id));
     }
 
     /**

@@ -39,6 +39,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private static final String LOGIN_PAGE_PATH = "/shopping/user/log-in";
     private static final String CONSOLE_PAGE_URL = "/shopping/user/console";
+    private static final String NETWORK_CHECK_FAILED_PATH = "/shopping/auth/network-check-failed";
     private static final String AUTH_USER_ID_SESSION_ATTRIBUTE = "AUTH_USER_ID";
 
     private final GithubAuthService githubAuthService;
@@ -47,6 +48,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final UserProfileService userProfileService;
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final AuthTokenService authTokenService;
+    private final OAuth2PreAuthRiskGuard preAuthRiskGuard;
     private final RestTemplate restTemplate = new RestTemplate();
 
     public OAuth2LoginSuccessHandler(GithubAuthService githubAuthService,
@@ -54,13 +56,15 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                                      MicrosoftAuthService microsoftAuthService,
                                      UserProfileService userProfileService,
                                      OAuth2AuthorizedClientService authorizedClientService,
-                                     AuthTokenService authTokenService) {
+                                     AuthTokenService authTokenService,
+                                     OAuth2PreAuthRiskGuard preAuthRiskGuard) {
         this.githubAuthService = githubAuthService;
         this.googleAuthService = googleAuthService;
         this.microsoftAuthService = microsoftAuthService;
         this.userProfileService = userProfileService;
         this.authorizedClientService = authorizedClientService;
         this.authTokenService = authTokenService;
+        this.preAuthRiskGuard = preAuthRiskGuard;
     }
 
     @Override
@@ -72,6 +76,12 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         Map<String, Object> attrs = token.getPrincipal().getAttributes();
 
         try {
+            OAuth2PreAuthRiskDecision riskDecision = preAuthRiskGuard.evaluate(request);
+            if (!riskDecision.allowed()) {
+                response.sendRedirect(buildRiskBlockedUrl(request, riskDecision));
+                return;
+            }
+
             UserLoginIdentity identity = switch (registrationId) {
                 case "github" -> githubAuthService.loginByGithub(
                         stringValue(attrs.get("id")),
@@ -165,6 +175,23 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         String rid = (registrationId == null || registrationId.isBlank()) ? "oauth" : registrationId;
         String msg = URLEncoder.encode(reason, StandardCharsets.UTF_8);
         return LOGIN_PAGE_PATH + "?" + rid + "=failed&msg=" + msg;
+    }
+
+    private String buildRiskBlockedUrl(HttpServletRequest request, OAuth2PreAuthRiskDecision decision) {
+        return NETWORK_CHECK_FAILED_PATH
+                + "?scope=user"
+                + "&error=" + encode(decision.error())
+                + "&message=" + encode(decision.message())
+                + "&path=" + encode(request == null ? "" : request.getRequestURI())
+                + "&cfRay=" + encode(header(request, "CF-Ray"));
+    }
+
+    private String header(HttpServletRequest request, String name) {
+        return request == null ? "" : request.getHeader(name);
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
     }
 
     private String normalizeEmail(String email) {

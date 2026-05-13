@@ -13,6 +13,7 @@ import com.example.ShoppingSystem.service.user.auth.passwordreset.model.Password
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetDecryptOutcome;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetResult;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteService;
+import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -43,6 +44,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     private final PasswordResetMailSender passwordResetMailSender;
     private final ObjectMapper objectMapper;
     private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
+    private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
 
     public PasswordResetServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
                                     StringRedisTemplate stringRedisTemplate,
@@ -50,7 +52,8 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                                     PasswordResetCryptoService passwordResetCryptoService,
                                     PasswordResetMailSender passwordResetMailSender,
                                     ObjectMapper objectMapper,
-                                    DeviceRiskProfileWriteService deviceRiskProfileWriteService) {
+                                    DeviceRiskProfileWriteService deviceRiskProfileWriteService,
+                                    TerminatedAccountEmailBloomService terminatedAccountEmailBloomService) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.stringRedisTemplate = stringRedisTemplate;
         this.passwordEncoder = passwordEncoder;
@@ -58,6 +61,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         this.passwordResetMailSender = passwordResetMailSender;
         this.objectMapper = objectMapper;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
+        this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
     }
 
     @Override
@@ -74,6 +78,10 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                                              boolean wafResumeRequest,
                                              String baseUrl) {
         String normalizedEmail = normalizeEmail(email);
+        PasswordResetResult terminatedResult = terminatedAccountFailureIfNecessary(normalizedEmail);
+        if (terminatedResult != null) {
+            return terminatedResult;
+        }
         PasswordResetResult riskResult = requireRiskPass(preAuthToken, riskLevel, wafResumeRequest);
         if (riskResult != null) {
             return riskResult;
@@ -113,6 +121,10 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                                              boolean wafResumeRequest,
                                              String baseUrl) {
         String normalizedEmail = normalizeEmail(email);
+        PasswordResetResult terminatedResult = terminatedAccountFailureIfNecessary(normalizedEmail);
+        if (terminatedResult != null) {
+            return terminatedResult;
+        }
         PasswordResetResult riskResult = requireRiskPass(preAuthToken, riskLevel, wafResumeRequest);
         if (riskResult != null) {
             return riskResult;
@@ -181,6 +193,10 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (StrUtil.isBlank(email) || userId == null) {
             return PasswordResetResult.fail("PASSWORD_RESET_LINK_INVALID", "Password reset link is invalid or expired.");
         }
+        PasswordResetResult terminatedResult = terminatedAccountFailureIfNecessary(email);
+        if (terminatedResult != null) {
+            return terminatedResult;
+        }
 
         PasswordPair passwords = decryptPasswordPair(kid, payloadCipher, nonce, timestamp);
         PasswordResetResult passwordError = validatePasswordPair(passwords);
@@ -213,6 +229,10 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         String normalizedCode = normalizeCode(code);
         if (StrUtil.hasBlank(normalizedEmail, normalizedCode)) {
             return PasswordResetResult.fail("PASSWORD_RESET_CODE_INVALID", "Verification code is incorrect or expired.");
+        }
+        PasswordResetResult terminatedResult = terminatedAccountFailureIfNecessary(normalizedEmail);
+        if (terminatedResult != null) {
+            return terminatedResult;
         }
         String rawCodePayload = stringRedisTemplate.opsForValue().get(emailCodeKey(normalizedEmail));
         PasswordResetEmailCodePayload codePayload = parseEmailCodePayload(rawCodePayload, normalizedEmail);
@@ -276,6 +296,10 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (verifiedPayload == null || StrUtil.isBlank(verifiedPayload.email())) {
             return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
         }
+        PasswordResetResult terminatedResult = terminatedAccountFailureIfNecessary(verifiedPayload.email());
+        if (terminatedResult != null) {
+            return terminatedResult;
+        }
         PasswordResetResult bindingError = validateRequestBinding(
                 verifiedPayload.preAuthHash(),
                 verifiedPayload.fpHash(),
@@ -289,6 +313,10 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                 stringRedisTemplate.opsForValue().getAndDelete(verifiedKey(normalizedToken)));
         if (consumedPayload == null || StrUtil.isBlank(consumedPayload.email())) {
             return PasswordResetResult.fail("PASSWORD_RESET_CODE_TOKEN_INVALID", "Password reset verification is invalid or expired.");
+        }
+        terminatedResult = terminatedAccountFailureIfNecessary(consumedPayload.email());
+        if (terminatedResult != null) {
+            return terminatedResult;
         }
         bindingError = validateRequestBinding(
                 consumedPayload.preAuthHash(),
@@ -371,6 +399,16 @@ public class PasswordResetServiceImpl implements PasswordResetService {
             return PasswordResetResult.wafRequired(normalizedRiskLevel, buildWafVerifyUrl());
         }
         return null;
+    }
+
+    private PasswordResetResult terminatedAccountFailureIfNecessary(String email) {
+        if (!terminatedAccountEmailBloomService.isTerminatedEmail(email)) {
+            return null;
+        }
+        return PasswordResetResult.fail(
+                TerminatedAccountEmailBloomService.ERROR_ACCOUNT_RISK_TERMINATED,
+                TerminatedAccountEmailBloomService.MESSAGE_ACCOUNT_RISK_TERMINATED
+        );
     }
 
     private PasswordResetResult markCooldownOrReject(String email) {

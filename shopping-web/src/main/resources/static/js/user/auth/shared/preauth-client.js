@@ -7,14 +7,22 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   const HEADER_PREAUTH_TOKEN = "X-Pre-Auth-Token"; // legacy, no longer used by default
   const HEADER_DEVICE_FINGERPRINT = "X-Device-Fingerprint";
+  const HEADER_WEBRTC_IP = "X-WebRTC-IP";
+  const HEADER_WEBRTC_IPS = "X-WebRTC-IPs";
+  const HEADER_WEBRTC_STATUS = "X-WebRTC-Status";
   const HEADER_CSRF_TOKEN = "X-XSRF-TOKEN";
   const COOKIE_CSRF_TOKEN = "XSRF-TOKEN";
   const WAF_REQUIRED_ERROR_CODE = "PREAUTH_IP_CHANGED_WAF_REQUIRED";
   const PHONE_BINDING_REQUIRED_ERROR_CODE = "PHONE_BINDING_REQUIRED";
   const PHONE_BINDING_PATH = "/shopping/user/security/phone";
+  const NETWORK_CHECK_FAILED_PATH = "/shopping/auth/network-check-failed";
+  const USER_LOGIN_PATH = "/shopping/user/log-in";
+  const WEBRTC_ERROR_CODES = new Set(["WEBRTC_IP_MISMATCH", "WEBRTC_SIGNAL_REQUIRED"]);
   const WAF_PENDING_REQUEST_KEY = "shopping.preauth.waf.pending-request";
   const WAF_REPLAY_EVENT_NAME = "shopping:preauth:waf-request-replayed";
   const DEVICE_SEED_KEY = "shopping.preauth.device-seed";
+  const WEBRTC_SIGNAL_TTL_MILLIS = 60_000;
+  const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 1_200;
 
   const PREAUTH_BOOTSTRAP_URL = "/shopping/auth/preauth/bootstrap";
 
@@ -30,6 +38,9 @@
   let bootstrapped = false;
   let lastBootstrapPayload = null;
   let inMemoryDeviceSeed = null;
+  let webRtcSignalTask = null;
+  let cachedWebRtcSignal = null;
+  let cachedWebRtcSignalAt = 0;
 
   function getNativeFetch() {
     if (typeof fetch !== "function") {
@@ -342,6 +353,56 @@
     return true;
   }
 
+  function isNetworkCheckFailurePayload(payload) {
+    const errorCode = payload && (payload.error || payload.code) ? String(payload.error || payload.code) : "";
+    return WEBRTC_ERROR_CODES.has(errorCode);
+  }
+
+  function buildCurrentPath(fallbackPath) {
+    if (!isBrowserRuntime()) {
+      return fallbackPath;
+    }
+    const path = `${window.location.pathname || "/"}${window.location.search || ""}`;
+    if (!path.startsWith("/") || path.startsWith("//") || path.startsWith(NETWORK_CHECK_FAILED_PATH)) {
+      return fallbackPath;
+    }
+    return path;
+  }
+
+  function sanitizeNetworkCheckUrl(rawUrl, scope) {
+    const fallbackPath = scope === "admin" ? "/shopping/admin/login" : USER_LOGIN_PATH;
+    const currentPath = buildCurrentPath(fallbackPath);
+    const fallbackUrl = `${NETWORK_CHECK_FAILED_PATH}?scope=${encodeURIComponent(scope)}&path=${encodeURIComponent(currentPath)}`;
+    const value = String(rawUrl || "").trim();
+    if (!value) {
+      return fallbackUrl;
+    }
+    try {
+      const parsed = new URL(value, window.location.origin);
+      if (parsed.origin !== window.location.origin || parsed.pathname !== NETWORK_CHECK_FAILED_PATH) {
+        return fallbackUrl;
+      }
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch (_) {
+      return fallbackUrl;
+    }
+  }
+
+  function redirectToNetworkCheckFailed(payload, scope = "user") {
+    if (!isBrowserRuntime() || window.location.pathname === NETWORK_CHECK_FAILED_PATH) {
+      return;
+    }
+    window.location.replace(sanitizeNetworkCheckUrl(payload?.networkCheckUrl, scope));
+  }
+
+  function handleNetworkCheckFailurePayload(payload, scope = "user") {
+    if (!isNetworkCheckFailurePayload(payload)) {
+      return false;
+    }
+    redirectToNetworkCheckFailed(payload, scope);
+    return true;
+  }
+
   function readCookieValue(name) {
     if (typeof document === "undefined" || !document.cookie) {
       return "";
@@ -370,6 +431,230 @@
     }
   }
 
+  async function applyWebRtcHeaders(headers) {
+    if (!headers || typeof headers.set !== "function") {
+      return;
+    }
+    const signal = await resolveWebRtcSignal();
+    headers.set(HEADER_WEBRTC_STATUS, signal.status || "error");
+    if (signal.ip) {
+      headers.set(HEADER_WEBRTC_IP, signal.ip);
+    }
+    if (Array.isArray(signal.ips) && signal.ips.length > 0) {
+      headers.set(HEADER_WEBRTC_IPS, signal.ips.join(","));
+    }
+  }
+
+  async function resolveWebRtcSignal() {
+    const now = Date.now();
+    if (cachedWebRtcSignal && now - cachedWebRtcSignalAt < WEBRTC_SIGNAL_TTL_MILLIS) {
+      return cachedWebRtcSignal;
+    }
+    if (webRtcSignalTask) {
+      return webRtcSignalTask;
+    }
+    webRtcSignalTask = detectWebRtcSignal()
+      .then((signal) => {
+        cachedWebRtcSignal = normalizeWebRtcSignal(signal);
+        cachedWebRtcSignalAt = Date.now();
+        return cachedWebRtcSignal;
+      })
+      .catch(() => {
+        cachedWebRtcSignal = { ip: "", ips: [], status: "error" };
+        cachedWebRtcSignalAt = Date.now();
+        return cachedWebRtcSignal;
+      })
+      .finally(() => {
+        webRtcSignalTask = null;
+      });
+    return webRtcSignalTask;
+  }
+
+  function detectWebRtcSignal() {
+    return new Promise((resolve) => {
+      if (!isBrowserRuntime()) {
+        resolve({ ip: "", status: "unsupported" });
+        return;
+      }
+
+      const PeerConnection = window.RTCPeerConnection
+        || window.webkitRTCPeerConnection
+        || window.mozRTCPeerConnection;
+      if (typeof PeerConnection !== "function") {
+        resolve({ ip: "", status: "unsupported" });
+        return;
+      }
+
+      let peer = null;
+      let done = false;
+      let lastPrivateCandidate = false;
+      const publicIps = [];
+      const addPublicIp = (ip) => {
+        if (ip && !publicIps.includes(ip)) {
+          publicIps.push(ip);
+        }
+      };
+      const buildCurrentSignal = (fallbackStatus) => {
+        if (publicIps.length > 0) {
+          return { ip: publicIps[0], ips: publicIps.slice(), status: "ok" };
+        }
+        return { ip: "", ips: [], status: lastPrivateCandidate ? "private_only" : fallbackStatus };
+      };
+      const finish = (signal) => {
+        if (done) {
+          return;
+        }
+        done = true;
+        try {
+          if (peer && typeof peer.close === "function") {
+            peer.close();
+          }
+        } catch (_) {
+        }
+        resolve(normalizeWebRtcSignal(signal));
+      };
+      const timer = window.setTimeout(() => {
+        finish(buildCurrentSignal("timeout"));
+      }, WEBRTC_SIGNAL_TIMEOUT_MILLIS);
+
+      const finishOnce = (signal) => {
+        window.clearTimeout(timer);
+        finish(signal);
+      };
+
+      try {
+        peer = new PeerConnection({
+          iceServers: [
+            { urls: ["stun:stun.l.google.com:19302", "stun:global.stun.twilio.com:3478"] }
+          ],
+          iceCandidatePoolSize: 0
+        });
+        if (typeof peer.createDataChannel === "function") {
+          peer.createDataChannel("preauth");
+        }
+        peer.onicecandidate = (event) => {
+          const candidate = event && event.candidate ? String(event.candidate.candidate || "") : "";
+          if (!candidate) {
+            finishOnce(buildCurrentSignal("timeout"));
+            return;
+          }
+          const extracted = extractPublicIpsFromCandidate(candidate);
+          if (extracted.length > 0) {
+            extracted.forEach(addPublicIp);
+          }
+          if (extractAnyIpFromCandidate(candidate)) {
+            lastPrivateCandidate = true;
+          }
+        };
+        peer.createOffer()
+          .then((offer) => peer.setLocalDescription(offer))
+          .catch(() => finishOnce(buildCurrentSignal("error")));
+      } catch (_) {
+        finishOnce(buildCurrentSignal("error"));
+      }
+    });
+  }
+
+  function normalizeWebRtcSignal(signal) {
+    const status = signal && signal.status ? String(signal.status).trim().toLowerCase() : "error";
+    const ips = normalizeIpList(signal && signal.ips);
+    const primaryIp = normalizeIpLiteral(signal && signal.ip ? String(signal.ip) : "");
+    if (primaryIp && !ips.includes(primaryIp)) {
+      ips.unshift(primaryIp);
+    }
+    const ip = primaryIp || ips[0] || "";
+    if (!ip && status === "ok") {
+      return { ip: "", ips: [], status: "private_only" };
+    }
+    if (["ok", "timeout", "unsupported", "private_only", "error"].includes(status)) {
+      return { ip, ips, status };
+    }
+    return { ip, ips, status: "error" };
+  }
+
+  function normalizeIpList(rawIps) {
+    const source = Array.isArray(rawIps) ? rawIps : String(rawIps || "").split(/[,\s]+/);
+    const ips = [];
+    for (let index = 0; index < source.length; index += 1) {
+      const normalized = normalizeIpLiteral(source[index]);
+      if (normalized && !ips.includes(normalized)) {
+        ips.push(normalized);
+      }
+    }
+    return ips;
+  }
+
+  function extractPublicIpFromCandidate(candidate) {
+    return extractPublicIpsFromCandidate(candidate)[0] || "";
+  }
+
+  function extractPublicIpsFromCandidate(candidate) {
+    const ips = extractIpCandidates(candidate);
+    const publicIps = [];
+    for (let index = 0; index < ips.length; index += 1) {
+      const normalized = normalizeIpLiteral(ips[index]);
+      if (normalized && !publicIps.includes(normalized)) {
+        publicIps.push(normalized);
+      }
+    }
+    return publicIps;
+  }
+
+  function extractAnyIpFromCandidate(candidate) {
+    return extractIpCandidates(candidate).length > 0;
+  }
+
+  function extractIpCandidates(candidate) {
+    const source = String(candidate || "");
+    const matches = source.match(/(\b\d{1,3}(?:\.\d{1,3}){3}\b|(?:[0-9a-fA-F]{1,4}:){2,}[0-9a-fA-F:.]{1,})/g);
+    return matches || [];
+  }
+
+  function normalizeIpLiteral(rawIp) {
+    let value = String(rawIp || "").trim().toLowerCase();
+    if (!value) {
+      return "";
+    }
+    if (value.startsWith("[") && value.includes("]")) {
+      value = value.substring(1, value.indexOf("]"));
+    }
+    if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(value)) {
+      value = value.substring(0, value.lastIndexOf(":"));
+    }
+    if (value.startsWith("::ffff:")) {
+      value = value.substring("::ffff:".length);
+    }
+    if (!isIpLiteral(value) || isPrivateOrLocalIp(value)) {
+      return "";
+    }
+    return value;
+  }
+
+  function isIpLiteral(value) {
+    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value) || /^[0-9a-f:]+$/.test(value);
+  }
+
+  function isPrivateOrLocalIp(value) {
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) {
+      const parts = value.split(".").map((part) => Number(part));
+      if (parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+        return true;
+      }
+      const first = parts[0];
+      const second = parts[1];
+      return first === 10
+        || first === 127
+        || first === 0
+        || (first === 169 && second === 254)
+        || (first === 172 && second >= 16 && second <= 31)
+        || (first === 192 && second === 168);
+    }
+    return value === "::1"
+      || value.startsWith("fc")
+      || value.startsWith("fd")
+      || value.startsWith("fe80:");
+  }
+
   async function bootstrapPreAuthToken(force = false) {
     if (bootstrapTask) {
       return bootstrapTask;
@@ -391,6 +676,7 @@
         [HEADER_DEVICE_FINGERPRINT]: buildDeviceFingerprint()
       });
       applyCsrfHeader(requestHeaders);
+      await applyWebRtcHeaders(requestHeaders);
 
       const response = await getNativeFetch()(PREAUTH_BOOTSTRAP_URL, {
         method: "POST",
@@ -398,6 +684,12 @@
         body: "{}",
         credentials: "same-origin"
       });
+      if (response.status === 403) {
+        const payload = await parseJsonSafely(response.clone()) || {};
+        if (handleNetworkCheckFailurePayload(payload)) {
+          return payload;
+        }
+      }
       if (response.status === 409) {
         const payload = await parseJsonSafely(response) || {};
         const errorCode = payload && payload.error ? String(payload.error) : "";
@@ -468,6 +760,7 @@
     const requestOptions = cloneOptions(options);
     requestOptions.headers.set(HEADER_DEVICE_FINGERPRINT, buildDeviceFingerprint());
     applyCsrfHeader(requestOptions.headers);
+    await applyWebRtcHeaders(requestOptions.headers);
     if (!bootstrapped) {
       try {
         await bootstrapPreAuthToken(false);
@@ -477,6 +770,11 @@
     }
 
     let response = await getNativeFetch()(url, requestOptions);
+    if (response.status === 403) {
+      const networkPayload = await parseJsonSafely(response.clone());
+      handleNetworkCheckFailurePayload(networkPayload);
+      return response;
+    }
     if (response.status === 409) {
       const wafPayload = await parseJsonSafely(response.clone());
       const errorCode = wafPayload && wafPayload.error ? String(wafPayload.error) : "";
@@ -503,7 +801,13 @@
     const retryOptions = cloneOptions(options);
     retryOptions.headers.set(HEADER_DEVICE_FINGERPRINT, buildDeviceFingerprint());
     applyCsrfHeader(retryOptions.headers);
-    return getNativeFetch()(url, retryOptions);
+    await applyWebRtcHeaders(retryOptions.headers);
+    response = await getNativeFetch()(url, retryOptions);
+    if (response.status === 403) {
+      const networkPayload = await parseJsonSafely(response.clone());
+      handleNetworkCheckFailurePayload(networkPayload);
+    }
+    return response;
   }
 
   // keep compatibility with old callers
@@ -523,6 +827,9 @@
   return {
     HEADER_PREAUTH_TOKEN,
     HEADER_DEVICE_FINGERPRINT,
+    HEADER_WEBRTC_IP,
+    HEADER_WEBRTC_IPS,
+    HEADER_WEBRTC_STATUS,
     WAF_REPLAY_EVENT_NAME,
     buildDeviceFingerprint,
     bootstrapPreAuthToken,

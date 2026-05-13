@@ -1,5 +1,5 @@
 (function (root) {
-  const CONTROLLER_MODULE_PATH = "/js/admin/particle-transition/transition-controller.js";
+  const CONTROLLER_MODULE_PATH = "/shopping/js/admin/particle-transition/transition-controller.js";
   const PENDING_KEY = "shopping:admin:parti-morph:pending:v1";
 
   let controllerPromise = null;
