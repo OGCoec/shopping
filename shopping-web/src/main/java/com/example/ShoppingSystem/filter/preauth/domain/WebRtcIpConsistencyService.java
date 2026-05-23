@@ -55,7 +55,7 @@ public class WebRtcIpConsistencyService {
         if (!signal.hasReport()) {
             if (requiresVerifiedWebRtcSignal(request)) {
                 logDecision(request, "BLOCK_SIGNAL_MISSING", httpIp, signal, false);
-                return CheckResult.blockRequired(httpIp, signal.webRtcIp(), signal.status());
+                return CheckResult.blockRequired(httpIp, signal.webRtcIp(), signal.joinedWebRtcIps(), signal.status());
             }
             logDecision(request, "ALLOW_SIGNAL_MISSING", httpIp, signal, true);
             return CheckResult.allow();
@@ -64,7 +64,7 @@ public class WebRtcIpConsistencyService {
         if (!signal.hasPublicIp() && requiresVerifiedWebRtcSignal(request)) {
             persistSignal(request, signal, false);
             logDecision(request, "BLOCK_SIGNAL_UNVERIFIED", httpIp, signal, false);
-            return CheckResult.blockRequired(httpIp, signal.webRtcIp(), signal.status());
+            return CheckResult.blockRequired(httpIp, signal.webRtcIp(), signal.joinedWebRtcIps(), signal.status());
         }
         boolean strictMatch = signal.hasPublicIp()
                 && StrUtil.isNotBlank(httpIp)
@@ -81,7 +81,7 @@ public class WebRtcIpConsistencyService {
         persistSignal(request, signal, mismatch);
         if (mismatch) {
             logDecision(request, "BLOCK_IP_MISMATCH", httpIp, signal, false);
-            return CheckResult.block(httpIp, signal.webRtcIp(), signal.status());
+            return CheckResult.block(httpIp, signal.webRtcIp(), signal.joinedWebRtcIps(), signal.status());
         }
         logDecision(request, trustedExitMatch ? "ALLOW_TRUSTED_EXIT_GROUP" : "ALLOW_MATCH", httpIp, signal, true);
         return CheckResult.allow();
@@ -95,13 +95,12 @@ public class WebRtcIpConsistencyService {
         if (request == null) {
             return;
         }
-        log.info("WebRTC IP consistency: decision={}, allowed={}, method={}, uri={}, httpIp={}, webRtcIp={}, webRtcIps={}, webRtcStatus={}, xForwardedFor={}, xRealIp={}, remoteAddr={}",
+        log.info("WebRTC IP consistency: decision={}, allowed={}, method={}, uri={}, httpIp={}, webRtcIps={}, webRtcStatus={}, xForwardedFor={}, xRealIp={}, remoteAddr={}",
                 decision,
                 allowed,
                 request.getMethod(),
                 request.getRequestURI(),
                 httpIp,
-                signal == null ? "" : signal.webRtcIp(),
                 signal == null ? "" : signal.joinedWebRtcIps(),
                 signal == null ? "" : signal.status(),
                 header(request, "X-Forwarded-For"),
@@ -115,7 +114,7 @@ public class WebRtcIpConsistencyService {
 
     private boolean requiresVerifiedWebRtcSignal(HttpServletRequest request) {
         String uri = request == null ? "" : StrUtil.blankToDefault(request.getRequestURI(), "");
-        if (!uri.startsWith("/shopping/admin")) {
+        if (!uri.startsWith("/shopping/")) {
             return false;
         }
         String method = request == null ? "" : StrUtil.blankToDefault(request.getMethod(), "");
@@ -126,6 +125,12 @@ public class WebRtcIpConsistencyService {
         String requestedWith = StrUtil.blankToDefault(request.getHeader("X-Requested-With"), "");
         return uri.contains("/api/")
                 || uri.startsWith("/shopping/admin/session/")
+                || uri.startsWith("/shopping/user/auth/")
+                || uri.startsWith("/shopping/user/session/")
+                || uri.startsWith("/shopping/user/profile/")
+                || uri.startsWith("/shopping/user/security/phone/")
+                || uri.startsWith("/shopping/user/totp/")
+                || "/shopping/user/totp".equals(uri)
                 || accept.contains("application/json")
                 || "XMLHttpRequest".equalsIgnoreCase(requestedWith);
     }
@@ -261,34 +266,37 @@ public class WebRtcIpConsistencyService {
                               String message,
                               String httpIp,
                               String webRtcIp,
+                              String webRtcIps,
                               String webRtcStatus) {
 
         static CheckResult allow() {
-            return new CheckResult(true, "", "", "", "", "");
+            return new CheckResult(true, "", "", "", "", "", "");
         }
 
-        static CheckResult block(String httpIp, String webRtcIp, String webRtcStatus) {
+        static CheckResult block(String httpIp, String webRtcIp, String webRtcIps, String webRtcStatus) {
             return new CheckResult(
                     false,
                     ERROR_CODE_MISMATCH,
                     ERROR_MESSAGE_MISMATCH,
                     httpIp,
                     webRtcIp,
+                    webRtcIps,
                     webRtcStatus
             );
         }
 
         static CheckResult blockRequired() {
-            return blockRequired("", "", "");
+            return blockRequired("", "", "", "");
         }
 
-        static CheckResult blockRequired(String httpIp, String webRtcIp, String webRtcStatus) {
+        static CheckResult blockRequired(String httpIp, String webRtcIp, String webRtcIps, String webRtcStatus) {
             return new CheckResult(
                     false,
                     ERROR_CODE_SIGNAL_REQUIRED,
                     ERROR_MESSAGE_SIGNAL_REQUIRED,
                     httpIp,
                     webRtcIp,
+                    webRtcIps,
                     webRtcStatus
             );
         }

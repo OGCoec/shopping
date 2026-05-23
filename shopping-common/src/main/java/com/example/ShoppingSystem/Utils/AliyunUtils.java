@@ -35,9 +35,9 @@ public class AliyunUtils {
 
     private static final Logger log = LoggerFactory.getLogger(AliyunUtils.class);
 
-    private static final String DEFAULT_OSS_BUCKET = "damnit";
-    private static final String OSS_REGION = "cn-shenzhen";
-    private static final String OSS_ENDPOINT = "https://oss-cn-shenzhen.aliyuncs.com";
+    private static final String DEFAULT_OSS_BUCKET = "shopping6655";
+    private static final String OSS_REGION = "cn-hongkong";
+    private static final String OSS_ENDPOINT = "https://oss-cn-hongkong.aliyuncs.com";
     public static final String HONG_KONG_OSS_REGION = "cn-hongkong";
     public static final String HONG_KONG_OSS_ENDPOINT = "https://oss-cn-hongkong.aliyuncs.com";
 

@@ -46,7 +46,10 @@ public interface UserAccountSelfDeletionMapper {
                 is_deleted = FALSE,
                 deletion_reason = EXCLUDED.deletion_reason,
                 deleted_at = EXCLUDED.deleted_at,
-                created_at = EXCLUDED.created_at
+                created_at = EXCLUDED.created_at,
+                restored_at = NULL,
+                restored_by = NULL,
+                restore_reason = NULL
             """)
     int upsertPendingSelfDeletion(@Param("id") Long id,
                                   @Param("userId") Long userId,
@@ -66,6 +69,7 @@ public interface UserAccountSelfDeletionMapper {
                        phone
                 FROM user_account_self_deletion
                 WHERE is_deleted = FALSE
+                  AND restored_at IS NULL
                   AND deleted_at IS NOT NULL
                   AND deleted_at <= #{cutoff}
                 ORDER BY deleted_at

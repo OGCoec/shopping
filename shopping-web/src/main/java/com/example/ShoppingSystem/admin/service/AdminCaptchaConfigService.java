@@ -45,14 +45,14 @@ public class AdminCaptchaConfigService {
     private static final Pattern ENV_PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}:]+)(?::[^}]*)?}");
 
     private final ConfigurableEnvironment environment;
-    private final AdminWindowsSystemEnvService windowsSystemEnvService;
+    private final AdminManagedEnvService managedEnvService;
     private final Map<String, Object> windowsEnvValues = new ConcurrentHashMap<>();
     private final Object monitor = new Object();
 
     public AdminCaptchaConfigService(ConfigurableEnvironment environment,
-                                     AdminWindowsSystemEnvService windowsSystemEnvService) {
+                                     AdminManagedEnvService managedEnvService) {
         this.environment = environment;
-        this.windowsSystemEnvService = windowsSystemEnvService;
+        this.managedEnvService = managedEnvService;
         loadManagedEnvPropertySource();
     }
 
@@ -109,7 +109,9 @@ public class AdminCaptchaConfigService {
                         definition.secretKeyEnv(),
                         yamlMetadata.get(YAML_SECRET_KEY)
                 ),
-                windowsSystemEnvService.windowsEnvTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 true
         );
     }
@@ -126,7 +128,9 @@ public class AdminCaptchaConfigService {
                 maskValue(rawValue),
                 propertyKey,
                 envName,
-                windowsSystemEnvService.windowsEnvTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 YAML_DISPLAY_PATH,
                 yamlLine
         );
@@ -284,14 +288,14 @@ public class AdminCaptchaConfigService {
     private Map<String, String> readManagedEnvValues() {
         Map<String, String> values = new LinkedHashMap<>();
         for (String envName : AdminOAuth2WindowsEnvPostProcessor.MANAGED_ENV_NAMES) {
-            windowsSystemEnvService.readSystemEnvValue(envName)
+            managedEnvService.readSystemEnvValue(envName)
                     .ifPresent(value -> values.put(envName, value));
         }
         return values;
     }
 
     private void writeWindowsSystemEnv(String envName, String value) {
-        windowsSystemEnvService.writeWindowsSystemEnv(
+        managedEnvService.writeSystemEnv(
                 envName,
                 value,
                 "ADMIN_CAPTCHA_WINDOWS_ENV_UNSUPPORTED",

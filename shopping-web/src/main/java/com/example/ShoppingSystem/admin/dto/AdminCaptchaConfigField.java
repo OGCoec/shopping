@@ -4,6 +4,8 @@ public record AdminCaptchaConfigField(String maskedValue,
                                       String propertyKey,
                                       String envName,
                                       String windowsEnvTarget,
+                                      String envTarget,
+                                      String envStoreType,
                                       String yamlFile,
                                       Integer yamlLine) {
 }

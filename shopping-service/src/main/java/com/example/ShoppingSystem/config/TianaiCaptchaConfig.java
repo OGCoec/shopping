@@ -4,6 +4,7 @@ import cloud.tianai.captcha.interceptor.CaptchaInterceptor;
 import cloud.tianai.captcha.validator.ImageCaptchaValidator;
 import cloud.tianai.captcha.validator.impl.SimpleImageCaptchaValidator;
 import com.example.ShoppingSystem.service.captcha.tianai.interceptor.SelectiveTrackCaptchaInterceptor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -15,6 +16,7 @@ import org.springframework.context.annotation.Configuration;
  * 2. 额外挂上轨迹“像不像机器人”的拦截器，但只对真正的拖动题型启用
  */
 @Configuration
+@EnableConfigurationProperties(TianaiCaptchaResourceProperties.class)
 public class TianaiCaptchaConfig {
 
     @Bean

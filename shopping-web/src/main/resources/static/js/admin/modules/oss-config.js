@@ -72,7 +72,7 @@
     if (nodes.button) {
       nodes.button.disabled = true;
     }
-    setStatus(nodes, "正在保存阿里云 OSS Windows 系统环境变量...");
+    setStatus(nodes, "正在保存阿里云 OSS 服务器环境变量...");
     try {
       const response = await api.request("/shopping/admin/api/oss/aliyun/config", {
         accessKeyId,
@@ -81,7 +81,7 @@
       const data = response.data || {};
       renderConfig(nodes, data);
       clearInputs(nodes);
-      const target = data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+      const target = data.envTarget || data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
       setStatus(nodes, `已保存到 ${target}，重启应用后 OSS 客户端生效。`, "ok");
     } catch (error) {
       setStatus(nodes, error.message || "保存阿里云 OSS 配置失败。", "error");

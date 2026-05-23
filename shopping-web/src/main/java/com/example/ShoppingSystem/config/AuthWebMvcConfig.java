@@ -94,7 +94,6 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/shopping/**")
                 .excludePathPatterns(
                         "/shopping/admin/**",
-                        "/shopping/auth/preauth/bootstrap",
                         "/shopping/auth/preauth/phone-country",
                         "/shopping/auth/waf/verify",
                         "/shopping/auth/network-check-failed",
@@ -111,7 +110,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/favicon.ico",
                         "/webjars/**"
                 )
-                .order(120);
+                .order(-10);
 
         registry.addInterceptor(preAuthInterceptor)
                 .addPathPatterns("/shopping/**")
@@ -119,6 +118,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/auth/preauth/bootstrap",
                         "/shopping/auth/preauth/phone-country",
                         "/shopping/auth/waf/verify",
+                        "/shopping/api/product-categories/**",
                         "/shopping/user/login",
                         "/shopping/user/log-in",
                         "/shopping/user/log-in/password",

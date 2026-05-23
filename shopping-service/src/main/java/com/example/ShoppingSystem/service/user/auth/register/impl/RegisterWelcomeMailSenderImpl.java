@@ -1,26 +1,28 @@
 package com.example.ShoppingSystem.service.user.auth.register.impl;
 
-import com.example.ShoppingSystem.service.mail.ShoppingMailSender;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterWelcomeMailSender;
-import org.springframework.scheduling.annotation.Async;
+import com.example.ShoppingSystem.service.user.auth.register.WelcomeMailMessagePublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class RegisterWelcomeMailSenderImpl implements RegisterWelcomeMailSender {
 
-    private final ShoppingMailSender shoppingMailSender;
+    private static final Logger log = LoggerFactory.getLogger(RegisterWelcomeMailSenderImpl.class);
 
-    public RegisterWelcomeMailSenderImpl(ShoppingMailSender shoppingMailSender) {
-        this.shoppingMailSender = shoppingMailSender;
+    private final WelcomeMailMessagePublisher publisher;
+
+    public RegisterWelcomeMailSenderImpl(WelcomeMailMessagePublisher publisher) {
+        this.publisher = publisher;
     }
 
     @Override
-    @Async("mailTaskExecutor")
     public void sendWelcomeMail(String email) {
-        shoppingMailSender.sendText(
-                email,
-                "欢迎使用 Shopping System",
-                "欢迎注册 Shopping System，你的账号已经创建成功。"
-        );
+        try {
+            publisher.publishWelcomeMail(email);
+        } catch (RuntimeException e) {
+            log.error("Welcome mail message publish failed, email={}, error={}", email, e.getMessage(), e);
+        }
     }
 }

@@ -28,27 +28,38 @@ public class Ip2LocationQuotaHttpService {
 
     private static final Logger log = LoggerFactory.getLogger(Ip2LocationQuotaHttpService.class);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private static final String API_URL_CONFIG_NAME = "IP2LOCATION_IO_API_URL";
 
     private final Ip2LocationQuotaService quotaService;
+    private final RiskApiConfigStoreService riskApiConfigStoreService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
-    private final String apiUrl;
+    private final String defaultApiUrl;
 
     @Autowired
     public Ip2LocationQuotaHttpService(Ip2LocationQuotaService quotaService,
                                        ObjectMapper objectMapper,
+                                       RiskApiConfigStoreService riskApiConfigStoreService,
                                        @Value("${ip2location.io.api-url:https://api.ip2location.io/}") String apiUrl) {
-        this(quotaService, objectMapper, HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build(), apiUrl);
+        this(
+                quotaService,
+                objectMapper,
+                riskApiConfigStoreService,
+                HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build(),
+                apiUrl
+        );
     }
 
     Ip2LocationQuotaHttpService(Ip2LocationQuotaService quotaService,
                                 ObjectMapper objectMapper,
+                                RiskApiConfigStoreService riskApiConfigStoreService,
                                 HttpClient httpClient,
                                 String apiUrl) {
         this.quotaService = quotaService;
+        this.riskApiConfigStoreService = riskApiConfigStoreService;
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
-        this.apiUrl = apiUrl;
+        this.defaultApiUrl = apiUrl;
     }
 
     /**
@@ -153,6 +164,7 @@ public class Ip2LocationQuotaHttpService {
     }
 
     private HttpRequest buildRequest(String apiKey, String ip) {
+        String apiUrl = currentApiUrl();
         String separator = apiUrl.contains("?") ? "&" : "?";
         String url = apiUrl
                 + separator
@@ -164,6 +176,12 @@ public class Ip2LocationQuotaHttpService {
                 .timeout(REQUEST_TIMEOUT)
                 .GET()
                 .build();
+    }
+
+    private String currentApiUrl() {
+        return riskApiConfigStoreService.readValue(API_URL_CONFIG_NAME)
+                .filter(value -> !isBlank(value))
+                .orElse(defaultApiUrl);
     }
 
     private RiskRelevantFields extractRiskFields(JsonNode payload) {

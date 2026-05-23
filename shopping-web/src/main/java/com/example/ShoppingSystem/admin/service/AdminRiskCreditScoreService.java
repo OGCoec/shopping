@@ -10,10 +10,10 @@ import com.example.ShoppingSystem.admin.dto.AdminIpRiskCountryResponse;
 import com.example.ShoppingSystem.admin.dto.AdminIpRiskListItemResponse;
 import com.example.ShoppingSystem.admin.dto.AdminIpRiskListResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.example.ShoppingSystem.config.datasource.RiskReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.AdminDeviceRiskProfileMapper;
 import com.example.ShoppingSystem.mapper.IpReputationProfileMapper;
 import com.example.ShoppingSystem.quota.IpCountryLocalCacheStore;
-import com.example.ShoppingSystem.quota.IpGeoSnapshot;
 import com.example.ShoppingSystem.quota.IpRiskLocalCacheStore;
 import com.example.ShoppingSystem.service.user.auth.register.risk.impl.IpL6CountingBloomDecisionService;
 import com.github.pagehelper.PageHelper;
@@ -22,8 +22,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,20 +29,15 @@ import org.springframework.stereotype.Service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 
 @Service
 public class AdminRiskCreditScoreService {
@@ -101,42 +94,13 @@ public class AdminRiskCreditScoreService {
     private final IpRiskLocalCacheStore ipRiskLocalCacheStore;
     private final IpCountryLocalCacheStore ipCountryLocalCacheStore;
     private final IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService;
-
-    @Value("${admin.risk-credit.ip-list-cache.redis-key-prefix:admin:ip-risk:list:v1:}")
-    private String listCacheKeyPrefix;
-
-    @Value("${admin.risk-credit.ip-list-cache.redis-ttl-seconds:60}")
-    private int listCacheTtlSeconds;
-
-    @Value("${admin.risk-credit.device-list-cache.redis-key-prefix:admin:device-risk:list:v1:}")
-    private String deviceListCacheKeyPrefix;
-
-    @Value("${admin.risk-credit.device-list-cache.redis-ttl-seconds:45}")
-    private int deviceListCacheTtlSeconds;
-
-    @Value("${admin.risk-credit.device-detail-cache.redis-key-prefix:admin:device-risk:detail:v1:}")
-    private String deviceDetailCacheKeyPrefix;
-
-    @Value("${admin.risk-credit.device-detail-cache.redis-ttl-seconds:30}")
-    private int deviceDetailCacheTtlSeconds;
+    private final RiskReadReplicaQueryExecutor riskReadReplicaQueryExecutor;
 
     @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:v2:}")
     private String riskRedisKeyPrefix;
 
-    @Value("${register.ip-risk-multi-level.redis-ttl-minutes:60}")
-    private int riskRedisTtlMinutes;
-
-    @Value("${register.ip-risk-multi-level.redis-ttl-jitter-minutes:120}")
-    private int riskRedisTtlJitterMinutes;
-
     @Value("${register.ip-country-cache.redis-key-prefix:register:ip:country:}")
     private String countryRedisKeyPrefix;
-
-    @Value("${register.ip-country-cache.redis-ttl-minutes:360}")
-    private int countryRedisTtlMinutes;
-
-    @Value("${register.ip-country-cache.redis-ttl-jitter-minutes:1080}")
-    private int countryRedisTtlJitterMinutes;
 
     public AdminRiskCreditScoreService(AdminDeviceRiskProfileMapper adminDeviceRiskProfileMapper,
                                        IpReputationProfileMapper ipReputationProfileMapper,
@@ -144,7 +108,8 @@ public class AdminRiskCreditScoreService {
                                        ObjectMapper objectMapper,
                                        IpRiskLocalCacheStore ipRiskLocalCacheStore,
                                        IpCountryLocalCacheStore ipCountryLocalCacheStore,
-                                       IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService) {
+                                       IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService,
+                                       RiskReadReplicaQueryExecutor riskReadReplicaQueryExecutor) {
         this.adminDeviceRiskProfileMapper = adminDeviceRiskProfileMapper;
         this.ipReputationProfileMapper = ipReputationProfileMapper;
         this.stringRedisTemplate = stringRedisTemplate;
@@ -152,6 +117,7 @@ public class AdminRiskCreditScoreService {
         this.ipRiskLocalCacheStore = ipRiskLocalCacheStore;
         this.ipCountryLocalCacheStore = ipCountryLocalCacheStore;
         this.ipL6CountingBloomDecisionService = ipL6CountingBloomDecisionService;
+        this.riskReadReplicaQueryExecutor = riskReadReplicaQueryExecutor;
     }
 
     public AdminIpRiskListResponse listIpRiskProfiles(String family,
@@ -162,14 +128,9 @@ public class AdminRiskCreditScoreService {
                                                       String sort,
                                                       String q) {
         AdminIpRiskQuery query = normalizeQuery(family, country, level, page, pageSize, sort, q);
-        String listCacheKey = listCacheKey(query);
-        AdminIpRiskListResponse cachedResponse = readListCache(listCacheKey);
-        if (cachedResponse != null) {
-            return withSource(cachedResponse, "redis");
-        }
-
         ScoreRange scoreRange = scoreRange(query.level());
-        PageInfo<Map<String, Object>> pageInfo = pageIpRiskProfiles(query, scoreRange);
+        PageInfo<Map<String, Object>> pageInfo = riskReadReplicaQueryExecutor.query(
+                () -> pageIpRiskProfiles(query, scoreRange));
         List<Map<String, Object>> rows = pageInfo.getList();
 
         List<AdminIpRiskListItemResponse> items = rows.stream()
@@ -189,8 +150,6 @@ public class AdminRiskCreditScoreService {
                 "db",
                 items
         );
-        writeListCache(listCacheKey, response);
-        warmReturnedPageCaches(items);
         return response;
     }
 
@@ -239,7 +198,7 @@ public class AdminRiskCreditScoreService {
             dbUpdated = ipReputationProfileMapper.batchUpdateIpv6Scores(normalizedIps, targetScore);
         }
 
-        // ── 2) 一次 Redis 批量删除（风险缓存 + 国家缓存 + 管理列表缓存） ──
+        // ── 2) 一次 Redis 批量删除（风险缓存 + 国家缓存） ──
         int cacheDeleted = 0;
         try {
             List<String> cacheKeys = new ArrayList<>();
@@ -247,11 +206,6 @@ public class AdminRiskCreditScoreService {
                 cacheKeys.add(riskRedisKeyPrefix + ip);
                 cacheKeys.add(countryRedisKeyPrefix + ip);
             });
-            // 管理列表缓存按前缀模式清除
-            Set<String> adminListKeys = stringRedisTemplate.keys(listCacheKeyPrefix + "*");
-            if (adminListKeys != null && !adminListKeys.isEmpty()) {
-                cacheKeys.addAll(adminListKeys);
-            }
             if (!cacheKeys.isEmpty()) {
                 Long deleted = stringRedisTemplate.delete(cacheKeys);
                 cacheDeleted = deleted != null ? deleted.intValue() : 0;
@@ -271,10 +225,8 @@ public class AdminRiskCreditScoreService {
         }
 
         // ── 4) Caffeine 本地缓存失效（无网络延迟） ──
-        normalizedIps.forEach(ip -> {
-            ipRiskLocalCacheStore.invalidate(ip);
-            ipCountryLocalCacheStore.invalidate(ip);
-        });
+        ipRiskLocalCacheStore.invalidateAll(normalizedIps);
+        ipCountryLocalCacheStore.invalidateAll(normalizedIps);
 
         String actionLabel = ACTION_REMOVE_RISK.equals(action) ? "风险移出" : "风险添加";
         String message = String.format("%s完成：DB 更新 %d 行，缓存清除 %d 个 key，布隆同步 %d 个元素。",
@@ -308,18 +260,9 @@ public class AdminRiskCreditScoreService {
         }
     }
 
-    public AdminDeviceRiskListResponse listDeviceRiskProfiles(String level, int page, int pageSize, String sort, String q) {
-        AdminDeviceRiskQuery query = normalizeDeviceQuery(level, page, pageSize, sort, q);
-        String cacheKey = deviceListCacheKey(query);
-        AdminDeviceRiskListResponse cached = readDeviceListCache(cacheKey);
-        if (cached != null) {
-            return withDeviceSource(cached, "redis");
-        }
-
-        ScoreRange scoreRange = scoreRange(query.level());
-        PageInfo<Map<String, Object>> pageInfo;
+    private PageInfo<Map<String, Object>> pageDeviceRiskProfiles(AdminDeviceRiskQuery query, ScoreRange scoreRange) {
         try {
-            pageInfo = PageHelper.startPage(query.page(), query.pageSize(), true)
+            return PageHelper.startPage(query.page(), query.pageSize(), true)
                     .doSelectPageInfo(() -> adminDeviceRiskProfileMapper.listDeviceRiskProfiles(
                             query.level(),
                             scoreRange.minScore(),
@@ -330,6 +273,23 @@ public class AdminRiskCreditScoreService {
         } finally {
             PageHelper.clearPage();
         }
+    }
+
+    private AdminDeviceDetailRows findDeviceDetailRows(String normalizedId) {
+        Map<String, Object> row = adminDeviceRiskProfileMapper.findDeviceById(normalizedId);
+        if (row == null || row.isEmpty()) {
+            return new AdminDeviceDetailRows(row, List.of());
+        }
+        List<Map<String, Object>> eventRows = adminDeviceRiskProfileMapper.listScoreEventsByDeviceId(
+                normalizedId, DEVICE_DETAIL_EVENT_LIMIT);
+        return new AdminDeviceDetailRows(row, eventRows);
+    }
+
+    public AdminDeviceRiskListResponse listDeviceRiskProfiles(String level, int page, int pageSize, String sort, String q) {
+        AdminDeviceRiskQuery query = normalizeDeviceQuery(level, page, pageSize, sort, q);
+        ScoreRange scoreRange = scoreRange(query.level());
+        PageInfo<Map<String, Object>> pageInfo = riskReadReplicaQueryExecutor.query(
+                () -> pageDeviceRiskProfiles(query, scoreRange));
 
         List<AdminDeviceRiskListItemResponse> items = pageInfo.getList().stream()
                 .map(this::toDeviceItem)
@@ -346,25 +306,19 @@ public class AdminRiskCreditScoreService {
                 "db",
                 items
         );
-        writeDeviceListCache(cacheKey, response);
         return response;
     }
 
     public AdminDeviceRiskDetailResponse getDeviceDetail(String deviceId) {
         String normalizedId = normalizeDeviceId(deviceId);
-        String detailCacheKey = deviceDetailCacheKeyPrefix + normalizedId;
-        AdminDeviceRiskDetailResponse cached = readDeviceDetailCache(detailCacheKey);
-        if (cached != null) {
-            return cached;
-        }
-
-        Map<String, Object> row = adminDeviceRiskProfileMapper.findDeviceById(normalizedId);
+        AdminDeviceDetailRows detailRows = riskReadReplicaQueryExecutor.query(
+                () -> findDeviceDetailRows(normalizedId));
+        Map<String, Object> row = detailRows.row();
         if (row == null || row.isEmpty()) {
             throw new AdminServiceException("ADMIN_RISK_DEVICE_NOT_FOUND", "设备不存在。", HttpStatus.NOT_FOUND);
         }
 
-        List<Map<String, Object>> eventRows = adminDeviceRiskProfileMapper.listScoreEventsByDeviceId(
-                normalizedId, DEVICE_DETAIL_EVENT_LIMIT);
+        List<Map<String, Object>> eventRows = detailRows.eventRows();
         List<AdminDeviceScoreEventResponse> scoreEvents = eventRows.stream()
                 .map(this::toScoreEvent)
                 .toList();
@@ -391,7 +345,6 @@ public class AdminRiskCreditScoreService {
                 usedIpList,
                 scoreEvents
         );
-        writeDeviceDetailCache(detailCacheKey, response);
         return response;
     }
 
@@ -622,136 +575,6 @@ public class AdminRiskCreditScoreService {
         );
     }
 
-    private void warmReturnedPageCaches(List<AdminIpRiskListItemResponse> items) {
-        if (items == null || items.isEmpty()) {
-            return;
-        }
-        try {
-            Map<String, String> riskValues = new LinkedHashMap<>();
-            Map<String, IpRiskLocalCacheStore.LocalRiskSnapshot> localRisks = new LinkedHashMap<>();
-            Map<String, String> countryValues = new LinkedHashMap<>();
-            Map<String, IpGeoSnapshot> localGeos = new LinkedHashMap<>();
-            long updatedAt = System.currentTimeMillis();
-
-            items.forEach(item -> {
-                if (item.ip() == null || item.ip().isBlank()) {
-                    return;
-                }
-                String normalizedCountry = normalizeCountryCode(item.countryCode());
-                localRisks.put(item.ip(), new IpRiskLocalCacheStore.LocalRiskSnapshot(item.score(), normalizedCountry));
-                riskValues.put(riskRedisKeyPrefix + item.ip(), writeJson(new RedisRiskCacheValue(item.score(), normalizedCountry)));
-
-                if (normalizedCountry != null) {
-                    IpGeoSnapshot geo = new IpGeoSnapshot(normalizedCountry, normalizeNullable(item.region()), normalizeNullable(item.city()), null, null);
-                    localGeos.put(item.ip(), geo);
-                    countryValues.put(countryRedisKeyPrefix + item.ip(), writeJson(new RedisIpGeoCacheValue(
-                            geo.country(),
-                            geo.region(),
-                            geo.city(),
-                            geo.latitude(),
-                            geo.longitude(),
-                            "DB",
-                            updatedAt
-                    )));
-                }
-            });
-
-            ipRiskLocalCacheStore.putRisks(localRisks);
-            ipCountryLocalCacheStore.putGeos(localGeos);
-            pipelineSetValues(riskValues, Duration.ofSeconds(computeTtlSeconds(riskRedisTtlMinutes, riskRedisTtlJitterMinutes)));
-            pipelineSetValues(countryValues, Duration.ofSeconds(computeTtlSeconds(countryRedisTtlMinutes, countryRedisTtlJitterMinutes)));
-        } catch (Exception e) {
-            log.debug("Admin IP risk cache warm failed, reason={}", e.getMessage());
-        }
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private void pipelineSetValues(Map<String, String> values, Duration ttl) {
-        if (values == null || values.isEmpty()) {
-            return;
-        }
-        stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
-            @Override
-            public Object execute(RedisOperations operations) {
-                values.forEach((key, value) -> operations.opsForValue().set(key, value, ttl));
-                return null;
-            }
-        });
-    }
-
-    private AdminIpRiskListResponse readListCache(String key) {
-        try {
-            String value = stringRedisTemplate.opsForValue().get(key);
-            if (value == null || value.isBlank()) {
-                return null;
-            }
-            return objectMapper.readValue(value, AdminIpRiskListResponse.class);
-        } catch (Exception e) {
-            log.debug("Admin IP risk list cache read failed, key={}, reason={}", key, e.getMessage());
-            return null;
-        }
-    }
-
-    private void writeListCache(String key, AdminIpRiskListResponse response) {
-        try {
-            stringRedisTemplate.opsForValue().set(
-                    key,
-                    objectMapper.writeValueAsString(response),
-                    Duration.ofSeconds(Math.max(1, listCacheTtlSeconds))
-            );
-        } catch (Exception e) {
-            log.debug("Admin IP risk list cache write failed, key={}, reason={}", key, e.getMessage());
-        }
-    }
-
-    private String writeJson(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
-
-    private AdminIpRiskListResponse withSource(AdminIpRiskListResponse response, String source) {
-        return new AdminIpRiskListResponse(
-                response.family(),
-                response.country(),
-                response.level(),
-                response.page(),
-                response.pageSize(),
-                response.total(),
-                response.hasNext(),
-                response.sort(),
-                source,
-                response.items()
-        );
-    }
-
-    private String listCacheKey(AdminIpRiskQuery query) {
-        return listCacheKeyPrefix
-                + query.family() + ":"
-                + (query.country() == null ? "ALL" : query.country()) + ":"
-                + (query.level() == null ? "ALL" : query.level()) + ":"
-                + query.sort() + ":"
-                + query.page() + ":"
-                + query.pageSize() + ":"
-                + hashQuery(query.ipQuery());
-    }
-
-    private String hashQuery(String query) {
-        if (query == null || query.isBlank()) {
-            return "none";
-        }
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(query.getBytes(StandardCharsets.UTF_8));
-            byte[] shortDigest = new byte[12];
-            System.arraycopy(digest, 0, shortDigest, 0, shortDigest.length);
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(shortDigest);
-        } catch (Exception e) {
-            return Integer.toHexString(query.hashCode());
-        }
-    }
-
     private String sha256Hex(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -781,13 +604,6 @@ public class AdminRiskCreditScoreService {
         return normalized.substring(0, prefixLength)
                 + "..."
                 + normalized.substring(normalized.length() - suffixLength);
-    }
-
-    private long computeTtlSeconds(int ttlMinutes, int jitterMinutes) {
-        int min = Math.max(1, ttlMinutes);
-        int jitter = Math.max(0, jitterMinutes);
-        int ttl = jitter == 0 ? min : min + ThreadLocalRandom.current().nextInt(jitter + 1);
-        return TimeUnit.MINUTES.toSeconds(ttl);
     }
 
     private String resolveLevel(int score) {
@@ -953,90 +769,10 @@ public class AdminRiskCreditScoreService {
                                         String queryPattern) {
     }
 
-    private AdminDeviceRiskListResponse withDeviceSource(AdminDeviceRiskListResponse response, String source) {
-        return new AdminDeviceRiskListResponse(
-                response.level(),
-                response.page(),
-                response.pageSize(),
-                response.total(),
-                response.hasNext(),
-                response.sort(),
-                source,
-                response.items()
-        );
-    }
-
-    private String deviceListCacheKey(AdminDeviceRiskQuery query) {
-        return deviceListCacheKeyPrefix
-                + (query.level() == null ? "ALL" : query.level()) + ":"
-                + query.sort() + ":"
-                + query.page() + ":"
-                + query.pageSize() + ":"
-                + hashQuery(query.deviceQuery());
-    }
-
-    private AdminDeviceRiskListResponse readDeviceListCache(String key) {
-        try {
-            String value = stringRedisTemplate.opsForValue().get(key);
-            if (value == null || value.isBlank()) {
-                return null;
-            }
-            return objectMapper.readValue(value, AdminDeviceRiskListResponse.class);
-        } catch (Exception e) {
-            log.debug("Admin device risk list cache read failed, key={}, reason={}", key, e.getMessage());
-            return null;
-        }
-    }
-
-    private void writeDeviceListCache(String key, AdminDeviceRiskListResponse response) {
-        try {
-            stringRedisTemplate.opsForValue().set(
-                    key,
-                    objectMapper.writeValueAsString(response),
-                    Duration.ofSeconds(Math.max(1, deviceListCacheTtlSeconds))
-            );
-        } catch (Exception e) {
-            log.debug("Admin device risk list cache write failed, key={}, reason={}", key, e.getMessage());
-        }
-    }
-
-    private AdminDeviceRiskDetailResponse readDeviceDetailCache(String key) {
-        try {
-            String value = stringRedisTemplate.opsForValue().get(key);
-            if (value == null || value.isBlank()) {
-                return null;
-            }
-            return objectMapper.readValue(value, AdminDeviceRiskDetailResponse.class);
-        } catch (Exception e) {
-            log.debug("Admin device risk detail cache read failed, key={}, reason={}", key, e.getMessage());
-            return null;
-        }
-    }
-
-    private void writeDeviceDetailCache(String key, AdminDeviceRiskDetailResponse response) {
-        try {
-            stringRedisTemplate.opsForValue().set(
-                    key,
-                    objectMapper.writeValueAsString(response),
-                    Duration.ofSeconds(Math.max(1, deviceDetailCacheTtlSeconds))
-            );
-        } catch (Exception e) {
-            log.debug("Admin device risk detail cache write failed, key={}, reason={}", key, e.getMessage());
-        }
-    }
-
     private record ScoreRange(Integer minScore, Integer maxScoreExclusive) {
     }
 
-    private record RedisRiskCacheValue(int score, String country) {
-    }
-
-    private record RedisIpGeoCacheValue(String country,
-                                        String region,
-                                        String city,
-                                        Object latitude,
-                                        Object longitude,
-                                        String source,
-                                        long updatedAtEpochMillis) {
+    private record AdminDeviceDetailRows(Map<String, Object> row,
+                                         List<Map<String, Object>> eventRows) {
     }
 }

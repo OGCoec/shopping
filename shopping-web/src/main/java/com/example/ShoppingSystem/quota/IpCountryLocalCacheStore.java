@@ -6,7 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -126,6 +128,18 @@ public class IpCountryLocalCacheStore {
             return;
         }
         cache.invalidate(ip);
+    }
+
+    public void invalidateAll(Collection<String> ips) {
+        if (ips == null || ips.isEmpty()) {
+            return;
+        }
+        List<String> normalizedIps = ips.stream()
+                .filter(ip -> ip != null && !ip.isBlank())
+                .toList();
+        if (!normalizedIps.isEmpty()) {
+            cache.invalidateAll(normalizedIps);
+        }
     }
 
     private IpGeoSnapshot normalizeGeo(IpGeoSnapshot geo) {

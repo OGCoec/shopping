@@ -17,6 +17,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.EOFException;
 import java.time.OffsetDateTime;
@@ -100,6 +101,18 @@ public class GlobalExceptionHandler {
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "REDIS_TIMEOUT",
                 "Redis operation timed out",
+                request
+        );
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<GlobalErrorResponse> handleResponseStatusException(ResponseStatusException e,
+                                                                             HttpServletRequest request) {
+        HttpStatus status = HttpStatus.resolve(e.getStatusCode().value());
+        return buildResponse(
+                status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status,
+                status == HttpStatus.NOT_FOUND ? "NOT_FOUND" : "REQUEST_FAILED",
+                e.getReason() == null || e.getReason().isBlank() ? "Request failed" : e.getReason(),
                 request
         );
     }

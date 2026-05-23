@@ -22,9 +22,9 @@
     const yamlFile = field.yamlFile || "shopping-web/src/main/resources/application.yaml";
     const envName = field.envName || "-";
     const propertyKey = field.propertyKey || "-";
-    const windowsEnvTarget = field.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+    const envTarget = field.envTarget || field.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
     const sensitiveNote = field.sensitive ? " · VALUE: 脱敏显示" : "";
-    return `YAML: ${yamlFile}:${yamlLine} · ENV: ${envName} · TARGET: ${windowsEnvTarget} · KEY: ${propertyKey}${sensitiveNote}`;
+    return `YAML: ${yamlFile}:${yamlLine} · ENV: ${envName} · TARGET: ${envTarget} · KEY: ${propertyKey}${sensitiveNote}`;
   }
 
   function createFieldRow(field) {
@@ -138,14 +138,14 @@
     if (nodes.button) {
       nodes.button.disabled = true;
     }
-    dom.setStatusNode(nodes.status, `正在保存 ${label} Windows 系统环境变量...`);
+    dom.setStatusNode(nodes.status, `正在保存 ${label} Redis 配置...`);
     try {
       const response = await api.request(`/shopping/admin/api/risk-api/${provider}/config`, { values });
       const data = response.data || {};
       renderConfig(nodes, data);
       clearInputs(nodes);
-      const target = data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
-      dom.setStatusNode(nodes.status, `已保存到 ${target}，重启应用后 Risk API 客户端生效。`, "ok");
+      const target = data.envTarget || data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+      dom.setStatusNode(nodes.status, `已保存到 ${target}，后续 Risk API 请求将使用新配置。`, "ok");
     } catch (error) {
       dom.setStatusNode(nodes.status, error.message || `保存 ${label} 配置失败。`, "error");
     } finally {

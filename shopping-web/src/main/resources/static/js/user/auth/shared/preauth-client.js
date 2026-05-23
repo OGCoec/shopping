@@ -22,7 +22,7 @@
   const WAF_REPLAY_EVENT_NAME = "shopping:preauth:waf-request-replayed";
   const DEVICE_SEED_KEY = "shopping.preauth.device-seed";
   const WEBRTC_SIGNAL_TTL_MILLIS = 60_000;
-  const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 1_200;
+  const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 5_000;
 
   const PREAUTH_BOOTSTRAP_URL = "/shopping/auth/preauth/bootstrap";
 

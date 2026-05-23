@@ -1,6 +1,8 @@
 package com.example.ShoppingSystem.admin.controller;
 
 import com.example.ShoppingSystem.admin.service.AdminConfigService;
+import com.example.ShoppingSystem.admin.service.AdminSessionService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
@@ -13,15 +15,21 @@ import org.springframework.web.bind.annotation.GetMapping;
 public class AdminPageController {
 
     private final AdminConfigService adminConfigService;
+    private final AdminSessionService adminSessionService;
 
-    public AdminPageController(AdminConfigService adminConfigService) {
+    public AdminPageController(AdminConfigService adminConfigService,
+                               AdminSessionService adminSessionService) {
         this.adminConfigService = adminConfigService;
+        this.adminSessionService = adminSessionService;
     }
 
     @GetMapping("/shopping/admin/login")
-    public Object adminLoginPage() {
+    public Object adminLoginPage(HttpServletRequest request) {
         if (!adminConfigService.isInitialized()) {
             return "redirect:/shopping/admin/firstlogin";
+        }
+        if (adminSessionService.isAuthenticated(request)) {
+            return "redirect:/shopping/admin/console";
         }
         return htmlPage("admin-login.html");
     }

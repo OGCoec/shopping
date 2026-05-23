@@ -23,9 +23,7 @@ public class AdminSessionService {
     private static final String FIELD_USERNAME = "username";
     private static final String FIELD_EMAIL = "email";
     private static final String FIELD_PHONE = "phone";
-    private static final String FIELD_CREATED_AT = "createdAt";
     private static final String FIELD_LAST_SEEN_AT = "lastSeenAt";
-    private static final String FIELD_EXPIRES_AT = "expiresAt";
 
     private final AdminSecurityProperties properties;
     private final StringRedisTemplate stringRedisTemplate;
@@ -41,15 +39,12 @@ public class AdminSessionService {
                              AdminAccount account) {
         String token = IdUtil.nanoId(48);
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime expiresAt = now.plus(sessionTtl());
 
         Map<String, String> session = new LinkedHashMap<>();
         session.put(FIELD_USERNAME, safe(account.getUsername()));
         session.put(FIELD_EMAIL, safe(account.getEmail()));
         session.put(FIELD_PHONE, safe(account.getPhone()));
-        session.put(FIELD_CREATED_AT, now.toString());
         session.put(FIELD_LAST_SEEN_AT, now.toString());
-        session.put(FIELD_EXPIRES_AT, expiresAt.toString());
 
         String key = sessionKey(token);
         stringRedisTemplate.opsForHash().putAll(key, session);
@@ -98,11 +93,7 @@ public class AdminSessionService {
     }
 
     private void touch(String key) {
-        OffsetDateTime now = OffsetDateTime.now();
-        Map<String, String> updates = new LinkedHashMap<>();
-        updates.put(FIELD_LAST_SEEN_AT, now.toString());
-        updates.put(FIELD_EXPIRES_AT, now.plus(sessionTtl()).toString());
-        stringRedisTemplate.opsForHash().putAll(key, updates);
+        stringRedisTemplate.opsForHash().put(key, FIELD_LAST_SEEN_AT, OffsetDateTime.now().toString());
         stringRedisTemplate.expire(key, sessionTtl());
     }
 

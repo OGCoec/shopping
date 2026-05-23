@@ -7,5 +7,7 @@ public record AdminRiskApiProviderConfigResponse(String provider,
                                                  String propertyPrefix,
                                                  List<AdminRiskApiConfigField> fields,
                                                  String windowsEnvTarget,
+                                                 String envTarget,
+                                                 String envStoreType,
                                                  boolean restartRequired) {
 }

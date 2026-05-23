@@ -358,6 +358,7 @@ public class RegisterController {
 
         String clientIp = resolveClientIp(httpServletRequest);
         RegisterPrecheckResult result = registerPrecheckService.resolveRegisterEmailCodeChallenge(
+                flowSession.getFlowId(),
                 request.getEmail(),
                 request.getUsername(),
                 decryptOutcome.rawPassword(),
@@ -407,7 +408,8 @@ public class RegisterController {
         String clientIp = resolveClientIp(httpServletRequest);
         RegisterPrecheckResult result = registerPrecheckService.sendRegisterEmailCodeAfterCaptcha(
                 flowSession.getFlowId(),
-                flowSession.getStep() == RegisterFlowStep.EMAIL_VERIFICATION,
+                flowSession.getStep() == RegisterFlowStep.PASSWORD
+                        || flowSession.getStep() == RegisterFlowStep.EMAIL_VERIFICATION,
                 request.getEmail(),
                 request.getUsername(),
                 decryptOutcome.rawPassword(),

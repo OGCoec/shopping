@@ -81,7 +81,7 @@
       nodes.fields?.removeAttribute("hidden");
       nodes.form?.removeAttribute("hidden");
       clearInputs(nodes);
-      const target = data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+      const target = data.envTarget || data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
       setStatus(nodes, `已保存到 ${target}，重启应用后 OAuth2 登录客户端生效。`, "ok");
     } catch (error) {
       setStatus(nodes, error.message || `保存 ${label} OAuth2 配置失败。`, "error");

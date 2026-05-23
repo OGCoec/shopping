@@ -39,13 +39,13 @@ public class AdminOssConfigService {
     private static final Pattern ENV_PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}:]+)(?::[^}]*)?}");
 
     private final ConfigurableEnvironment environment;
-    private final AdminWindowsSystemEnvService windowsSystemEnvService;
+    private final AdminManagedEnvService managedEnvService;
     private final Object monitor = new Object();
 
     public AdminOssConfigService(ConfigurableEnvironment environment,
-                                 AdminWindowsSystemEnvService windowsSystemEnvService) {
+                                 AdminManagedEnvService managedEnvService) {
         this.environment = environment;
-        this.windowsSystemEnvService = windowsSystemEnvService;
+        this.managedEnvService = managedEnvService;
     }
 
     public AdminOssProviderConfigResponse aliyunConfig() {
@@ -62,7 +62,9 @@ public class AdminOssConfigService {
                         ACCESS_KEY_SECRET_ENV,
                         yamlMetadata.get(YAML_ACCESS_KEY_SECRET_KEY)
                 ),
-                windowsSystemEnvService.windowsEnvTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 true,
                 true
         );
@@ -95,13 +97,15 @@ public class AdminOssConfigService {
         String envName = metadata != null && StringUtils.hasText(metadata.envName())
                 ? metadata.envName()
                 : fallbackEnvName;
-        String rawValue = windowsSystemEnvService.readSystemEnvValue(envName)
+        String rawValue = managedEnvService.readSystemEnvValue(envName)
                 .orElseGet(() -> readProperty(propertyKey));
         return new AdminOAuth2ConfigField(
                 maskValue(rawValue),
                 propertyKey,
                 envName,
-                windowsSystemEnvService.windowsEnvTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 YAML_DISPLAY_PATH,
                 metadata == null ? null : metadata.yamlLine()
         );
@@ -199,7 +203,7 @@ public class AdminOssConfigService {
     }
 
     private void writeWindowsSystemEnv(String envName, String value) {
-        windowsSystemEnvService.writeWindowsSystemEnv(
+        managedEnvService.writeSystemEnv(
                 envName,
                 value,
                 "ADMIN_OSS_WINDOWS_ENV_UNSUPPORTED",

@@ -45,12 +45,12 @@ public class WebRtcIpConsistencyInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        log.warn("WebRTC IP consistency blocked request: errorCode={}, method={}, uri={}, httpIp={}, webRtcIp={}, webRtcStatus={}",
+        log.warn("WebRTC IP consistency blocked request: errorCode={}, method={}, uri={}, httpIp={}, webRtcIps={}, webRtcStatus={}",
                 result.errorCode(),
                 request.getMethod(),
                 request.getRequestURI(),
                 result.httpIp(),
-                result.webRtcIp(),
+                result.webRtcIps(),
                 result.webRtcStatus());
 
         if (isHtmlNavigationRequest(request)) {

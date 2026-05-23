@@ -9,7 +9,7 @@
   const phoneNode = document.getElementById("admin-console-phone");
   const logoutButton = document.getElementById("admin-console-logout");
   const transitionSource = document.querySelector(".admin-split-console") || document.querySelector(".admin-main");
-  window.__ADMIN_CONSOLE_JS_VERSION__ = "modular-v29";
+  window.__ADMIN_CONSOLE_JS_VERSION__ = "modular-v31";
 
   function redirectToLogin() {
     window.location.replace("/shopping/admin/login");
@@ -30,6 +30,9 @@
     window.AdminIp2LocationMailToolModule?.mount();
     window.AdminRiskIpScoreModule?.mount();
     window.AdminRiskDeviceScoreModule?.mount();
+    window.AdminAccountCreditModule?.mount();
+    window.AdminAccountTerminationModule?.mount();
+    window.AdminProductCategoriesModule?.mount();
   }
 
   function bindRiskShortcuts() {

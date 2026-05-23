@@ -74,6 +74,7 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                                                                     String deviceFingerprint,
                                                                     String publicIp) {
         return resolveRegisterEmailCodeChallenge(
+                null,
                 email,
                 username,
                 rawPassword,
@@ -84,6 +85,24 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
 
     @Override
     public RegisterPrecheckResult resolveRegisterEmailCodeChallenge(String email,
+                                                                    String username,
+                                                                    String rawPassword,
+                                                                    String deviceFingerprint,
+                                                                    String publicIp,
+                                                                    AuthRiskSnapshot riskSnapshotOverride) {
+        return resolveRegisterEmailCodeChallenge(
+                null,
+                email,
+                username,
+                rawPassword,
+                deviceFingerprint,
+                publicIp,
+                riskSnapshotOverride);
+    }
+
+    @Override
+    public RegisterPrecheckResult resolveRegisterEmailCodeChallenge(String flowId,
+                                                                    String email,
                                                                     String username,
                                                                     String rawPassword,
                                                                     String deviceFingerprint,
@@ -121,6 +140,8 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
         }
 
         challengeSessionService.clearPendingChallengeSelection(email, deviceFingerprint);
+        // Keep the no-captcha decision sticky for the immediate email delivery call.
+        saveChallengePassed(flowId, email, deviceFingerprint, 0L);
         return RegisterPrecheckResult.builder()
                 .success(true)
                 .message("当前无需验证码，可继续发送邮箱验证码")
@@ -202,6 +223,9 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
             if (cooldownFailure != null) {
                 return cooldownFailure;
             }
+            challengeSelection = ChallengeSelection.none();
+            challengeType = null;
+            challengeSubType = null;
         }
 
         if (challengeType != null && !canReusePassedChallenge) {

@@ -37,8 +37,8 @@
     const yamlFile = field.yamlFile || "shopping-web/src/main/resources/application.yaml";
     const envName = field.envName || "-";
     const propertyKey = field.propertyKey || "-";
-    const windowsEnvTarget = field.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
-    return `YAML: ${yamlFile}:${yamlLine} · ENV: ${envName} · TARGET: ${windowsEnvTarget} · KEY: ${propertyKey}`;
+    const envTarget = field.envTarget || field.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+    return `YAML: ${yamlFile}:${yamlLine} · ENV: ${envName} · TARGET: ${envTarget} · KEY: ${propertyKey}`;
   }
 
   function renderOAuthField(valueNode, metaNode, field) {

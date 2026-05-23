@@ -32,8 +32,8 @@
     const yamlFile = field.yamlFile || "shopping-web/src/main/resources/application.yaml";
     const envName = field.envName || "-";
     const propertyKey = field.propertyKey || "-";
-    const windowsEnvTarget = field.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
-    return `YAML: ${yamlFile}:${yamlLine} · ENV: ${envName} · TARGET: ${windowsEnvTarget} · KEY: ${propertyKey} · VALUE: 脱敏显示`;
+    const envTarget = field.envTarget || field.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+    return `YAML: ${yamlFile}:${yamlLine} · ENV: ${envName} · TARGET: ${envTarget} · KEY: ${propertyKey} · VALUE: 脱敏显示`;
   }
 
   function renderField(valueNode, metaNode, field) {
@@ -98,7 +98,7 @@
       const data = response.data || {};
       renderConfig(nodes, data);
       clearInputs(nodes);
-      const target = data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+      const target = data.envTarget || data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
       setStatus(nodes, `已保存到 ${target}，重启应用后验证码服务生效。`, "ok");
     } catch (error) {
       setStatus(nodes, error.message || `保存 ${label} 验证码配置失败。`, "error");

@@ -236,6 +236,32 @@ app:
       prefetch: 1
       # 注册邮箱验证码最大重试次数。
       max-retry-count: 2
+    # 密码重置邮件队列配置。
+    password-reset-mail:
+      exchange: ${PASSWORD_RESET_MAIL_EXCHANGE:password.reset.mail.exchange}
+      queue: ${PASSWORD_RESET_MAIL_QUEUE:password.reset.mail.queue}
+      retry-queue: ${PASSWORD_RESET_MAIL_RETRY_QUEUE:password.reset.mail.retry.queue}
+      dead-letter-queue: ${PASSWORD_RESET_MAIL_DLQ:password.reset.mail.dlq}
+      routing-key: ${PASSWORD_RESET_MAIL_ROUTING_KEY:password.reset.mail.send}
+      retry-routing-key: ${PASSWORD_RESET_MAIL_RETRY_ROUTING_KEY:password.reset.mail.retry}
+      dead-routing-key: ${PASSWORD_RESET_MAIL_DEAD_ROUTING_KEY:password.reset.mail.dead}
+      concurrency: ${PASSWORD_RESET_MAIL_CONCURRENCY:2}
+      max-concurrency: ${PASSWORD_RESET_MAIL_MAX_CONCURRENCY:6}
+      prefetch: ${PASSWORD_RESET_MAIL_PREFETCH:1}
+      max-retry-count: ${PASSWORD_RESET_MAIL_MAX_RETRY_COUNT:2}
+    # 欢迎邮件队列配置。
+    welcome-mail:
+      exchange: ${WELCOME_MAIL_EXCHANGE:welcome.mail.exchange}
+      queue: ${WELCOME_MAIL_QUEUE:welcome.mail.queue}
+      retry-queue: ${WELCOME_MAIL_RETRY_QUEUE:welcome.mail.retry.queue}
+      dead-letter-queue: ${WELCOME_MAIL_DLQ:welcome.mail.dlq}
+      routing-key: ${WELCOME_MAIL_ROUTING_KEY:welcome.mail.send}
+      retry-routing-key: ${WELCOME_MAIL_RETRY_ROUTING_KEY:welcome.mail.retry}
+      dead-routing-key: ${WELCOME_MAIL_DEAD_ROUTING_KEY:welcome.mail.dead}
+      concurrency: ${WELCOME_MAIL_CONCURRENCY:1}
+      max-concurrency: ${WELCOME_MAIL_MAX_CONCURRENCY:2}
+      prefetch: ${WELCOME_MAIL_PREFETCH:1}
+      max-retry-count: ${WELCOME_MAIL_MAX_RETRY_COUNT:2}
     # 用户头像上传队列配置。
     user-avatar:
       # 用户头像交换机。
@@ -390,6 +416,14 @@ captcha:
   prefix: captcha
   # 是否初始化默认验证码资源。
   init-default-resource: false
+  # 天爱验证码配置。
+  tianai:
+    # 天爱验证码资源目录配置。
+    resource:
+      # 天爱验证码背景图目录，默认相对应用工作目录。
+      background-dir: ${CAPTCHA_TIANAI_BACKGROUND_DIR:captcha/tianai/rotate/background}
+      # 天爱验证码滑块模板目录，默认相对应用工作目录。
+      slider-template-dir: ${CAPTCHA_TIANAI_SLIDER_TEMPLATE_DIR:captcha/tianai/rotate/spilt}
   # 验证码链路追踪配置。
   trace:
     # 是否启用验证码追踪。
@@ -722,6 +756,28 @@ pagehelper:
 
 # 用户认证 token 配置。
 shopping:
+  admin:
+    product-spu-bloom:
+      enabled: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_ENABLED:true}
+      key: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_KEY:shopping:admin:product:spu:id:cbf}
+      capacity: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_CAPACITY:2000000}
+      hash-count: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_HASH_COUNT:7}
+      counter-bytes: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_COUNTER_BYTES:1}
+      page-size: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_PAGE_SIZE:2000}
+  datasource:
+    risk-read:
+      enabled: ${SHOPPING_RISK_READ_DB_ENABLED:true}
+      fallback-to-primary: ${SHOPPING_RISK_READ_DB_FALLBACK_TO_PRIMARY:true}
+      url: ${SHOPPING_RISK_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read}
+      username: ${SHOPPING_RISK_READ_DB_USERNAME:shopping_readonly}
+      password: ${SHOPPING_RISK_READ_DB_PASSWORD:change_this_readonly_password}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_RISK_READ_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_RISK_READ_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_RISK_READ_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_RISK_READ_DB_IDLE_TIMEOUT_MS:600000}
+        read-only: true
   # 登录 access/refresh token 配置。
   auth-token:
     # Access Token 有效期，单位秒。

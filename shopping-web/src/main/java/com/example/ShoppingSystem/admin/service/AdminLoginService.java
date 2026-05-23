@@ -33,6 +33,9 @@ public class AdminLoginService {
     public void login(AdminLoginRequest request,
                       HttpServletRequest httpServletRequest,
                       HttpServletResponse httpServletResponse) {
+        if (adminSessionService.isAuthenticated(httpServletRequest)) {
+            return;
+        }
         AdminAccount account = adminConfigService.requireInitialized();
         String identifier = normalizeIdentifier(request == null ? null : request.identifier());
         if (identifier.isBlank()) {

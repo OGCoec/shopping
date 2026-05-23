@@ -28,13 +28,13 @@
   <link rel="modulepreload" href="/shopping/error/three.core.min.js" />
   <link rel="stylesheet" href="/shopping/fonts/noto-sans-sc/noto-sans-sc.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons/css/flag-icons.min.css" />
-  <link rel="stylesheet" href="/shopping/css/admin-auth.css?v=17" />
+  <link rel="stylesheet" href="/shopping/css/admin-auth.css?v=22" />
   <script defer src="/shopping/js/admin/admin-api.js?v=11"></script>
   <script defer src="/shopping/js/vendor/html2canvas.min.js"></script>
   <script defer src="/shopping/js/admin/admin-particle-transition.js?v=9"></script>
   <script defer src="/shopping/js/admin/admin-dom.js"></script>
   <script defer src="/shopping/js/admin/admin-modal.js"></script>
-  <script defer src="/shopping/js/admin/admin-router.js?v=2"></script>
+  <script defer src="/shopping/js/admin/admin-router.js?v=5"></script>
   <script defer src="/shopping/js/admin/modules/oauth-config.js"></script>
   <script defer src="/shopping/js/admin/modules/captcha-config.js"></script>
   <script defer src="/shopping/js/admin/modules/smtp-config.js"></script>
@@ -45,7 +45,17 @@
   <script defer src="/shopping/js/admin/modules/ip2location-mail-tool.js"></script>
   <script defer src="/shopping/js/admin/modules/risk-ip-score.js?v=1"></script>
   <script defer src="/shopping/js/admin/modules/risk-device-score.js?v=1"></script>
-  <script defer src="/shopping/js/admin/admin-console.js?v=29"></script>
+  <script defer src="/shopping/js/admin/modules/account-credit.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/account-termination.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/product-categories.js?v=2"></script>
+  <script defer src="/shopping/js/admin/modules/product-api.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/product-image-utils.js?v=2"></script>
+  <script defer src="/shopping/js/admin/modules/product-form-ui.js?v=3"></script>
+  <script defer src="/shopping/js/admin/modules/product-carousel-controller.js?v=2"></script>
+  <script defer src="/shopping/js/admin/modules/product-create-controller.js?v=2"></script>
+  <script defer src="/shopping/js/admin/modules/product-detail-controller.js?v=3"></script>
+  <script defer src="/shopping/js/admin/modules/products.js?v=12"></script>
+  <script defer src="/shopping/js/admin/admin-console.js?v=31"></script>
 </head>
 <body class="admin-console-body">
   <main class="admin-split-console" data-admin-source>
@@ -70,6 +80,18 @@
         <button class="admin-side-item" type="button" data-section-target="riskCreditScore">
           <span>IP与设备指纹信用分</span>
           <small>Credit Scores</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="accountManagement">
+          <span>账号管理</span>
+          <small>Accounts</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="productCategories">
+          <span>商品分类管理</span>
+          <small>Product Categories</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="products">
+          <span>商品管理</span>
+          <small>Products</small>
         </button>
       </nav>
 
@@ -128,6 +150,488 @@
                 <strong>设备分数</strong>
                 <small>Device score</small>
               </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="accountManagement">
+          <div class="admin-api-detail admin-credit-score-detail">
+            <div class="admin-service-grid" aria-label="账号管理类型">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="accountCredit">
+                <span>Account credit</span>
+                <strong>账号信用分管理</strong>
+                <small>查看账号当前分、历史流水和管理员调分记录</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="accountTermination">
+                <span>Account termination</span>
+                <strong>账号停用管理</strong>
+                <small>查看主动停用、被动风控停用和 7 天内恢复</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="accountCredit">
+          <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="accountManagement">返回账号管理</button>
+            <article class="admin-oauth-config-card admin-risk-ip-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Account credit</span>
+                  <strong>账号信用分管理</strong>
+                </div>
+                <div class="admin-risk-ip-current">
+                  <span id="admin-account-credit-current-filter">全部账号</span>
+                  <strong id="admin-account-credit-current-level">全部风险等级</strong>
+                </div>
+              </div>
+
+              <form id="admin-account-credit-filter-form" class="admin-risk-ip-filter-form admin-account-filter-form">
+                <label class="admin-risk-ip-field">
+                  <span>User ID</span>
+                  <input id="admin-account-credit-user-id" type="number" min="1" step="1" placeholder="用户 ID" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>邮箱</span>
+                  <input id="admin-account-credit-email" type="search" autocomplete="off" placeholder="邮箱关键词" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>手机号</span>
+                  <input id="admin-account-credit-phone" type="search" autocomplete="off" placeholder="手机号关键词" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>账号状态</span>
+                  <select id="admin-account-credit-status">
+                    <option value="">全部状态</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="DISABLED">DISABLED</option>
+                    <option value="LOCKED">LOCKED</option>
+                    <option value="RISK_TERMINATED">RISK_TERMINATED</option>
+                  </select>
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>风险等级</span>
+                  <select id="admin-account-credit-risk-level">
+                    <option value="">全部等级</option>
+                    <option value="L1">L1 · 8500+</option>
+                    <option value="L2">L2 · 7500-8499</option>
+                    <option value="L3">L3 · 6000-7499</option>
+                    <option value="L4">L4 · 4800-5999</option>
+                    <option value="L5">L5 · 3000-4799</option>
+                    <option value="L6">L6 · 0-2999</option>
+                  </select>
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>每页</span>
+                  <select id="admin-account-credit-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+                <div class="admin-risk-ip-actions">
+                  <button id="admin-account-credit-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+                  <button id="admin-account-credit-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </form>
+
+              <div class="admin-risk-ip-summary">
+                <div><span>总数</span><strong id="admin-account-credit-total">-</strong></div>
+                <div><span>当前页</span><strong id="admin-account-credit-page-label">1</strong></div>
+                <div><span>数据来源</span><strong>主库</strong></div>
+              </div>
+
+              <p id="admin-account-credit-status-text" class="admin-oauth-config-status"></p>
+              <div id="admin-account-credit-list" class="admin-risk-ip-list"></div>
+              <div class="admin-risk-ip-pagination">
+                <button id="admin-account-credit-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+                <button id="admin-account-credit-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="accountTermination">
+          <div class="admin-api-detail admin-credit-score-detail">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="accountManagement">返回账号管理</button>
+            <div class="admin-service-grid" aria-label="账号停用类型">
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="accountTerminationSelf">
+                <span>Self disabled</span>
+                <strong>主动停用管理</strong>
+                <small>查看 7 天内可恢复和 7 天外主动停用记录</small>
+              </button>
+              <button class="admin-service-card admin-console-card" type="button" data-section-target="accountTerminationRisk">
+                <span>Risk disabled</span>
+                <strong>被动停用管理</strong>
+                <small>查看风控封禁、L6 分数和违规封禁记录</small>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="accountTerminationSelf">
+          <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="accountTermination">返回账号停用管理</button>
+            <article class="admin-oauth-config-card admin-risk-ip-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Self disabled</span>
+                  <strong>主动停用管理</strong>
+                </div>
+                <div class="admin-risk-ip-current">
+                  <span id="admin-account-self-current-filter">全部主动停用</span>
+                  <strong id="admin-account-self-current-scope">全部范围</strong>
+                </div>
+              </div>
+
+              <form id="admin-account-self-filter-form" class="admin-risk-ip-filter-form admin-account-filter-form">
+                <label class="admin-risk-ip-field">
+                  <span>范围</span>
+                  <select id="admin-account-self-scope">
+                    <option value="">全部范围</option>
+                    <option value="within7Days">7 天内可恢复</option>
+                    <option value="expired">7 天外未清理</option>
+                    <option value="deleted">已清理</option>
+                    <option value="restored">已恢复</option>
+                  </select>
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>User ID</span>
+                  <input id="admin-account-self-user-id" type="number" min="1" step="1" placeholder="用户 ID" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>邮箱</span>
+                  <input id="admin-account-self-email" type="search" autocomplete="off" placeholder="邮箱关键词" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>手机号</span>
+                  <input id="admin-account-self-phone" type="search" autocomplete="off" placeholder="手机号关键词" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>每页</span>
+                  <select id="admin-account-self-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+                <div class="admin-risk-ip-actions">
+                  <button id="admin-account-self-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+                  <button id="admin-account-self-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </form>
+
+              <div class="admin-risk-ip-summary">
+                <div><span>总数</span><strong id="admin-account-self-total">-</strong></div>
+                <div><span>当前页</span><strong id="admin-account-self-page-label">1</strong></div>
+                <div><span>恢复规则</span><strong>7 天内</strong></div>
+              </div>
+
+              <p id="admin-account-self-status-text" class="admin-oauth-config-status"></p>
+              <div id="admin-account-self-list" class="admin-risk-ip-list"></div>
+              <div class="admin-risk-ip-pagination">
+                <button id="admin-account-self-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+                <button id="admin-account-self-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="accountTerminationRisk">
+          <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score">
+            <button class="admin-api-back admin-spring-button" type="button" data-section-target="accountTermination">返回账号停用管理</button>
+            <article class="admin-oauth-config-card admin-risk-ip-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Risk disabled</span>
+                  <strong>被动停用管理</strong>
+                </div>
+                <div class="admin-risk-ip-current">
+                  <span id="admin-account-risk-term-current-filter">全部风控停用</span>
+                  <strong>只读</strong>
+                </div>
+              </div>
+
+              <form id="admin-account-risk-term-filter-form" class="admin-risk-ip-filter-form admin-account-filter-form">
+                <label class="admin-risk-ip-field">
+                  <span>User ID</span>
+                  <input id="admin-account-risk-term-user-id" type="number" min="1" step="1" placeholder="用户 ID" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>邮箱</span>
+                  <input id="admin-account-risk-term-email" type="search" autocomplete="off" placeholder="邮箱关键词" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>手机号</span>
+                  <input id="admin-account-risk-term-phone" type="search" autocomplete="off" placeholder="手机号关键词" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>每页</span>
+                  <select id="admin-account-risk-term-page-size">
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </label>
+                <div class="admin-risk-ip-actions">
+                  <button id="admin-account-risk-term-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+                  <button id="admin-account-risk-term-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </form>
+
+              <div class="admin-risk-ip-summary">
+                <div><span>总数</span><strong id="admin-account-risk-term-total">-</strong></div>
+                <div><span>当前页</span><strong id="admin-account-risk-term-page-label">1</strong></div>
+                <div><span>操作</span><strong>只读查看</strong></div>
+              </div>
+
+              <p id="admin-account-risk-term-status-text" class="admin-oauth-config-status"></p>
+              <div id="admin-account-risk-term-list" class="admin-risk-ip-list"></div>
+              <div class="admin-risk-ip-pagination">
+                <button id="admin-account-risk-term-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+                <button id="admin-account-risk-term-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="productCategories">
+          <div class="admin-api-detail admin-product-category-detail">
+            <article class="admin-oauth-config-card admin-product-category-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Product Categories</span>
+                  <strong>商品分类管理</strong>
+                </div>
+                <div class="admin-product-category-tools">
+                  <button id="admin-product-category-create-root" class="admin-nav-button admin-spring-button" type="button">添加一级分类</button>
+                  <button id="admin-product-category-batch-disable" class="admin-ghost-button admin-spring-button" type="button" disabled>批量禁用</button>
+                  <button id="admin-product-category-expand-all" class="admin-ghost-button admin-spring-button" type="button">展开全部</button>
+                  <button id="admin-product-category-collapse-all" class="admin-ghost-button admin-spring-button" type="button">收起全部</button>
+                  <button id="admin-product-category-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </div>
+
+              <div class="admin-risk-ip-summary admin-product-category-summary">
+                <div><span>分类总数</span><strong id="admin-product-category-total">-</strong></div>
+                <div><span>启用分类</span><strong id="admin-product-category-active-total">-</strong></div>
+                <div><span>启用商品</span><strong id="admin-product-category-active-products">-</strong></div>
+              </div>
+
+              <p id="admin-product-category-status" class="admin-oauth-config-status"></p>
+              <div class="admin-product-category-tree" aria-label="商品分类树">
+                <div class="admin-product-category-row admin-product-category-header">
+                  <label class="admin-product-category-select-all">
+                    <input id="admin-product-category-select-all" type="checkbox" aria-label="选择所有可见分类" />
+                    <span>选择</span>
+                  </label>
+                  <span>分类</span>
+                  <span>编码</span>
+                  <span>层级</span>
+                  <span>排序</span>
+                  <span>状态</span>
+                  <span>商品</span>
+                  <span>操作</span>
+                </div>
+                <div id="admin-product-category-list" class="admin-product-category-list"></div>
+              </div>
+            </article>
+
+            <div id="admin-product-category-dialog" class="admin-product-category-dialog" aria-hidden="true" hidden>
+              <button id="admin-product-category-dialog-backdrop" class="admin-product-category-dialog-backdrop" type="button" aria-label="关闭分类表单"></button>
+              <section class="admin-product-category-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="admin-product-category-dialog-title">
+                <header class="admin-product-category-dialog-header">
+                  <div>
+                    <span id="admin-product-category-dialog-subtitle">Category</span>
+                    <strong id="admin-product-category-dialog-title">添加分类</strong>
+                  </div>
+                  <button id="admin-product-category-dialog-close" class="admin-detail-close admin-spring-button" type="button" aria-label="关闭分类表单">&times;</button>
+                </header>
+                <form id="admin-product-category-form" class="admin-product-category-form">
+                  <input id="admin-product-category-id" type="hidden" />
+                  <input id="admin-product-category-parent-id" type="hidden" />
+                  <div class="admin-product-category-parent">
+                    <span>父分类</span>
+                    <strong id="admin-product-category-parent-label">一级分类</strong>
+                  </div>
+                  <div class="admin-product-category-form-grid">
+                    <label class="admin-risk-ip-field">
+                      <span>分类名称</span>
+                      <input id="admin-product-category-name" type="text" maxlength="64" autocomplete="off" required />
+                    </label>
+                    <label class="admin-risk-ip-field">
+                      <span>分类编码</span>
+                      <input id="admin-product-category-code" type="text" maxlength="64" autocomplete="off" required />
+                    </label>
+                    <label class="admin-risk-ip-field">
+                      <span>排序</span>
+                      <input id="admin-product-category-sort-order" type="number" step="1" value="0" />
+                    </label>
+                    <label class="admin-risk-ip-field">
+                      <span>状态</span>
+                      <select id="admin-product-category-edit-status">
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="DISABLED">DISABLED</option>
+                      </select>
+                    </label>
+                    <label class="admin-risk-ip-field admin-product-category-wide-field">
+                      <span>图标 JSON 数组</span>
+                      <textarea id="admin-product-category-icon-urls" rows="4" spellcheck="false" placeholder='[{"type":"default","url":"https://example.com/category.png"}]'></textarea>
+                    </label>
+                    <label class="admin-risk-ip-field admin-product-category-wide-field">
+                      <span>分类描述</span>
+                      <textarea id="admin-product-category-description" rows="3" maxlength="255"></textarea>
+                    </label>
+                  </div>
+                  <p id="admin-product-category-form-status" class="admin-oauth-config-status"></p>
+                  <div class="admin-product-category-form-actions">
+                    <button id="admin-product-category-cancel" class="admin-api-back admin-spring-button" type="button">取消</button>
+                    <button id="admin-product-category-save" class="admin-nav-button admin-spring-button" type="submit">保存</button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-panel" data-admin-panel="products">
+          <div class="admin-api-detail admin-product-spu-detail">
+            <article class="admin-oauth-config-card admin-product-spu-card">
+              <div class="admin-oauth-config-heading">
+                <div class="admin-oauth-config-title">
+                  <span>Products</span>
+                  <strong>商品管理</strong>
+                </div>
+                <div class="admin-product-spu-tools">
+                  <button id="admin-product-spu-create" class="admin-nav-button admin-spring-button" type="button">添加商品</button>
+                  <button id="admin-product-spu-batch-disable" class="admin-ghost-button admin-spring-button" type="button" disabled>批量禁用</button>
+                  <button id="admin-product-spu-batch-delete" class="admin-ghost-button admin-spring-button" type="button" disabled>批量删除</button>
+                  <button id="admin-product-spu-category-batch-disable" class="admin-ghost-button admin-spring-button" type="button" disabled>禁用当前分类商品</button>
+                  <button id="admin-product-spu-category-batch-delete" class="admin-ghost-button admin-spring-button" type="button" disabled>删除当前分类商品</button>
+                  <button id="admin-product-spu-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+                </div>
+              </div>
+
+              <form id="admin-product-spu-filter-form" class="admin-risk-ip-filter-form admin-product-spu-filter-form">
+                <label class="admin-risk-ip-field">
+                  <span>商品名称</span>
+                  <input id="admin-product-spu-filter-name" type="search" autocomplete="off" placeholder="商品名称关键词" />
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>叶子分类</span>
+                  <select id="admin-product-spu-filter-category">
+                    <option value="">全部分类</option>
+                  </select>
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>状态</span>
+                  <select id="admin-product-spu-filter-status">
+                    <option value="">全部状态</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="DISABLED">DISABLED</option>
+                  </select>
+                </label>
+                <label class="admin-risk-ip-field">
+                  <span>每页</span>
+                  <select id="admin-product-spu-page-size">
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+                <div class="admin-risk-ip-actions">
+                  <button id="admin-product-spu-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+                  <button id="admin-product-spu-filter-reset" class="admin-api-back admin-spring-button" type="button">重置</button>
+                </div>
+              </form>
+
+              <div class="admin-risk-ip-summary admin-product-spu-summary">
+                <div><span>商品总数</span><strong id="admin-product-spu-total">-</strong></div>
+                <div><span>当前页</span><strong id="admin-product-spu-page-label">1</strong></div>
+                <div><span>创建范围</span><strong>叶子分类</strong></div>
+              </div>
+
+              <p id="admin-product-spu-status" class="admin-oauth-config-status"></p>
+              <div class="admin-product-spu-table" aria-label="商品列表">
+                <div class="admin-product-spu-row admin-product-spu-header">
+                  <label class="admin-product-spu-select-all">
+                    <input id="admin-product-spu-select-all" type="checkbox" aria-label="选择当前页商品" />
+                    <span>选择</span>
+                  </label>
+                  <span>主图</span>
+                  <span>商品</span>
+                  <span>品牌</span>
+                  <span>分类</span>
+                  <span>状态</span>
+                  <span>创建时间</span>
+                  <span>操作</span>
+                </div>
+                <div id="admin-product-spu-list" class="admin-product-spu-list"></div>
+              </div>
+              <div class="admin-risk-ip-pagination">
+                <button id="admin-product-spu-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+                <button id="admin-product-spu-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+              </div>
+            </article>
+
+            <div id="admin-product-spu-dialog" class="admin-product-category-dialog admin-product-spu-dialog" aria-hidden="true" hidden>
+              <button id="admin-product-spu-dialog-backdrop" class="admin-product-category-dialog-backdrop" type="button" aria-label="关闭商品表单"></button>
+              <section class="admin-product-category-dialog-panel admin-product-spu-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="admin-product-spu-dialog-title">
+                <header class="admin-product-category-dialog-header">
+                  <div>
+                    <span>Product SPU</span>
+                    <strong id="admin-product-spu-dialog-title">添加商品</strong>
+                  </div>
+                  <button id="admin-product-spu-dialog-close" class="admin-detail-close admin-spring-button" type="button" aria-label="关闭商品表单">&times;</button>
+                </header>
+                <form id="admin-product-spu-form" class="admin-product-category-form admin-product-spu-form">
+                  <div class="admin-product-category-form-grid">
+                    <label class="admin-risk-ip-field">
+                      <span>叶子分类</span>
+                      <input id="admin-product-spu-category-search" type="search" autocomplete="off" placeholder="输入分类名称 / 编码 / ID 模糊查询" />
+                      <select id="admin-product-spu-category" required>
+                        <option value="">请选择启用叶子分类</option>
+                      </select>
+                    </label>
+                    <label class="admin-risk-ip-field">
+                      <span>商品名称</span>
+                      <input id="admin-product-spu-name" type="text" maxlength="128" autocomplete="off" required />
+                    </label>
+                    <label class="admin-risk-ip-field">
+                      <span>品牌名称</span>
+                      <input id="admin-product-spu-brand" type="text" maxlength="64" autocomplete="off" />
+                    </label>
+                    <label class="admin-risk-ip-field">
+                      <span>状态</span>
+                      <select id="admin-product-spu-edit-status">
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="DISABLED">DISABLED</option>
+                      </select>
+                    </label>
+                    <label class="admin-risk-ip-field admin-product-category-wide-field">
+                      <span>商品副标题</span>
+                      <input id="admin-product-spu-subtitle" type="text" maxlength="255" autocomplete="off" />
+                    </label>
+                    <div class="admin-risk-ip-field admin-product-category-wide-field admin-product-spu-image-field">
+                      <span>商品主图</span>
+                      <div id="admin-product-spu-image-upload" class="admin-product-spu-upload">
+                        <button id="admin-product-spu-image-pick" class="admin-ghost-button admin-spring-button" type="button">选择图片</button>
+                        <button id="admin-product-spu-image-remove" class="admin-api-back admin-spring-button" type="button" hidden>删除图片</button>
+                        <input id="admin-product-spu-image-input" type="file" accept="image/*" hidden />
+                        <div class="admin-product-spu-preview">
+                          <img id="admin-product-spu-image-preview" alt="商品主图预览" hidden />
+                          <span id="admin-product-spu-image-empty">未上传主图</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p id="admin-product-spu-form-status" class="admin-oauth-config-status"></p>
+                  <div class="admin-product-category-form-actions">
+                    <button id="admin-product-spu-cancel" class="admin-api-back admin-spring-button" type="button">取消</button>
+                    <button id="admin-product-spu-save" class="admin-nav-button admin-spring-button" type="submit">保存</button>
+                  </div>
+                </form>
+              </section>
             </div>
           </div>
         </section>

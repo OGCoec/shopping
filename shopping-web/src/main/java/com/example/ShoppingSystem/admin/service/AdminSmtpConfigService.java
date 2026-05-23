@@ -48,7 +48,6 @@ public class AdminSmtpConfigService {
     private static final String EMAIL_SMTP_USERNAME_ENV = "EMAIL_SMTP_USERNAME";
     private static final String EMAIL_SMTP_PASSWORD_ENV = "EMAIL_SMTP_PASSWORD";
     private static final String WINDOWS_ENV_PROPERTY_SOURCE = AdminOAuth2WindowsEnvPostProcessor.PROPERTY_SOURCE_NAME;
-    private static final String WINDOWS_ENV_TARGET = AdminOAuth2WindowsEnvPostProcessor.WINDOWS_ENV_TARGET;
     private static final String NOT_CONFIGURED = "未配置";
     private static final Pattern ENV_PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}:]+)(?::[^}]*)?}");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
@@ -60,11 +59,14 @@ public class AdminSmtpConfigService {
     );
 
     private final ConfigurableEnvironment environment;
+    private final AdminManagedEnvService managedEnvService;
     private final Map<String, Object> windowsEnvValues = new ConcurrentHashMap<>();
     private final Object monitor = new Object();
 
-    public AdminSmtpConfigService(ConfigurableEnvironment environment) {
+    public AdminSmtpConfigService(ConfigurableEnvironment environment,
+                                  AdminManagedEnvService managedEnvService) {
         this.environment = environment;
+        this.managedEnvService = managedEnvService;
         loadWindowsEnvPropertySource();
     }
 
@@ -100,7 +102,9 @@ public class AdminSmtpConfigService {
                 current,
                 currentDefinition.provider(),
                 currentDefinition.displayName(),
-                WINDOWS_ENV_TARGET,
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 true,
                 fields
         );
@@ -134,11 +138,11 @@ public class AdminSmtpConfigService {
         }
         synchronized (monitor) {
             if (username != null) {
-                writeWindowsSystemEnv(EMAIL_SMTP_USERNAME_ENV, username);
+                writeManagedEnv(EMAIL_SMTP_USERNAME_ENV, username);
                 windowsEnvValues.put(EMAIL_SMTP_USERNAME_ENV, username);
             }
             if (password != null) {
-                writeWindowsSystemEnv(EMAIL_SMTP_PASSWORD_ENV, password);
+                writeManagedEnv(EMAIL_SMTP_PASSWORD_ENV, password);
                 windowsEnvValues.put(EMAIL_SMTP_PASSWORD_ENV, password);
             }
             refreshWindowsEnvPropertySource();
@@ -177,7 +181,9 @@ public class AdminSmtpConfigService {
                 StringUtils.hasText(maskedValue) ? maskedValue : NOT_CONFIGURED,
                 propertyKey,
                 envName,
-                envName == null ? null : WINDOWS_ENV_TARGET,
+                envName == null ? null : managedEnvService.envTarget(),
+                envName == null ? null : managedEnvService.envTarget(),
+                envName == null ? null : managedEnvService.envStoreType(),
                 metadata == null ? null : YAML_DISPLAY_PATH,
                 metadata == null ? null : metadata.yamlLine(),
                 sensitive
@@ -336,7 +342,7 @@ public class AdminSmtpConfigService {
     private void loadWindowsEnvPropertySource() {
         synchronized (monitor) {
             windowsEnvValues.clear();
-            windowsEnvValues.putAll(readWindowsSystemEnv());
+            windowsEnvValues.putAll(readManagedEnvValues());
             refreshWindowsEnvPropertySource();
         }
     }
@@ -347,6 +353,20 @@ public class AdminSmtpConfigService {
             propertySources.remove(WINDOWS_ENV_PROPERTY_SOURCE);
         }
         propertySources.addFirst(new MapPropertySource(WINDOWS_ENV_PROPERTY_SOURCE, windowsEnvValues));
+    }
+
+    private Map<String, String> readManagedEnvValues() {
+        return managedEnvService.readManagedEnvValues();
+    }
+
+    private void writeManagedEnv(String envName, String value) {
+        managedEnvService.writeSystemEnv(
+                envName,
+                value,
+                "ADMIN_SMTP_WINDOWS_ENV_UNSUPPORTED",
+                "ADMIN_SMTP_WINDOWS_ENV_WRITE_FAILED",
+                "ADMIN_SMTP_WINDOWS_ENV_WRITE_INTERRUPTED"
+        );
     }
 
     private Map<String, String> readWindowsSystemEnv() {

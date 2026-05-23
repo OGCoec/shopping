@@ -547,10 +547,10 @@
     }
   }
 
-  async function request(path, payload) {
+  async function requestWithMethod(method, path, payload) {
     const headers = await buildHeaders();
     const options = {
-      method: "POST",
+      method,
       headers,
       credentials: "same-origin"
     };
@@ -559,7 +559,7 @@
     }
     const response = await fetch(path, options);
     const body = await response.json().catch(() => null);
-    logNetworkCheckDebug({ method: "POST", path, headers, response, body, phase: "response" });
+    logNetworkCheckDebug({ method, path, headers, response, body, phase: "response" });
     handleNetworkCheckFailure(response, body, headers);
     if (!response.ok || !body || body.success !== true) {
       const message = body?.message || "请求失败，请稍后重试。";
@@ -569,6 +569,10 @@
       throw error;
     }
     return body;
+  }
+
+  async function request(path, payload) {
+    return requestWithMethod("POST", path, payload);
   }
 
   async function get(path) {
@@ -589,6 +593,112 @@
       throw error;
     }
     return body;
+  }
+
+  async function form(path, formData) {
+    const headers = await buildHeaders();
+    headers.delete("Content-Type");
+    const response = await fetch(path, {
+      method: "POST",
+      headers,
+      credentials: "same-origin",
+      body: formData
+    });
+    const body = await response.json().catch(() => null);
+    logNetworkCheckDebug({ method: "POST", path, headers, response, body, phase: "response" });
+    handleNetworkCheckFailure(response, body, headers);
+    if (!response.ok || !body || body.success !== true) {
+      const message = body?.message || "请求失败，请稍后重试。";
+      const error = new Error(message);
+      error.payload = body;
+      error.status = response.status;
+      throw error;
+    }
+    return body;
+  }
+
+  async function formWithProgress(path, formData, options = {}) {
+    const headers = await buildHeaders();
+    headers.delete("Content-Type");
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let settled = false;
+      const signal = options.signal;
+
+      function cleanup() {
+        signal?.removeEventListener?.("abort", abortRequest);
+      }
+
+      function finish(callback, value) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        cleanup();
+        callback(value);
+      }
+
+      function abortRequest() {
+        xhr.abort();
+        const error = new Error("Upload request was aborted.");
+        error.name = "AbortError";
+        finish(reject, error);
+      }
+
+      if (signal?.aborted) {
+        abortRequest();
+        return;
+      }
+
+      xhr.open("POST", path, true);
+      xhr.withCredentials = true;
+      headers.forEach((value, key) => {
+        xhr.setRequestHeader(key, value);
+      });
+      signal?.addEventListener?.("abort", abortRequest, { once: true });
+
+      xhr.upload.addEventListener("progress", (event) => {
+        options.onUploadProgress?.({
+          loaded: event.loaded || 0,
+          total: event.total || 0,
+          lengthComputable: Boolean(event.lengthComputable)
+        });
+      });
+      xhr.upload.addEventListener("load", () => {
+        options.onUploadDone?.();
+        options.onProcessing?.();
+      });
+      xhr.addEventListener("error", () => {
+        finish(reject, new Error("网络请求失败，请稍后重试。"));
+      });
+      xhr.addEventListener("timeout", () => {
+        finish(reject, new Error("网络请求超时，请稍后重试。"));
+      });
+      xhr.addEventListener("load", () => {
+        let body = null;
+        try {
+          body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+        } catch (_) {
+          body = null;
+        }
+        const response = {
+          status: xhr.status,
+          ok: xhr.status >= 200 && xhr.status < 300
+        };
+        logNetworkCheckDebug({ method: "POST", path, headers, response, body, phase: "response" });
+        handleNetworkCheckFailure(response, body, headers);
+        if (!response.ok || !body || body.success !== true) {
+          const message = body?.message || "请求失败，请稍后重试。";
+          const error = new Error(message);
+          error.payload = body;
+          error.status = xhr.status;
+          finish(reject, error);
+          return;
+        }
+        finish(resolve, body);
+      });
+      xhr.send(formData);
+    });
   }
 
   async function fetchPasswordCryptoKey() {
@@ -641,7 +751,10 @@
 
   root.AdminApi = {
     get,
+    form,
+    formWithProgress,
     request,
+    requestWithMethod,
     encryptPassword,
     setStatus
   };

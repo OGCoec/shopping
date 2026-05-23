@@ -46,6 +46,48 @@
       copy: "按设备指纹、deviceId 和 L1-L6 分数区间查询设备风险画像。",
       navTarget: "riskCreditScore"
     },
+    accountManagement: {
+      eyebrow: "Accounts",
+      title: "账号管理",
+      copy: "管理账号信用分、主动停用和被动风控停用记录。",
+      navTarget: "accountManagement"
+    },
+    accountCredit: {
+      eyebrow: "Accounts / Credit",
+      title: "账号信用分管理",
+      copy: "查看账号当前信用分、历史流水，并记录管理员人工加分或扣分。",
+      navTarget: "accountManagement"
+    },
+    accountTermination: {
+      eyebrow: "Accounts / Termination",
+      title: "账号停用管理",
+      copy: "选择主动停用或被动风控停用管理入口。",
+      navTarget: "accountManagement"
+    },
+    accountTerminationSelf: {
+      eyebrow: "Accounts / Termination / Self",
+      title: "主动停用管理",
+      copy: "查看主动停用记录，7 天内未清理账号可由管理员恢复。",
+      navTarget: "accountManagement"
+    },
+    accountTerminationRisk: {
+      eyebrow: "Accounts / Termination / Risk",
+      title: "被动停用管理",
+      copy: "查看因信用分和违规次数触发的风控停用记录。",
+      navTarget: "accountManagement"
+    },
+    productCategories: {
+      eyebrow: "Products / Categories",
+      title: "商品分类管理",
+      copy: "维护最多三级商品分类树，管理分类添加、修改、启用、禁用和删除。",
+      navTarget: "productCategories"
+    },
+    products: {
+      eyebrow: "Products",
+      title: "商品管理",
+      copy: "在启用的叶子分类下创建和管理商品 SPU。",
+      navTarget: "products"
+    },
     oauth2: {
       eyebrow: "OAuth2",
       title: "第三方登录 OAuth2",
@@ -104,7 +146,7 @@
     smsAliyun: {
       eyebrow: "SMS / Aliyun",
       title: "阿里云 Dypnsapi 短信服务",
-      copy: "管理阿里云 Dypnsapi 短信服务的 Windows 系统环境变量。"
+      copy: "管理阿里云 Dypnsapi 短信服务的服务器环境变量。"
     },
     oss: {
       eyebrow: "OSS",
@@ -114,7 +156,7 @@
     ossAliyun: {
       eyebrow: "OSS / Aliyun",
       title: "阿里云 OSS 对象存储服务",
-      copy: "管理阿里云 OSS 对象存储服务的 Windows 系统环境变量。"
+      copy: "管理阿里云 OSS 对象存储服务的服务器环境变量。"
     },
     ipRisk: {
       eyebrow: "Risk API",
@@ -129,7 +171,7 @@
     riskApiIping: {
       eyebrow: "Risk API / iPing",
       title: "iPing 降级 API",
-      copy: "管理 iPing 降级 API 的 Windows 系统环境变量。"
+      copy: "管理 iPing 降级 API 的 Redis 配置。"
     }
   };
 
@@ -144,6 +186,13 @@
     riskIpScoreIpv4: "risk-credit-score/ip/ipv4",
     riskIpScoreIpv6: "risk-credit-score/ip/ipv6",
     riskDeviceScore: "risk-credit-score/device",
+    accountManagement: "account-management",
+    accountCredit: "account-management/credit",
+    accountTermination: "account-management/termination",
+    accountTerminationSelf: "account-management/termination/self",
+    accountTerminationRisk: "account-management/termination/risk",
+    productCategories: "product-categories",
+    products: "products",
     oauth2: "oauth2",
     oauth2Github: "oauth2/github",
     oauth2Google: "oauth2/google",
@@ -171,6 +220,13 @@
     "risk-credit-score/ip/ipv4": "riskIpScoreIpv4",
     "risk-credit-score/ip/ipv6": "riskIpScoreIpv6",
     "risk-credit-score/device": "riskDeviceScore",
+    "account-management": "accountManagement",
+    "account-management/credit": "accountCredit",
+    "account-management/termination": "accountTermination",
+    "account-management/termination/self": "accountTerminationSelf",
+    "account-management/termination/risk": "accountTerminationRisk",
+    "product-categories": "productCategories",
+    products: "products",
     oauth2: "oauth2",
     "oauth2/github": "oauth2Github",
     "oauth2/google": "oauth2Google",
@@ -206,6 +262,9 @@
     }
     if (normalizedPath.startsWith(consoleBasePath + "/")) {
       const routeValue = decodeURIComponent(normalizedPath.slice(consoleBasePath.length + 1));
+      if (routeValue === "products" || routeValue.startsWith("products/")) {
+        return "products";
+      }
       return routeSectionMap[routeValue] || "";
     }
     const params = new URLSearchParams(window.location.search);
@@ -219,6 +278,9 @@
     }
     const routeValue = sectionRouteMap[sectionName];
     if (!routeValue) {
+      return;
+    }
+    if (sectionName === "products" && replace && window.location.pathname.startsWith(`${consoleBasePath}/products/`)) {
       return;
     }
     const url = new URL(window.location.href);

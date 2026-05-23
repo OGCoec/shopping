@@ -1,6 +1,5 @@
 package com.example.ShoppingSystem.admin.service;
 
-import com.example.ShoppingSystem.admin.config.AdminOAuth2WindowsEnvPostProcessor;
 import com.example.ShoppingSystem.admin.dto.AdminIp2LocationQuotaBatchAddItem;
 import com.example.ShoppingSystem.admin.dto.AdminIp2LocationQuotaBatchAddRequest;
 import com.example.ShoppingSystem.admin.dto.AdminIp2LocationQuotaBatchDeleteRequest;
@@ -11,11 +10,10 @@ import com.example.ShoppingSystem.admin.dto.AdminRiskApiConfigField;
 import com.example.ShoppingSystem.admin.dto.AdminRiskApiConfigUpdateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminRiskApiProviderConfigResponse;
 import com.example.ShoppingSystem.quota.Ip2LocationQuotaService;
+import com.example.ShoppingSystem.quota.RiskApiConfigStoreService;
 import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys;
 import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys.AccountType;
 import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.MapPropertySource;
-import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
@@ -37,8 +35,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,8 +45,6 @@ public class AdminRiskApiConfigService {
     private static final String PROVIDER_IPING = "iping";
     private static final String YAML_RESOURCE = "application.yaml";
     private static final String YAML_DISPLAY_PATH = "shopping-web/src/main/resources/application.yaml";
-    private static final String WINDOWS_ENV_PROPERTY_SOURCE = AdminOAuth2WindowsEnvPostProcessor.PROPERTY_SOURCE_NAME;
-    private static final String WINDOWS_ENV_TARGET = AdminOAuth2WindowsEnvPostProcessor.WINDOWS_ENV_TARGET;
     private static final String IP2LOCATION_QUOTA_REDIS_DATABASE = "2";
     private static final String NOT_CONFIGURED = "未配置";
     private static final Pattern ENV_PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}:]+)(?::[^}]*)?}");
@@ -102,30 +96,38 @@ public class AdminRiskApiConfigService {
     );
 
     private final ConfigurableEnvironment environment;
+    private final RiskApiConfigStoreService riskApiConfigStoreService;
     private final Ip2LocationQuotaService ip2LocationQuotaService;
-    private final Map<String, Object> windowsEnvValues = new ConcurrentHashMap<>();
     private final Object monitor = new Object();
 
     public AdminRiskApiConfigService(ConfigurableEnvironment environment,
+                                     RiskApiConfigStoreService riskApiConfigStoreService,
                                      Ip2LocationQuotaService ip2LocationQuotaService) {
         this.environment = environment;
+        this.riskApiConfigStoreService = riskApiConfigStoreService;
         this.ip2LocationQuotaService = ip2LocationQuotaService;
-        loadWindowsEnvPropertySource();
     }
 
     public AdminRiskApiProviderConfigResponse providerConfig(String provider) {
         ProviderDefinition definition = providerDefinition(provider);
         Map<String, AdminYamlFieldMetadata> yamlMetadata = yamlMetadata();
+        Map<String, String> storedValues = riskApiConfigStoreService.readValues(
+                definition.fields().stream()
+                        .map(FieldDefinition::envName)
+                        .toList()
+        );
         List<AdminRiskApiConfigField> fields = definition.fields().stream()
-                .map(field -> buildField(field, yamlMetadata))
+                .map(field -> buildField(field, yamlMetadata, storedValues))
                 .toList();
         return new AdminRiskApiProviderConfigResponse(
                 definition.provider(),
                 definition.displayName(),
                 definition.propertyPrefix(),
                 fields,
-                WINDOWS_ENV_TARGET,
-                true
+                riskApiConfigStoreService.storeTarget(),
+                riskApiConfigStoreService.storeTarget(),
+                riskApiConfigStoreService.storeType(),
+                false
         );
     }
 
@@ -147,11 +149,9 @@ public class AdminRiskApiConfigService {
             );
         }
         synchronized (monitor) {
-            updates.forEach((field, value) -> {
-                writeWindowsSystemEnv(field.envName(), value);
-                windowsEnvValues.put(field.envName(), value);
-            });
-            refreshWindowsEnvPropertySource();
+            Map<String, String> redisValues = new LinkedHashMap<>();
+            updates.forEach((field, value) -> redisValues.put(field.envName(), value));
+            riskApiConfigStoreService.writeValues(redisValues);
         }
         return providerConfig(definition.provider());
     }
@@ -347,18 +347,22 @@ public class AdminRiskApiConfigService {
     }
 
     private AdminRiskApiConfigField buildField(FieldDefinition field,
-                                               Map<String, AdminYamlFieldMetadata> yamlMetadata) {
+                                               Map<String, AdminYamlFieldMetadata> yamlMetadata,
+                                               Map<String, String> storedValues) {
         AdminYamlFieldMetadata metadata = yamlMetadata.get(field.propertyKey());
         String envName = metadata != null && StringUtils.hasText(metadata.envName())
                 ? metadata.envName()
                 : field.envName();
+        String rawValue = storedValues.getOrDefault(envName, readProperty(field.propertyKey()));
         return new AdminRiskApiConfigField(
                 field.id(),
                 field.label(),
-                formatValue(readProperty(field.propertyKey()), field),
+                formatValue(rawValue, field),
                 field.propertyKey(),
                 envName,
-                WINDOWS_ENV_TARGET,
+                riskApiConfigStoreService.storeTarget(),
+                riskApiConfigStoreService.storeTarget(),
+                riskApiConfigStoreService.storeType(),
                 metadata == null ? null : YAML_DISPLAY_PATH,
                 metadata == null ? null : metadata.yamlLine(),
                 field.sensitive()
@@ -536,74 +540,6 @@ public class AdminRiskApiConfigService {
     private boolean isUnresolvedPlaceholder(String value) {
         String trimmed = value == null ? "" : value.trim();
         return trimmed.startsWith("${") && trimmed.endsWith("}");
-    }
-
-    private void loadWindowsEnvPropertySource() {
-        synchronized (monitor) {
-            windowsEnvValues.clear();
-            windowsEnvValues.putAll(readWindowsSystemEnv());
-            refreshWindowsEnvPropertySource();
-        }
-    }
-
-    private void refreshWindowsEnvPropertySource() {
-        MutablePropertySources propertySources = environment.getPropertySources();
-        if (propertySources.contains(WINDOWS_ENV_PROPERTY_SOURCE)) {
-            propertySources.remove(WINDOWS_ENV_PROPERTY_SOURCE);
-        }
-        propertySources.addFirst(new MapPropertySource(WINDOWS_ENV_PROPERTY_SOURCE, windowsEnvValues));
-    }
-
-    private Map<String, String> readWindowsSystemEnv() {
-        Map<String, String> values = new LinkedHashMap<>();
-        if (!AdminOAuth2WindowsEnvPostProcessor.isWindows()) {
-            return values;
-        }
-        for (String envName : AdminOAuth2WindowsEnvPostProcessor.MANAGED_ENV_NAMES) {
-            AdminOAuth2WindowsEnvPostProcessor.readWindowsSystemEnvValue(envName)
-                    .ifPresent(value -> values.put(envName, value));
-        }
-        return values;
-    }
-
-    private void writeWindowsSystemEnv(String envName, String value) {
-        if (!AdminOAuth2WindowsEnvPostProcessor.isWindows()) {
-            throw new AdminServiceException(
-                    "ADMIN_RISK_API_WINDOWS_ENV_UNSUPPORTED",
-                    "当前接口只支持写入 Windows 系统环境变量。",
-                    HttpStatus.BAD_REQUEST
-            );
-        }
-        try {
-            Process process = new ProcessBuilder(
-                    AdminOAuth2WindowsEnvPostProcessor.windowsTool("setx.exe"),
-                    envName,
-                    value,
-                    "/M"
-            ).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            boolean finished = process.waitFor(10, TimeUnit.SECONDS);
-            if (!finished || process.exitValue() != 0) {
-                throw new AdminServiceException(
-                        "ADMIN_RISK_API_WINDOWS_ENV_WRITE_FAILED",
-                        "写入 Windows 系统环境变量失败，请确认 Spring Boot 以管理员身份运行：" + output.trim(),
-                        HttpStatus.INTERNAL_SERVER_ERROR
-                );
-            }
-        } catch (IOException ex) {
-            throw new AdminServiceException(
-                    "ADMIN_RISK_API_WINDOWS_ENV_WRITE_FAILED",
-                    "写入 Windows 系统环境变量失败。",
-                    HttpStatus.INTERNAL_SERVER_ERROR
-            );
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new AdminServiceException(
-                    "ADMIN_RISK_API_WINDOWS_ENV_WRITE_INTERRUPTED",
-                    "写入 Windows 系统环境变量被中断。",
-                    HttpStatus.INTERNAL_SERVER_ERROR
-            );
-        }
     }
 
     private enum DisplayMode {

@@ -21,6 +21,14 @@ public interface RegisterPrecheckService {
                                                              String publicIp,
                                                              AuthRiskSnapshot riskSnapshotOverride);
 
+    RegisterPrecheckResult resolveRegisterEmailCodeChallenge(String flowId,
+                                                             String email,
+                                                             String username,
+                                                             String rawPassword,
+                                                             String deviceFingerprint,
+                                                             String publicIp,
+                                                             AuthRiskSnapshot riskSnapshotOverride);
+
     RegisterPrecheckResult sendRegisterEmailCodeAfterCaptcha(String flowId,
                                                              boolean allowPassedChallengeReuse,
                                                              String email,

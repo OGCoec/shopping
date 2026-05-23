@@ -37,7 +37,6 @@ public class AdminSmsConfigService {
     private static final String YAML_RESOURCE = "application.yaml";
     private static final String YAML_DISPLAY_PATH = "shopping-web/src/main/resources/application.yaml";
     private static final String WINDOWS_ENV_PROPERTY_SOURCE = "adminSmsWindowsEnv";
-    private static final String WINDOWS_ENV_TARGET = AdminOAuth2WindowsEnvPostProcessor.WINDOWS_ENV_TARGET;
     private static final String ALIYUN_SMS_PATH = "aliyun.sms";
     private static final String ACCESS_KEY_ID_PROPERTY = ALIYUN_SMS_PATH + ".access-key-id";
     private static final String ACCESS_KEY_SECRET_PROPERTY = ALIYUN_SMS_PATH + ".access-key-secret";
@@ -49,11 +48,14 @@ public class AdminSmsConfigService {
     private static final Pattern ENV_PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}:]+)(?::[^}]*)?}");
 
     private final ConfigurableEnvironment environment;
+    private final AdminManagedEnvService managedEnvService;
     private final Map<String, Object> windowsEnvValues = new ConcurrentHashMap<>();
     private final Object monitor = new Object();
 
-    public AdminSmsConfigService(ConfigurableEnvironment environment) {
+    public AdminSmsConfigService(ConfigurableEnvironment environment,
+                                 AdminManagedEnvService managedEnvService) {
         this.environment = environment;
+        this.managedEnvService = managedEnvService;
         loadWindowsEnvPropertySource();
     }
 
@@ -73,7 +75,9 @@ public class AdminSmsConfigService {
                         ACCESS_KEY_SECRET_ENV,
                         yamlMetadata.get(YAML_ACCESS_KEY_SECRET_KEY)
                 ),
-                WINDOWS_ENV_TARGET,
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 true
         );
     }
@@ -93,11 +97,11 @@ public class AdminSmsConfigService {
         String accessKeySecretEnv = resolveEnvName(yamlMetadata.get(YAML_ACCESS_KEY_SECRET_KEY), ACCESS_KEY_SECRET_ENV);
         synchronized (monitor) {
             if (accessKeyId != null) {
-                writeWindowsSystemEnv(accessKeyIdEnv, accessKeyId);
+                writeManagedEnv(accessKeyIdEnv, accessKeyId);
                 windowsEnvValues.put(accessKeyIdEnv, accessKeyId);
             }
             if (accessKeySecret != null) {
-                writeWindowsSystemEnv(accessKeySecretEnv, accessKeySecret);
+                writeManagedEnv(accessKeySecretEnv, accessKeySecret);
                 windowsEnvValues.put(accessKeySecretEnv, accessKeySecret);
             }
             refreshWindowsEnvPropertySource();
@@ -115,7 +119,9 @@ public class AdminSmsConfigService {
                 maskValue(rawValue),
                 propertyKey,
                 envName,
-                WINDOWS_ENV_TARGET,
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 YAML_DISPLAY_PATH,
                 yamlLine
         );
@@ -229,7 +235,7 @@ public class AdminSmsConfigService {
     private void loadWindowsEnvPropertySource() {
         synchronized (monitor) {
             windowsEnvValues.clear();
-            windowsEnvValues.putAll(readWindowsSystemEnv());
+            windowsEnvValues.putAll(readManagedEnvValues());
             refreshWindowsEnvPropertySource();
         }
     }
@@ -240,6 +246,20 @@ public class AdminSmsConfigService {
             propertySources.remove(WINDOWS_ENV_PROPERTY_SOURCE);
         }
         propertySources.addFirst(new MapPropertySource(WINDOWS_ENV_PROPERTY_SOURCE, windowsEnvValues));
+    }
+
+    private Map<String, String> readManagedEnvValues() {
+        return managedEnvService.readManagedEnvValues();
+    }
+
+    private void writeManagedEnv(String envName, String value) {
+        managedEnvService.writeSystemEnv(
+                envName,
+                value,
+                "ADMIN_SMS_WINDOWS_ENV_UNSUPPORTED",
+                "ADMIN_SMS_WINDOWS_ENV_WRITE_FAILED",
+                "ADMIN_SMS_WINDOWS_ENV_WRITE_INTERRUPTED"
+        );
     }
 
     private Map<String, String> readWindowsSystemEnv() {

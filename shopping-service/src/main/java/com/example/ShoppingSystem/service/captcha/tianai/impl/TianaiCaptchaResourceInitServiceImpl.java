@@ -9,6 +9,7 @@ import cloud.tianai.captcha.resource.ResourceStore;
 import cloud.tianai.captcha.resource.common.model.dto.Resource;
 import cloud.tianai.captcha.resource.common.model.dto.ResourceMap;
 import cloud.tianai.captcha.resource.impl.provider.FileResourceProvider;
+import com.example.ShoppingSystem.config.TianaiCaptchaResourceProperties;
 import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaResourceInitService;
 import com.example.ShoppingSystem.service.captcha.tianai.generator.SliderTemplateImageGenerator;
 import com.example.ShoppingSystem.service.captcha.tianai.resource.CaptchaRedisKeys;
@@ -46,19 +47,16 @@ import static cloud.tianai.captcha.generator.impl.StandardSliderImageCaptchaGene
 @Service
 public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResourceInitService {
 
-    private static final String ROTATE_BACKGROUND_DIR = "C:/Users/damn/Desktop/shopping/shopping-web/src/main/resources/captcha/tianai/rotate/background";
     private static final Duration INIT_LOCK_TTL = Duration.ofMinutes(2);
     private static final String REDIS_RESOURCE_STORE_CLASS = "cloud.tianai.captcha.spring.plugins.RedisResourceStore";
     private static final String DEFAULT_TEMPLATE_PATH_PREFIX = "META-INF/cut-image/template";
     private static final String TEMPLATE_RESOURCE_TYPE = "classpath";
     private static final String FILE_RESOURCE_TYPE = "file";
-    private static final String CUSTOM_SLIDER_TEMPLATE_DIR =
-            "C:/Users/damn/Desktop/shopping/shopping-web/src/main/resources/captcha/tianai/rotate/spilt";
-    private static final String GENERATED_SLIDER_TEMPLATE_DIR = CUSTOM_SLIDER_TEMPLATE_DIR + "/generated";
     private static final int ROTATE_MIN_BACKGROUND_HEIGHT = 200;
 
     private final ImageCaptchaApplication imageCaptchaApplication;
     private final StringRedisTemplate stringRedisTemplate;
+    private final TianaiCaptchaResourceProperties resourceProperties;
     private final Gson gson = new Gson();
     private final SliderTemplateImageGenerator sliderTemplateImageGenerator = new SliderTemplateImageGenerator();
 
@@ -69,9 +67,11 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
      * @param stringRedisTemplate Redis 字符串模板，用于覆盖重建资源配置 key
      */
     public TianaiCaptchaResourceInitServiceImpl(ImageCaptchaApplication imageCaptchaApplication,
-                                                StringRedisTemplate stringRedisTemplate) {
+                                                StringRedisTemplate stringRedisTemplate,
+                                                TianaiCaptchaResourceProperties resourceProperties) {
         this.imageCaptchaApplication = imageCaptchaApplication;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.resourceProperties = resourceProperties;
     }
 
     /**
@@ -104,10 +104,10 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
         }
 
         // 扫描本地背景图目录，目前只导入 png 文件，并按文件名排序保证初始化顺序稳定。
-        File backgroundDir = new File(ROTATE_BACKGROUND_DIR);
+        File backgroundDir = backgroundDirectory();
         File[] backgroundFiles = backgroundDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
         if (backgroundFiles == null || backgroundFiles.length == 0) {
-            log.warn("Background image directory is empty, skip custom background import: {}", ROTATE_BACKGROUND_DIR);
+            log.warn("Background image directory is empty, skip custom background import: {}", resourceProperties.getBackgroundDir());
             return;
         }
         Arrays.sort(backgroundFiles, Comparator.comparing(File::getName));
@@ -121,14 +121,14 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
 
         // 所有背景图都会先生成通用 payload，供非 ROTATE 类型直接复用。
         List<String> payloads = Arrays.stream(backgroundFiles)
-                .map(File::getAbsolutePath)
-                .map(path -> gson.toJson(new Resource("file", path)))
+                .map(this::buildFileResource)
+                .map(gson::toJson)
                 .toList();
         // ROTATE 会额外做高度筛选，避免模板裁剪时越界。
         List<String> rotatePayloads = Arrays.stream(backgroundFiles)
                 .filter(this::isRotateCompatibleBackground)
-                .map(File::getAbsolutePath)
-                .map(path -> gson.toJson(new Resource("file", path)))
+                .map(this::buildFileResource)
+                .map(gson::toJson)
                 .toList();
         if (rotatePayloads.isEmpty()) {
             log.warn("No ROTATE background image height is >= {}, ROTATE resource key will not be overwritten",
@@ -148,7 +148,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
                     if (CaptchaTypeConstant.ROTATE.equals(type) && !isRotateCompatibleBackground(backgroundFile)) {
                         continue;
                     }
-                    crudResourceStore.addResource(type, new Resource("file", backgroundFile.getAbsolutePath()));
+                    crudResourceStore.addResource(type, buildFileResource(backgroundFile));
                 }
             }
         }
@@ -393,7 +393,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
     private ResourceMap buildFileSliderTemplateResourceMap(File templateDir) {
         ResourceMap template = new ResourceMap(DEFAULT_TAG, 4);
         // 本地生成后的模板目录会同时包含 active/fixed/mask 三张图。
-        String templatePath = templateDir.getAbsolutePath();
+        String templatePath = normalizeFilePath(templateDir);
         template.put(TEMPLATE_ACTIVE_IMAGE_NAME, new Resource(FILE_RESOURCE_TYPE, templatePath + "/" + TEMPLATE_ACTIVE_IMAGE_NAME));
         template.put(TEMPLATE_FIXED_IMAGE_NAME, new Resource(FILE_RESOURCE_TYPE, templatePath + "/" + TEMPLATE_FIXED_IMAGE_NAME));
         template.put(TEMPLATE_MASK_IMAGE_NAME, new Resource(FILE_RESOURCE_TYPE, templatePath + "/" + TEMPLATE_MASK_IMAGE_NAME));
@@ -407,12 +407,12 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
      * @return 可读的自定义滑块模板图片文件列表
      */
     private List<File> customSliderTemplateDirectories() {
-        File templateDir = new File(CUSTOM_SLIDER_TEMPLATE_DIR);
+        File templateDir = sliderTemplateDirectory();
         // 先按扩展名做一层粗过滤，减少无关文件参与后续图片解码。
         File[] templateFiles = templateDir.listFiles((dir, name) -> isSupportedImageFileName(name));
         if (templateFiles == null || templateFiles.length == 0) {
             log.warn("Custom SLIDER template directory is empty, only built-in templates will be used: {}",
-                    CUSTOM_SLIDER_TEMPLATE_DIR);
+                    resourceProperties.getSliderTemplateDir());
             return List.of();
         }
         return Arrays.stream(templateFiles)
@@ -429,7 +429,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
     private File generateSliderTemplateDirectory(File sourceTemplateFile) {
         try {
             // 调用模板生成器，把单张源图切成 Tianai 约定的模板目录结构。
-            return sliderTemplateImageGenerator.generate(sourceTemplateFile, new File(GENERATED_SLIDER_TEMPLATE_DIR));
+            return sliderTemplateImageGenerator.generate(sourceTemplateFile, generatedSliderTemplateDirectory());
         } catch (IOException e) {
             log.warn("Skip custom SLIDER template because generated files cannot be created: {}, error={}",
                     sourceTemplateFile.getAbsolutePath(), e.getMessage());
@@ -532,6 +532,26 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
     private String buildTemplateTempKey(String type, String lockValue) {
         // 模板 key 与资源 key 分开生成，便于分别覆盖和排查。
         return CaptchaRedisKeys.templateDefaultTempKey(type, lockValue);
+    }
+
+    private File backgroundDirectory() {
+        return new File(resourceProperties.getBackgroundDir());
+    }
+
+    private File sliderTemplateDirectory() {
+        return new File(resourceProperties.getSliderTemplateDir());
+    }
+
+    private File generatedSliderTemplateDirectory() {
+        return new File(sliderTemplateDirectory(), "generated");
+    }
+
+    private Resource buildFileResource(File file) {
+        return new Resource(FILE_RESOURCE_TYPE, normalizeFilePath(file));
+    }
+
+    private String normalizeFilePath(File file) {
+        return file.getPath().replace('\\', '/');
     }
 
     /**

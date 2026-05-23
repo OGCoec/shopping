@@ -5,6 +5,8 @@ public record AdminSmtpConfigField(String label,
                                    String propertyKey,
                                    String envName,
                                    String windowsEnvTarget,
+                                   String envTarget,
+                                   String envStoreType,
                                    String yamlFile,
                                    Integer yamlLine,
                                    boolean sensitive) {

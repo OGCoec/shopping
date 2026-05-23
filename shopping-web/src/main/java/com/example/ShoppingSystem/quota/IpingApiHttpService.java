@@ -15,7 +15,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * iPing API fallback service.
@@ -26,26 +28,38 @@ public class IpingApiHttpService {
 
     private static final Logger log = LoggerFactory.getLogger(IpingApiHttpService.class);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(8);
+    private static final String ENABLED_CONFIG_NAME = "IPING_API_ENABLED";
+    private static final String API_URL_CONFIG_NAME = "IPING_API_URL";
+    private static final String LANGUAGE_CONFIG_NAME = "IPING_API_LANGUAGE";
+    private static final List<String> CONFIG_NAMES = List.of(
+            ENABLED_CONFIG_NAME,
+            API_URL_CONFIG_NAME,
+            LANGUAGE_CONFIG_NAME
+    );
 
     private final ObjectMapper objectMapper;
+    private final RiskApiConfigStoreService riskApiConfigStoreService;
     private final HttpClient httpClient;
-    private final String apiUrl;
-    private final String language;
-    private final boolean enabled;
+    private final String defaultApiUrl;
+    private final String defaultLanguage;
+    private final boolean defaultEnabled;
 
     public IpingApiHttpService(ObjectMapper objectMapper,
+                               RiskApiConfigStoreService riskApiConfigStoreService,
                                @Value("${iping.api.enabled:true}") boolean enabled,
                                @Value("${iping.api.url:https://api.iping.cc/v1/query}") String apiUrl,
                                @Value("${iping.api.language:en}") String language) {
         this.objectMapper = objectMapper;
+        this.riskApiConfigStoreService = riskApiConfigStoreService;
         this.httpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build();
-        this.enabled = enabled;
-        this.apiUrl = apiUrl;
-        this.language = language;
+        this.defaultEnabled = enabled;
+        this.defaultApiUrl = apiUrl;
+        this.defaultLanguage = language;
     }
 
     public IpingQueryResult queryByIp(String ip) {
-        if (!enabled) {
+        IpingRuntimeConfig config = currentConfig();
+        if (!config.enabled()) {
             return IpingQueryResult.failed("iping_disabled", 0);
         }
         if (isBlank(ip)) {
@@ -56,7 +70,7 @@ public class IpingApiHttpService {
             return IpingQueryResult.failed("ipv6_not_supported", 0);
         }
 
-        HttpRequest request = HttpRequest.newBuilder(buildUri(ip.trim()))
+        HttpRequest request = HttpRequest.newBuilder(buildUri(ip.trim(), config))
                 .timeout(REQUEST_TIMEOUT)
                 .GET()
                 .build();
@@ -92,7 +106,25 @@ public class IpingApiHttpService {
         }
     }
 
-    private URI buildUri(String ip) {
+    private IpingRuntimeConfig currentConfig() {
+        Map<String, String> values = riskApiConfigStoreService.readValues(CONFIG_NAMES);
+        return new IpingRuntimeConfig(
+                parseBoolean(values.get(ENABLED_CONFIG_NAME), defaultEnabled),
+                firstText(values.get(API_URL_CONFIG_NAME), defaultApiUrl),
+                firstText(values.get(LANGUAGE_CONFIG_NAME), defaultLanguage)
+        );
+    }
+
+    private boolean parseBoolean(String value, boolean fallback) {
+        if (isBlank(value)) {
+            return fallback;
+        }
+        return Boolean.parseBoolean(value.trim());
+    }
+
+    private URI buildUri(String ip, IpingRuntimeConfig config) {
+        String apiUrl = config.apiUrl();
+        String language = config.language();
         String separator = apiUrl.contains("?") ? "&" : "?";
         String url = apiUrl
                 + separator
@@ -341,5 +373,10 @@ public class IpingApiHttpService {
         public static IpingQueryResult failed(String reason, int httpStatus) {
             return new IpingQueryResult(false, reason, httpStatus, null, null);
         }
+    }
+
+    private record IpingRuntimeConfig(boolean enabled,
+                                      String apiUrl,
+                                      String language) {
     }
 }

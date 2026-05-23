@@ -35,7 +35,6 @@ public class AdminOAuth2ConfigService {
     private static final String YAML_RESOURCE = "application.yaml";
     private static final String YAML_DISPLAY_PATH = "shopping-web/src/main/resources/application.yaml";
     private static final String WINDOWS_ENV_PROPERTY_SOURCE = AdminOAuth2WindowsEnvPostProcessor.PROPERTY_SOURCE_NAME;
-    private static final String WINDOWS_ENV_TARGET = AdminOAuth2WindowsEnvPostProcessor.WINDOWS_ENV_TARGET;
     private static final String GITHUB_REGISTRATION_PATH = "spring.security.oauth2.client.registration.github";
     private static final String GITHUB_CLIENT_ID_PROPERTY = GITHUB_REGISTRATION_PATH + ".client-id";
     private static final String GITHUB_CLIENT_SECRET_PROPERTY = GITHUB_REGISTRATION_PATH + ".client-secret";
@@ -59,11 +58,14 @@ public class AdminOAuth2ConfigService {
     private static final Pattern ENV_PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}:]+)(?::[^}]*)?}");
 
     private final ConfigurableEnvironment environment;
+    private final AdminManagedEnvService managedEnvService;
     private final Map<String, Object> windowsEnvValues = new ConcurrentHashMap<>();
     private final Object monitor = new Object();
 
-    public AdminOAuth2ConfigService(ConfigurableEnvironment environment) {
+    public AdminOAuth2ConfigService(ConfigurableEnvironment environment,
+                                    AdminManagedEnvService managedEnvService) {
         this.environment = environment;
+        this.managedEnvService = managedEnvService;
         loadWindowsEnvPropertySource();
     }
 
@@ -114,13 +116,13 @@ public class AdminOAuth2ConfigService {
         }
         synchronized (monitor) {
             if (clientId != null) {
-                writeWindowsSystemEnv(definition.clientIdEnv(), clientId);
+                writeManagedEnv(definition.clientIdEnv(), clientId);
             }
             if (clientSecret != null) {
-                writeWindowsSystemEnv(definition.clientSecretEnv(), clientSecret);
+                writeManagedEnv(definition.clientSecretEnv(), clientSecret);
             }
             windowsEnvValues.clear();
-            windowsEnvValues.putAll(readWindowsSystemEnv());
+            windowsEnvValues.putAll(readManagedEnvValues());
             refreshWindowsEnvPropertySource();
         }
         return providerConfig(definition);
@@ -147,7 +149,9 @@ public class AdminOAuth2ConfigService {
                         yamlMetadata.get(YAML_CLIENT_SECRET_KEY),
                         true
                 ),
-                WINDOWS_ENV_TARGET,
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 true
         );
     }
@@ -176,7 +180,9 @@ public class AdminOAuth2ConfigService {
                 sensitive ? maskValue(rawValue) : displayValue(rawValue),
                 propertyKey,
                 envName,
-                WINDOWS_ENV_TARGET,
+                managedEnvService.envTarget(),
+                managedEnvService.envTarget(),
+                managedEnvService.envStoreType(),
                 YAML_DISPLAY_PATH,
                 yamlLine
         );
@@ -310,7 +316,7 @@ public class AdminOAuth2ConfigService {
     private void loadWindowsEnvPropertySource() {
         synchronized (monitor) {
             windowsEnvValues.clear();
-            windowsEnvValues.putAll(readWindowsSystemEnv());
+            windowsEnvValues.putAll(readManagedEnvValues());
             refreshWindowsEnvPropertySource();
         }
     }
@@ -321,6 +327,20 @@ public class AdminOAuth2ConfigService {
             propertySources.remove(WINDOWS_ENV_PROPERTY_SOURCE);
         }
         propertySources.addFirst(new MapPropertySource(WINDOWS_ENV_PROPERTY_SOURCE, windowsEnvValues));
+    }
+
+    private Map<String, String> readManagedEnvValues() {
+        return managedEnvService.readManagedEnvValues();
+    }
+
+    private void writeManagedEnv(String envName, String value) {
+        managedEnvService.writeSystemEnv(
+                envName,
+                value,
+                "ADMIN_OAUTH2_WINDOWS_ENV_UNSUPPORTED",
+                "ADMIN_OAUTH2_WINDOWS_ENV_WRITE_FAILED",
+                "ADMIN_OAUTH2_WINDOWS_ENV_WRITE_INTERRUPTED"
+        );
     }
 
     private Map<String, String> readWindowsSystemEnv() {

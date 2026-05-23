@@ -26,8 +26,9 @@
     if (field.envName) {
       parts.push(`ENV: ${field.envName}`);
     }
-    if (field.windowsEnvTarget) {
-      parts.push(`TARGET: ${field.windowsEnvTarget}`);
+    const envTarget = field.envTarget || field.windowsEnvTarget;
+    if (envTarget) {
+      parts.push(`TARGET: ${envTarget}`);
     }
     if (field.propertyKey) {
       parts.push(`KEY: ${field.propertyKey}`);
@@ -148,7 +149,7 @@
     if (nodes.button) {
       nodes.button.disabled = true;
     }
-    dom.setStatusNode(nodes.status, "正在保存 QQ 邮箱 SMTP Windows 系统环境变量...");
+    dom.setStatusNode(nodes.status, "正在保存 QQ 邮箱 SMTP 服务器环境变量...");
     try {
       const response = await api.request(`/shopping/admin/api/smtp/${provider}/config`, {
         username,
@@ -158,7 +159,7 @@
       renderFields(nodes.fields, data.fields);
       nodes.form?.removeAttribute("hidden");
       clearInputs(nodes);
-      const target = data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+      const target = data.envTarget || data.windowsEnvTarget || "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
       dom.setStatusNode(nodes.status, `已保存到 ${target}，重启应用后 SMTP 客户端生效。`, "ok");
     } catch (error) {
       dom.setStatusNode(nodes.status, error.message || "保存 QQ 邮箱 SMTP 配置失败。", "error");

@@ -39,6 +39,15 @@ CREATE TABLE IF NOT EXISTS user_account_self_deletion (
     -- 创建时间
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+    -- 管理员恢复主动停用账号的时间
+    restored_at TIMESTAMPTZ,
+
+    -- 恢复主动停用账号的管理员标识
+    restored_by VARCHAR(64),
+
+    -- 管理员恢复主动停用账号的原因
+    restore_reason TEXT,
+
     CONSTRAINT ck_user_account_self_deletion_reason_required
         CHECK (is_deleted = FALSE OR deletion_reason IS NOT NULL)
 );
@@ -56,6 +65,9 @@ CREATE INDEX IF NOT EXISTS idx_user_account_self_deletion_user_id
 CREATE INDEX IF NOT EXISTS idx_user_account_self_deletion_deleted_at
     ON user_account_self_deletion (deleted_at);
 
+CREATE INDEX IF NOT EXISTS idx_user_account_self_deletion_admin_scope
+    ON user_account_self_deletion (is_deleted, deleted_at, restored_at);
+
 COMMENT ON TABLE user_account_self_deletion IS '用户主动注销账号拦截表';
 COMMENT ON COLUMN user_account_self_deletion.id IS '注销记录 ID，由业务侧雪花 ID 生成';
 COMMENT ON COLUMN user_account_self_deletion.user_id IS '业务用户 ID，不设置物理外键';
@@ -67,3 +79,6 @@ COMMENT ON COLUMN user_account_self_deletion.is_deleted IS '是否已经确认�
 COMMENT ON COLUMN user_account_self_deletion.deletion_reason IS '用户填写的注销理由';
 COMMENT ON COLUMN user_account_self_deletion.deleted_at IS '注销时间';
 COMMENT ON COLUMN user_account_self_deletion.created_at IS '创建时间';
+COMMENT ON COLUMN user_account_self_deletion.restored_at IS '管理员恢复主动停用账号的时间';
+COMMENT ON COLUMN user_account_self_deletion.restored_by IS '恢复主动停用账号的管理员标识';
+COMMENT ON COLUMN user_account_self_deletion.restore_reason IS '管理员恢复主动停用账号的原因';

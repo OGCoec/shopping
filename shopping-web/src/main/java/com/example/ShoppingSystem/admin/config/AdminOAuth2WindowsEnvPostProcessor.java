@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.admin.config;
 
+import com.example.ShoppingSystem.admin.service.AdminManagedEnvService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
@@ -49,12 +50,6 @@ public class AdminOAuth2WindowsEnvPostProcessor implements EnvironmentPostProces
             "RECAPTCHA_SITE_KEY",
             "RECAPTCHA_SECRET_KEY"
     );
-    public static final List<String> RISK_API_ENV_NAMES = List.of(
-            "IP2LOCATION_IO_API_URL",
-            "IPING_API_ENABLED",
-            "IPING_API_URL",
-            "IPING_API_LANGUAGE"
-    );
     public static final List<String> SMTP_ENV_NAMES = List.of(
             "EMAIL_SMTP_USERNAME",
             "EMAIL_SMTP_PASSWORD"
@@ -77,23 +72,15 @@ public class AdminOAuth2WindowsEnvPostProcessor implements EnvironmentPostProces
             "HCAPTCHA_SECRET_KEY",
             "RECAPTCHA_SITE_KEY",
             "RECAPTCHA_SECRET_KEY",
-            "IP2LOCATION_IO_API_URL",
-            "IPING_API_ENABLED",
-            "IPING_API_URL",
-            "IPING_API_LANGUAGE",
             "EMAIL_SMTP_USERNAME",
             "EMAIL_SMTP_PASSWORD"
     );
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        if (!isWindows()) {
-            return;
-        }
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (String envName : MANAGED_ENV_NAMES) {
-            readWindowsSystemEnvValue(envName).ifPresent(value -> values.put(envName, value));
-        }
+        Map<String, Object> values = new LinkedHashMap<>(
+                AdminManagedEnvService.readManagedEnvValues(MANAGED_ENV_NAMES, environment)
+        );
         if (!values.isEmpty()) {
             environment.getPropertySources().addFirst(new MapPropertySource(PROPERTY_SOURCE_NAME, values));
         }

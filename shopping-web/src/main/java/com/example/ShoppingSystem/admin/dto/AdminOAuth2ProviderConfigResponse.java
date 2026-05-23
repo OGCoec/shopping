@@ -4,5 +4,7 @@ public record AdminOAuth2ProviderConfigResponse(String provider,
                                                 AdminOAuth2ConfigField clientId,
                                                 AdminOAuth2ConfigField clientSecret,
                                                 String windowsEnvTarget,
+                                                String envTarget,
+                                                String envStoreType,
                                                 boolean restartRequired) {
 }

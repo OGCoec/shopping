@@ -9,6 +9,8 @@ public record AdminSmtpProviderConfigResponse(String provider,
                                               String currentProvider,
                                               String currentProviderDisplayName,
                                               String windowsEnvTarget,
+                                              String envTarget,
+                                              String envStoreType,
                                               boolean restartRequired,
                                               List<AdminSmtpConfigField> fields) {
 }
