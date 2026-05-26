@@ -3,7 +3,6 @@ package com.example.ShoppingSystem.admin.service;
 import cn.hutool.core.util.IdUtil;
 import com.example.ShoppingSystem.Utils.AliyunUtils;
 import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
-import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import com.example.ShoppingSystem.admin.dto.AdminProductImageCancelRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductImagePreuploadResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductImageUsageRequest;
@@ -12,25 +11,20 @@ import com.example.ShoppingSystem.admin.dto.AdminProductSpuBatchDisableResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuBatchIdsRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuCreateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailResponse;
-import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailSkuResponse;
-import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailSkuUpdateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailUpdateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuPageResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuStatusRequest;
+import com.example.ShoppingSystem.admin.service.AdminProductSkuService.NormalizedSkuUpdate;
 import com.example.ShoppingSystem.mapper.ProductCategoryMapper;
 import com.example.ShoppingSystem.mapper.ProductSpuMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.SessionCallback;
@@ -46,11 +40,8 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -58,7 +49,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -72,8 +62,6 @@ public class AdminProductSpuService {
     private static final int MAX_SUBTITLE_LENGTH = 255;
     private static final int MAX_BRAND_NAME_LENGTH = 64;
     private static final int MAX_IMAGE_URL_LENGTH = 512;
-    private static final int MAX_SKU_CODE_LENGTH = 64;
-    private static final int MAX_SKU_NAME_LENGTH = 128;
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int NANO_ID_LENGTH = 48;
@@ -81,14 +69,6 @@ public class AdminProductSpuService {
     private static final String IMAGE_SESSION_PREFIX = "admin:product:spu:image:session:";
     private static final String IMAGE_CLEANUP_SET_KEY = "admin:product:spu:image:cleanup";
     private static final int CLEANUP_BATCH_SIZE = 100;
-    private static final String DETAIL_CACHE_KEY_PREFIX = "shopping:admin:product:spu:detail:";
-    private static final String DETAIL_CACHE_NULL_MARKER = "__NULL__";
-    private static final int DETAIL_LOCAL_CACHE_MAX_SIZE = 10_000;
-    private static final Duration DETAIL_LOCAL_CACHE_MAX_TTL = Duration.ofMinutes(20);
-    private static final Duration DETAIL_REDIS_POSITIVE_TTL = Duration.ofMinutes(10);
-    private static final Duration DETAIL_REDIS_POSITIVE_JITTER = Duration.ofMinutes(5);
-    private static final Duration DETAIL_REDIS_NEGATIVE_TTL = Duration.ofSeconds(60);
-    private static final Duration DETAIL_REDIS_NEGATIVE_JITTER = Duration.ofSeconds(30);
 
     private final ProductSpuMapper productSpuMapper;
     private final ProductCategoryMapper productCategoryMapper;
@@ -96,14 +76,9 @@ public class AdminProductSpuService {
     private final AliyunUtils aliyunUtils;
     private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
-    private final CountingBloomFilter countingBloomFilter;
-    private final Cache<Long, ProductDetailCacheEntry> detailLocalCache;
-
-    @Value("${shopping.admin.product-spu-bloom.enabled:true}")
-    private boolean productSpuBloomEnabled;
-
-    @Value("${shopping.admin.product-spu-bloom.key:shopping:admin:product:spu:id:cbf}")
-    private String productSpuBloomKey;
+    private final AdminProductSpuAssembler assembler;
+    private final AdminProductSkuService skuService;
+    private final AdminProductDetailCacheService detailCacheService;
 
     public AdminProductSpuService(ProductSpuMapper productSpuMapper,
                                   ProductCategoryMapper productCategoryMapper,
@@ -111,18 +86,18 @@ public class AdminProductSpuService {
                                   AliyunUtils aliyunUtils,
                                   org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate,
                                   ObjectMapper objectMapper,
-                                  CountingBloomFilter countingBloomFilter) {
+                                  AdminProductSpuAssembler assembler,
+                                  AdminProductSkuService skuService,
+                                  AdminProductDetailCacheService detailCacheService) {
         this.productSpuMapper = productSpuMapper;
         this.productCategoryMapper = productCategoryMapper;
         this.snowflakeIdWorker = snowflakeIdWorker;
         this.aliyunUtils = aliyunUtils;
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
-        this.countingBloomFilter = countingBloomFilter;
-        this.detailLocalCache = Caffeine.newBuilder()
-                .maximumSize(DETAIL_LOCAL_CACHE_MAX_SIZE)
-                .expireAfterWrite(DETAIL_LOCAL_CACHE_MAX_TTL)
-                .build();
+        this.assembler = assembler;
+        this.skuService = skuService;
+        this.detailCacheService = detailCacheService;
     }
 
     public AdminProductSpuPageResponse page(Integer page, Integer pageSize, String name, Long categoryId, String status) {
@@ -137,7 +112,7 @@ public class AdminProductSpuService {
                 ? List.of()
                 : productSpuMapper.listSpuPage(normalizedName, normalizedCategoryId, normalizedStatus, normalizedPageSize, offset);
         List<AdminProductSpuResponse> records = rows.stream()
-                .map(this::toSpuResponse)
+                .map(assembler::toSpuResponse)
                 .toList();
         return new AdminProductSpuPageResponse(total, normalizedPage, normalizedPageSize, records);
     }
@@ -201,38 +176,7 @@ public class AdminProductSpuService {
 
     public AdminProductSpuDetailResponse getDetail(Long id) {
         Long spuId = normalizeRequiredId(id, "商品 ID");
-        if (!mightProductExist(spuId)) {
-            throw productNotFoundException();
-        }
-        ProductDetailCacheEntry localEntry = readLocalDetailCache(spuId);
-        if (localEntry != null) {
-            if (!localEntry.found()) {
-                throw productNotFoundException();
-            }
-            return localEntry.detail();
-        }
-        ProductDetailCacheEntry redisEntry = readRedisDetailCache(spuId);
-        if (redisEntry != null) {
-            writeLocalDetailCache(spuId, redisEntry);
-            if (!redisEntry.found()) {
-                throw productNotFoundException();
-            }
-            return redisEntry.detail();
-        }
-        AdminProductSpuDetailResponse detail = findSpuDetailResponse(spuId);
-        if (detail == null) {
-            ProductDetailCacheEntry negative = ProductDetailCacheEntry.notFound(
-                    System.currentTimeMillis() + negativeTtl().toMillis());
-            writeLocalDetailCache(spuId, negative);
-            writeRedisNegativeDetailCache(spuId);
-            throw productNotFoundException();
-        }
-        ProductDetailCacheEntry positive = ProductDetailCacheEntry.found(
-                detail,
-                System.currentTimeMillis() + positiveTtl().toMillis());
-        writeLocalDetailCache(spuId, positive);
-        writeRedisDetailCache(spuId, detail);
-        return detail;
+        return detailCacheService.getDetail(spuId, () -> findSpuDetailResponse(spuId));
     }
 
     @Transactional
@@ -267,7 +211,7 @@ public class AdminProductSpuService {
                 imageFinalizeResult.skus())));
         oldKeys.removeAll(newKeys);
         queueCleanupKeysAfterCommit(oldKeys);
-        invalidateProductDetailCachesAfterCommit(List.of(spuId));
+        detailCacheService.invalidateAfterCommit(List.of(spuId));
         AdminProductSpuDetailResponse detail = findSpuDetailResponse(spuId);
         if (detail == null) {
             throw productNotFoundException();
@@ -310,7 +254,7 @@ public class AdminProductSpuService {
                     "商品创建失败，请刷新后重试。",
                     HttpStatus.CONFLICT);
         }
-        syncCreatedProductAfterCommit(spuId);
+        detailCacheService.syncCreatedProductAfterCommit(spuId);
         return findSpuResponse(spuId);
     }
 
@@ -330,7 +274,7 @@ public class AdminProductSpuService {
         if (updatedRows == 0) {
             throw productNotFoundException();
         }
-        invalidateProductDetailCachesAfterCommit(List.of(spuId));
+        detailCacheService.invalidateAfterCommit(List.of(spuId));
         return findSpuResponse(spuId);
     }
 
@@ -343,7 +287,7 @@ public class AdminProductSpuService {
         if (matchedCount != requestedCount) {
             throw productNotFoundException();
         }
-        invalidateProductDetailCachesAfterCommit(parseLongList(value(result, "targetIdsJson")));
+        detailCacheService.invalidateAfterCommit(assembler.parseLongList(value(result, "targetIdsJson")));
         return new AdminProductSpuBatchDisableResponse(
                 requestedCount,
                 matchedCount,
@@ -356,7 +300,7 @@ public class AdminProductSpuService {
         Map<String, Object> result = productSpuMapper.batchUpdateStatusByLeafCategory(categoryId, STATUS_DISABLED);
         validateLeafCategoryBatchResult(result);
         int matchedCount = toInt(value(result, "matchedCount"), 0);
-        invalidateProductDetailCachesAfterCommit(parseLongList(value(result, "targetIdsJson")));
+        detailCacheService.invalidateAfterCommit(assembler.parseLongList(value(result, "targetIdsJson")));
         return new AdminProductSpuBatchDisableResponse(
                 toInt(value(result, "requestedCount"), matchedCount),
                 matchedCount,
@@ -374,9 +318,9 @@ public class AdminProductSpuService {
         }
         List<String> cleanupKeys = cleanupObjectKeys(value(result, "imageUrlsJson"));
         queueCleanupKeysAfterCommit(cleanupKeys);
-        List<Long> deletedIds = parseLongList(value(result, "deletedIdsJson"));
-        invalidateProductDetailCachesAfterCommit(deletedIds);
-        deleteProductBloomIdsAfterCommit(deletedIds);
+        List<Long> deletedIds = assembler.parseLongList(value(result, "deletedIdsJson"));
+        detailCacheService.invalidateAfterCommit(deletedIds);
+        detailCacheService.deleteProductBloomIdsAfterCommit(deletedIds);
         return new AdminProductSpuBatchDeleteResponse(
                 requestedCount,
                 matchedCount,
@@ -394,9 +338,9 @@ public class AdminProductSpuService {
         int matchedCount = toInt(value(result, "matchedCount"), 0);
         List<String> cleanupKeys = cleanupObjectKeys(value(result, "imageUrlsJson"));
         queueCleanupKeysAfterCommit(cleanupKeys);
-        List<Long> deletedIds = parseLongList(value(result, "deletedIdsJson"));
-        invalidateProductDetailCachesAfterCommit(deletedIds);
-        deleteProductBloomIdsAfterCommit(deletedIds);
+        List<Long> deletedIds = assembler.parseLongList(value(result, "deletedIdsJson"));
+        detailCacheService.invalidateAfterCommit(deletedIds);
+        detailCacheService.deleteProductBloomIdsAfterCommit(deletedIds);
         return new AdminProductSpuBatchDeleteResponse(
                 toInt(value(result, "requestedCount"), matchedCount),
                 matchedCount,
@@ -425,179 +369,12 @@ public class AdminProductSpuService {
         }
     }
 
-    private boolean mightProductExist(Long spuId) {
-        if (!productSpuBloomEnabled) {
-            return true;
-        }
-        try {
-            return Boolean.TRUE.equals(countingBloomFilter.exists(productSpuBloomKey, spuId));
-        } catch (Exception e) {
-            log.warn("[商品管理] SPU ID Bloom 查询失败，降级继续走缓存/DB，spuId={}", spuId, e);
-            return true;
-        }
-    }
-
-    private ProductDetailCacheEntry readLocalDetailCache(Long spuId) {
-        ProductDetailCacheEntry entry = detailLocalCache.getIfPresent(spuId);
-        if (entry == null) {
-            return null;
-        }
-        if (entry.expiresAtEpochMillis() <= System.currentTimeMillis()) {
-            detailLocalCache.invalidate(spuId);
-            return null;
-        }
-        return entry;
-    }
-
-    private ProductDetailCacheEntry readRedisDetailCache(Long spuId) {
-        String raw;
-        try {
-            raw = stringRedisTemplate.opsForValue().get(detailCacheKey(spuId));
-        } catch (Exception e) {
-            log.warn("[商品管理] 读取商品详情 Redis 缓存失败，spuId={}", spuId, e);
-            return null;
-        }
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        if (DETAIL_CACHE_NULL_MARKER.equals(raw)) {
-            return ProductDetailCacheEntry.notFound(System.currentTimeMillis() + negativeTtl().toMillis());
-        }
-        try {
-            AdminProductSpuDetailResponse detail = objectMapper.readValue(raw, AdminProductSpuDetailResponse.class);
-            return ProductDetailCacheEntry.found(detail, System.currentTimeMillis() + positiveTtl().toMillis());
-        } catch (JsonProcessingException e) {
-            log.warn("[商品管理] 商品详情 Redis 缓存 JSON 无效，spuId={}", spuId, e);
-            invalidateProductDetailCaches(List.of(spuId));
-            return null;
-        }
-    }
-
-    private void writeLocalDetailCache(Long spuId, ProductDetailCacheEntry entry) {
-        if (spuId != null && entry != null) {
-            detailLocalCache.put(spuId, entry);
-        }
-    }
-
-    private void writeRedisDetailCache(Long spuId, AdminProductSpuDetailResponse detail) {
-        try {
-            stringRedisTemplate.opsForValue().set(detailCacheKey(spuId), objectMapper.writeValueAsString(detail), positiveTtl());
-        } catch (Exception e) {
-            log.warn("[商品管理] 写入商品详情 Redis 缓存失败，spuId={}", spuId, e);
-        }
-    }
-
-    private void writeRedisNegativeDetailCache(Long spuId) {
-        try {
-            stringRedisTemplate.opsForValue().set(detailCacheKey(spuId), DETAIL_CACHE_NULL_MARKER, negativeTtl());
-        } catch (Exception e) {
-            log.warn("[商品管理] 写入商品详情空值缓存失败，spuId={}", spuId, e);
-        }
-    }
-
-    private void invalidateProductDetailCachesAfterCommit(Collection<Long> spuIds) {
-        List<Long> ids = normalizeLongCollection(spuIds);
-        if (ids.isEmpty()) {
-            return;
-        }
-        runAfterCommit(() -> invalidateProductDetailCaches(ids));
-    }
-
-    private void invalidateProductDetailCaches(Collection<Long> spuIds) {
-        List<Long> ids = normalizeLongCollection(spuIds);
-        if (ids.isEmpty()) {
-            return;
-        }
-        detailLocalCache.invalidateAll(ids);
-        List<String> redisKeys = ids.stream()
-                .map(this::detailCacheKey)
-                .toList();
-        try {
-            stringRedisTemplate.delete(redisKeys);
-        } catch (Exception e) {
-            log.warn("[商品管理] 批量删除商品详情 Redis 缓存失败，count={}", redisKeys.size(), e);
-        }
-    }
-
-    private void syncCreatedProductAfterCommit(Long spuId) {
-        if (spuId == null || spuId <= 0) {
-            return;
-        }
-        runAfterCommit(() -> {
-            invalidateProductDetailCaches(List.of(spuId));
-            if (!productSpuBloomEnabled) {
-                return;
-            }
-            try {
-                countingBloomFilter.add(productSpuBloomKey, spuId);
-            } catch (Exception e) {
-                log.warn("[商品管理] 新商品 SPU ID 写入 Bloom 失败，spuId={}", spuId, e);
-            }
-        });
-    }
-
-    private void deleteProductBloomIdsAfterCommit(Collection<Long> spuIds) {
-        List<Long> ids = normalizeLongCollection(spuIds);
-        if (ids.isEmpty() || !productSpuBloomEnabled) {
-            return;
-        }
-        runAfterCommit(() -> {
-            try {
-                countingBloomFilter.deleteAllLongs(productSpuBloomKey, ids);
-            } catch (Exception e) {
-                log.warn("[商品管理] 批量删除商品 SPU ID Bloom 失败，count={}", ids.size(), e);
-            }
-        });
-    }
-
     private AdminProductSpuDetailResponse findSpuDetailResponse(Long spuId) {
         Map<String, Object> row = productSpuMapper.findSpuDetailById(spuId);
         if (row == null || row.isEmpty()) {
             return null;
         }
-        return toSpuDetailResponse(row);
-    }
-
-    private AdminProductSpuDetailResponse toSpuDetailResponse(Map<String, Object> row) {
-        return new AdminProductSpuDetailResponse(
-                toLong(value(row, "id"), 0L),
-                toLong(value(row, "categoryId"), 0L),
-                toText(value(row, "categoryName")),
-                toText(value(row, "name")),
-                toText(value(row, "subtitle")),
-                toText(value(row, "brandName")),
-                toText(value(row, "mainImageUrl")),
-                toText(value(row, "status")),
-                toOffsetDateTime(value(row, "createdAt")),
-                toOffsetDateTime(value(row, "updatedAt")),
-                parseJsonNode(value(row, "imageUrlsJson"), true),
-                parseJsonNode(value(row, "detailImageUrlsJson"), true),
-                parseJsonNode(value(row, "attributesJson"), false),
-                toText(value(row, "description")),
-                toText(value(row, "afterSale")),
-                toSkuResponses(value(row, "skusJson")));
-    }
-
-    private List<AdminProductSpuDetailSkuResponse> toSkuResponses(Object rawSkusJson) {
-        JsonNode skusNode = parseJsonNode(rawSkusJson, true);
-        if (!skusNode.isArray() || skusNode.isEmpty()) {
-            return List.of();
-        }
-        List<AdminProductSpuDetailSkuResponse> skus = new ArrayList<>();
-        for (JsonNode skuNode : skusNode) {
-            skus.add(new AdminProductSpuDetailSkuResponse(
-                    jsonLong(skuNode, "id", 0L),
-                    jsonLong(skuNode, "spuId", 0L),
-                    jsonText(skuNode, "skuCode"),
-                    jsonText(skuNode, "skuName"),
-                    jsonNodeOrDefault(skuNode.get("specJson"), false),
-                    jsonText(skuNode, "skuImageUrl"),
-                    jsonLong(skuNode, "priceCent", 0L),
-                    jsonNullableLong(skuNode, "originalPriceCent"),
-                    jsonInt(skuNode, "stockQuantity", 0),
-                    jsonText(skuNode, "status")));
-        }
-        return List.copyOf(skus);
+        return assembler.toSpuDetailResponse(row);
     }
 
     private NormalizedProductDetailUpdate normalizeDetailUpdateRequest(Long spuId, AdminProductSpuDetailUpdateRequest request) {
@@ -617,7 +394,7 @@ public class AdminProductSpuService {
         JsonNode attributes = normalizeJsonNode(request.attributes(), false, "商品参数");
         String description = normalizeText(request.description());
         String afterSale = normalizeText(request.afterSale());
-        List<NormalizedSkuUpdate> skus = normalizeSkuUpdates(spuId, request.skus());
+        List<NormalizedSkuUpdate> skus = skuService.normalizeSkuUpdates(spuId, request.skus());
         List<AdminProductImageUsageRequest> imageUploadSessions = normalizeImageUsageRequests(request.imageUploadSessions());
         return new NormalizedProductDetailUpdate(
                 categoryId,
@@ -632,65 +409,6 @@ public class AdminProductSpuService {
                 afterSale.isEmpty() ? null : afterSale,
                 skus,
                 imageUploadSessions);
-    }
-
-    private List<NormalizedSkuUpdate> normalizeSkuUpdates(Long spuId, List<AdminProductSpuDetailSkuUpdateRequest> rawSkus) {
-        if (rawSkus == null || rawSkus.isEmpty()) {
-            return List.of();
-        }
-        List<NormalizedSkuUpdate> skus = new ArrayList<>();
-        Set<Long> ids = new HashSet<>();
-        Set<String> skuCodes = new HashSet<>();
-        Set<String> skuNames = new HashSet<>();
-        for (AdminProductSpuDetailSkuUpdateRequest rawSku : rawSkus) {
-            if (rawSku == null) {
-                throw new AdminServiceException("ADMIN_PRODUCT_SKU_REQUIRED", "SKU 不能为空。", HttpStatus.BAD_REQUEST);
-            }
-            Long requestedId = rawSku.id();
-            if (requestedId != null) {
-                normalizeRequiredId(requestedId, "SKU ID");
-            }
-            Long finalId = requestedId == null ? snowflakeIdWorker.nextId() : requestedId;
-            if (!ids.add(finalId)) {
-                throw new AdminServiceException("ADMIN_PRODUCT_SKU_DUPLICATE", "SKU ID 不能重复。", HttpStatus.BAD_REQUEST);
-            }
-            String skuCode = normalizeRequiredText(rawSku == null ? null : rawSku.skuCode(), "SKU 编码", MAX_SKU_CODE_LENGTH);
-            String skuName = normalizeRequiredText(rawSku == null ? null : rawSku.skuName(), "SKU 名称", MAX_SKU_NAME_LENGTH);
-            if (!skuCodes.add(skuCode)) {
-                throw new AdminServiceException("ADMIN_PRODUCT_SKU_DUPLICATE", "SKU 编码不能重复。", HttpStatus.BAD_REQUEST);
-            }
-            if (!skuNames.add(skuName)) {
-                throw new AdminServiceException("ADMIN_PRODUCT_SKU_DUPLICATE", "SKU 名称不能重复。", HttpStatus.BAD_REQUEST);
-            }
-            JsonNode specJson = normalizeJsonNode(rawSku.specJson(), false, "SKU 规格");
-            String skuImageUrl = normalizeNullableText(rawSku.skuImageUrl(), "SKU 图片", MAX_IMAGE_URL_LENGTH);
-            Long priceCent = rawSku.priceCent();
-            if (priceCent == null || priceCent < 0) {
-                throw new AdminServiceException("ADMIN_PRODUCT_SKU_PRICE_INVALID", "SKU 价格无效。", HttpStatus.BAD_REQUEST);
-            }
-            Long originalPriceCent = rawSku.originalPriceCent();
-            if (originalPriceCent != null && originalPriceCent < priceCent) {
-                throw new AdminServiceException("ADMIN_PRODUCT_SKU_ORIGINAL_PRICE_INVALID", "SKU 原价不能小于销售价。", HttpStatus.BAD_REQUEST);
-            }
-            Integer stockQuantity = rawSku.stockQuantity();
-            if (stockQuantity == null || stockQuantity < 0) {
-                throw new AdminServiceException("ADMIN_PRODUCT_SKU_STOCK_INVALID", "SKU 库存无效。", HttpStatus.BAD_REQUEST);
-            }
-            String status = normalizeStatus(rawSku.status(), STATUS_ACTIVE);
-            skus.add(new NormalizedSkuUpdate(
-                    requestedId,
-                    finalId,
-                    spuId,
-                    skuCode,
-                    skuName,
-                    specJson,
-                    skuImageUrl,
-                    priceCent,
-                    originalPriceCent,
-                    stockQuantity,
-                    status));
-        }
-        return List.copyOf(skus);
     }
 
     private List<AdminProductImageUsageRequest> normalizeImageUsageRequests(List<AdminProductImageUsageRequest> rawUsages) {
@@ -764,7 +482,7 @@ public class AdminProductSpuService {
                 imageUrls,
                 detailImageUrls,
                 skus,
-                toSkuJson(skus),
+                skuService.toSkuJson(skus),
                 tempObjectKeys,
                 finalObjectKeys,
                 sessionKeys);
@@ -973,24 +691,6 @@ public class AdminProductSpuService {
         }
     }
 
-    private String detailCacheKey(Long spuId) {
-        return DETAIL_CACHE_KEY_PREFIX + spuId;
-    }
-
-    private Duration positiveTtl() {
-        long jitterSeconds = DETAIL_REDIS_POSITIVE_JITTER.isZero()
-                ? 0
-                : ThreadLocalRandom.current().nextLong(DETAIL_REDIS_POSITIVE_JITTER.toSeconds() + 1);
-        return DETAIL_REDIS_POSITIVE_TTL.plusSeconds(jitterSeconds);
-    }
-
-    private Duration negativeTtl() {
-        long jitterSeconds = DETAIL_REDIS_NEGATIVE_JITTER.isZero()
-                ? 0
-                : ThreadLocalRandom.current().nextLong(DETAIL_REDIS_NEGATIVE_JITTER.toSeconds() + 1);
-        return DETAIL_REDIS_NEGATIVE_TTL.plusSeconds(jitterSeconds);
-    }
-
     private JsonNode normalizeImageUrlArray(JsonNode node, String label, boolean dedupe) {
         JsonNode value = normalizeJsonNode(node, true, label);
         ArrayNode normalized = objectMapper.createArrayNode();
@@ -1040,25 +740,6 @@ public class AdminProductSpuService {
         return node.deepCopy();
     }
 
-    private JsonNode parseJsonNode(Object raw, boolean array) {
-        if (raw instanceof JsonNode jsonNode) {
-            return jsonNodeOrDefault(jsonNode, array);
-        }
-        String json = normalizeText(raw);
-        if (json.isEmpty()) {
-            return array ? objectMapper.createArrayNode() : objectMapper.createObjectNode();
-        }
-        try {
-            JsonNode node = objectMapper.readTree(json);
-            if (node == null || (array && !node.isArray()) || (!array && !node.isObject())) {
-                return array ? objectMapper.createArrayNode() : objectMapper.createObjectNode();
-            }
-            return node;
-        } catch (JsonProcessingException e) {
-            return array ? objectMapper.createArrayNode() : objectMapper.createObjectNode();
-        }
-    }
-
     private String toJsonString(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -1068,28 +749,6 @@ public class AdminProductSpuService {
                     "商品详情 JSON 序列化失败。",
                     HttpStatus.INTERNAL_SERVER_ERROR);
         }
-    }
-
-    private String toSkuJson(List<NormalizedSkuUpdate> skus) {
-        if (skus == null || skus.isEmpty()) {
-            return "[]";
-        }
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (NormalizedSkuUpdate sku : skus) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("id", sku.requestedId() == null ? null : String.valueOf(sku.requestedId()));
-            row.put("generated_id", String.valueOf(sku.finalId()));
-            row.put("sku_code", sku.skuCode());
-            row.put("sku_name", sku.skuName());
-            row.put("spec_json", sku.specJson());
-            row.put("sku_image_url", sku.skuImageUrl());
-            row.put("price_cent", sku.priceCent());
-            row.put("original_price_cent", sku.originalPriceCent());
-            row.put("stock_quantity", sku.stockQuantity());
-            row.put("status", sku.status());
-            rows.add(row);
-        }
-        return toJsonString(rows);
     }
 
     private List<String> collectFinalImageUrls(String mainImageUrl,
@@ -1177,41 +836,6 @@ public class AdminProductSpuService {
         return node.deepCopy();
     }
 
-    private List<Long> parseLongList(Object raw) {
-        if (raw instanceof Collection<?> values) {
-            return normalizeLongCollection(values.stream()
-                    .map(value -> toLong(value, 0L))
-                    .toList());
-        }
-        String json = normalizeText(raw);
-        if (json.isEmpty() || "[]".equals(json)) {
-            return List.of();
-        }
-        try {
-            List<Long> values = objectMapper.readValue(json, new TypeReference<>() {
-            });
-            return normalizeLongCollection(values);
-        } catch (Exception e) {
-            try {
-                List<String> values = objectMapper.readValue(json, new TypeReference<>() {
-                });
-                return normalizeLongCollection(values.stream().map(value -> toLong(value, 0L)).toList());
-            } catch (Exception ignored) {
-                return List.of();
-            }
-        }
-    }
-
-    private List<Long> normalizeLongCollection(Collection<Long> values) {
-        if (values == null || values.isEmpty()) {
-            return List.of();
-        }
-        return values.stream()
-                .filter(value -> value != null && value > 0)
-                .distinct()
-                .toList();
-    }
-
     private List<String> normalizeStringCollection(Collection<String> values) {
         if (values == null || values.isEmpty()) {
             return List.of();
@@ -1221,48 +845,6 @@ public class AdminProductSpuService {
                 .filter(value -> !value.isEmpty())
                 .distinct()
                 .toList();
-    }
-
-    private Long jsonLong(JsonNode node, String field, Long defaultValue) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull()) {
-            return defaultValue;
-        }
-        if (value.isNumber()) {
-            return value.longValue();
-        }
-        return toLong(value.asText(), defaultValue);
-    }
-
-    private Long jsonNullableLong(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull()) {
-            return null;
-        }
-        if (value.isNumber()) {
-            return value.longValue();
-        }
-        String text = normalizeText(value.asText());
-        return text.isEmpty() ? null : toLong(text, null);
-    }
-
-    private int jsonInt(JsonNode node, String field, int defaultValue) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull()) {
-            return defaultValue;
-        }
-        if (value.isNumber()) {
-            return value.intValue();
-        }
-        return toInt(value.asText(), defaultValue);
-    }
-
-    private String jsonText(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || value.isNull()) {
-            return "";
-        }
-        return value.isTextual() ? normalizeText(value.asText()) : normalizeText(value);
     }
 
     private String extractTempProductObjectKey(String imageUrl) {
@@ -1497,21 +1079,7 @@ public class AdminProductSpuService {
         if (row == null || row.isEmpty()) {
             throw productNotFoundException();
         }
-        return toSpuResponse(row);
-    }
-
-    private AdminProductSpuResponse toSpuResponse(Map<String, Object> row) {
-        return new AdminProductSpuResponse(
-                toLong(value(row, "id"), 0L),
-                toLong(value(row, "categoryId"), 0L),
-                toText(value(row, "categoryName")),
-                toText(value(row, "name")),
-                toText(value(row, "subtitle")),
-                toText(value(row, "brandName")),
-                toText(value(row, "mainImageUrl")),
-                toText(value(row, "status")),
-                toOffsetDateTime(value(row, "createdAt")),
-                toOffsetDateTime(value(row, "updatedAt")));
+        return assembler.toSpuResponse(row);
     }
 
     private void cleanupUploadedObjectAfterPreuploadFailure(String objectKey, String tempUrl) {
@@ -1713,30 +1281,7 @@ public class AdminProductSpuService {
     }
 
     private Object value(Map<String, Object> row, String key) {
-        if (row == null || key == null) {
-            return null;
-        }
-        if (row.containsKey(key)) {
-            return row.get(key);
-        }
-        String snakeKey = toSnakeCase(key);
-        if (row.containsKey(snakeKey)) {
-            return row.get(snakeKey);
-        }
-        return null;
-    }
-
-    private String toSnakeCase(String key) {
-        StringBuilder builder = new StringBuilder();
-        for (int index = 0; index < key.length(); index += 1) {
-            char ch = key.charAt(index);
-            if (Character.isUpperCase(ch)) {
-                builder.append('_').append(Character.toLowerCase(ch));
-            } else {
-                builder.append(ch);
-            }
-        }
-        return builder.toString();
+        return assembler.value(row, key);
     }
 
     private String normalizeText(Object raw) {
@@ -1744,72 +1289,19 @@ public class AdminProductSpuService {
     }
 
     private String toText(Object value) {
-        return normalizeText(value);
+        return assembler.toText(value);
     }
 
     private Long toLong(Object value, Long defaultValue) {
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        String text = toText(value);
-        if (text.isEmpty()) {
-            return defaultValue;
-        }
-        try {
-            return Long.parseLong(text);
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
+        return assembler.toLong(value, defaultValue);
     }
 
     private int toInt(Object value, int defaultValue) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        String text = toText(value);
-        if (text.isEmpty()) {
-            return defaultValue;
-        }
-        try {
-            return Integer.parseInt(text);
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
+        return assembler.toInt(value, defaultValue);
     }
 
     private boolean toBoolean(Object value) {
-        if (value instanceof Boolean bool) {
-            return bool;
-        }
-        String text = toText(value);
-        return "true".equalsIgnoreCase(text) || "1".equals(text);
-    }
-
-    private OffsetDateTime toOffsetDateTime(Object value) {
-        if (value instanceof OffsetDateTime offsetDateTime) {
-            return offsetDateTime;
-        }
-        String text = toText(value);
-        if (text.isEmpty()) {
-            return null;
-        }
-        try {
-            return OffsetDateTime.parse(text);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private record ProductDetailCacheEntry(boolean found,
-                                           AdminProductSpuDetailResponse detail,
-                                           long expiresAtEpochMillis) {
-        static ProductDetailCacheEntry found(AdminProductSpuDetailResponse detail, long expiresAtEpochMillis) {
-            return new ProductDetailCacheEntry(true, detail, expiresAtEpochMillis);
-        }
-
-        static ProductDetailCacheEntry notFound(long expiresAtEpochMillis) {
-            return new ProductDetailCacheEntry(false, null, expiresAtEpochMillis);
-        }
+        return assembler.toBoolean(value);
     }
 
     private record NormalizedProductDetailUpdate(Long categoryId,
@@ -1824,33 +1316,6 @@ public class AdminProductSpuService {
                                                  String afterSale,
                                                  List<NormalizedSkuUpdate> skus,
                                                  List<AdminProductImageUsageRequest> imageUploadSessions) {
-    }
-
-    private record NormalizedSkuUpdate(Long requestedId,
-                                       Long finalId,
-                                       Long spuId,
-                                       String skuCode,
-                                       String skuName,
-                                       JsonNode specJson,
-                                       String skuImageUrl,
-                                       Long priceCent,
-                                       Long originalPriceCent,
-                                       Integer stockQuantity,
-                                       String status) {
-        NormalizedSkuUpdate withSkuImageUrl(String nextSkuImageUrl) {
-            return new NormalizedSkuUpdate(
-                    requestedId,
-                    finalId,
-                    spuId,
-                    skuCode,
-                    skuName,
-                    specJson,
-                    nextSkuImageUrl,
-                    priceCent,
-                    originalPriceCent,
-                    stockQuantity,
-                    status);
-        }
     }
 
     private record ImageFinalizeResult(String mainImageUrl,

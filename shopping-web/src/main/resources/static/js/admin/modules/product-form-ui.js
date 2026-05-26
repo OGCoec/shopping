@@ -25,7 +25,7 @@
     input.value = value || "";
     if (type === "number") {
       input.min = "0";
-      input.step = "1";
+      input.step = label.includes("价格") || label.includes("原价") ? "0.01" : "1";
     }
     input.addEventListener("input", () => onInput(input.value.trim()));
     field.append(labelSpan(label), input);

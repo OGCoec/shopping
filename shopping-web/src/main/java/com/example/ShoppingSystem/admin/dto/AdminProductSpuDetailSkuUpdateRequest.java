@@ -2,13 +2,15 @@ package com.example.ShoppingSystem.admin.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-public record AdminProductSpuDetailSkuUpdateRequest(Long id,
+import java.math.BigDecimal;
+
+public record AdminProductSpuDetailSkuUpdateRequest(String id,
                                                     String skuCode,
                                                     String skuName,
                                                     JsonNode specJson,
                                                     String skuImageUrl,
-                                                    Long priceCent,
-                                                    Long originalPriceCent,
+                                                    BigDecimal priceYuan,
+                                                    BigDecimal originalPriceYuan,
                                                     Integer stockQuantity,
                                                     String status) {
 }

@@ -166,6 +166,14 @@
     return Number.isFinite(number) && number >= 0 ? number : 0;
   }
 
+  function decimalOrZero(value) {
+    const text = String(value ?? "").trim();
+    if (!text) {
+      return "0";
+    }
+    return /^\d+(\.\d{1,2})?$/.test(text) ? text : "0";
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -212,6 +220,7 @@
     collectProductCarouselImages,
     formatJson,
     integerOrZero,
+    decimalOrZero,
     escapeHtml,
     escapeAttribute,
     normalizeSearchText,

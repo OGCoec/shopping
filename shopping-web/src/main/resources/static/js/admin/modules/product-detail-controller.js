@@ -15,6 +15,7 @@
     setImageItemUrl,
     formatJson,
     integerOrZero,
+    decimalOrZero,
     escapeHtml,
     escapeAttribute,
     formatDate
@@ -582,7 +583,7 @@
           sku.skuImageUrl || "",
           sku.skuName || "-",
           sku.skuCode || "-",
-          `${sku.priceCent ?? 0}`,
+          `${sku.priceYuan ?? 0}`,
           `${sku.stockQuantity ?? 0}`,
           sku.status || "-"
         ], false, sku));
@@ -633,8 +634,8 @@
           skuName: sku.skuName || "",
           specJsonText: formatJson(sku.specJson || {}),
           skuImageUrl: sku.skuImageUrl || "",
-          priceCent: String(sku.priceCent ?? 0),
-          originalPriceCent: sku.originalPriceCent == null ? "" : String(sku.originalPriceCent),
+          priceYuan: String(sku.priceYuan ?? 0),
+          originalPriceYuan: sku.originalPriceYuan == null ? "" : String(sku.originalPriceYuan),
           stockQuantity: String(sku.stockQuantity ?? 0),
           status: sku.status || "ACTIVE"
         }))
@@ -873,8 +874,8 @@
           skuName: "",
           specJsonText: "{}",
           skuImageUrl: "",
-          priceCent: "0",
-          originalPriceCent: "",
+          priceYuan: "0",
+          originalPriceYuan: "",
           stockQuantity: "0",
           status: "ACTIVE"
         });
@@ -900,8 +901,8 @@
       row.appendChild(image);
       row.appendChild(skuInput("SKU 编码", sku.skuCode, (value) => { sku.skuCode = value; }));
       row.appendChild(skuInput("SKU 名称", sku.skuName, (value) => { sku.skuName = value; }));
-      row.appendChild(skuInput("价格(分)", sku.priceCent, (value) => { sku.priceCent = value; }, "number"));
-      row.appendChild(skuInput("原价(分)", sku.originalPriceCent, (value) => { sku.originalPriceCent = value; }, "number"));
+      row.appendChild(skuInput("价格(元)", sku.priceYuan, (value) => { sku.priceYuan = value; }, "number"));
+      row.appendChild(skuInput("原价(元)", sku.originalPriceYuan, (value) => { sku.originalPriceYuan = value; }, "number"));
       row.appendChild(skuInput("库存", sku.stockQuantity, (value) => { sku.stockQuantity = value; }, "number"));
       const status = document.createElement("select");
       ["ACTIVE", "DISABLED"].forEach((value) => {
@@ -1121,8 +1122,8 @@
           skuName: sku.skuName.trim(),
           specJson,
           skuImageUrl: sku.skuImageUrl.trim(),
-          priceCent: integerOrZero(sku.priceCent),
-          originalPriceCent: sku.originalPriceCent === "" ? null : integerOrZero(sku.originalPriceCent),
+          priceYuan: decimalOrZero(sku.priceYuan),
+          originalPriceYuan: sku.originalPriceYuan === "" ? null : decimalOrZero(sku.originalPriceYuan),
           stockQuantity: integerOrZero(sku.stockQuantity),
           status: sku.status
         });

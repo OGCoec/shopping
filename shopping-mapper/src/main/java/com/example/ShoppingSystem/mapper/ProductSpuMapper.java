@@ -111,8 +111,8 @@ public interface ProductSpuMapper {
                                       'skuName', s.sku_name,
                                       'specJson', s.spec_json,
                                       'skuImageUrl', s.sku_image_url,
-                                      'priceCent', s.price_cent,
-                                      'originalPriceCent', s.original_price_cent,
+                                      'priceYuan', s.price_yuan,
+                                      'originalPriceYuan', s.original_price_yuan,
                                       'stockQuantity', s.stock_quantity,
                                       'status', s.status
                                   )
@@ -143,14 +143,14 @@ public interface ProductSpuMapper {
                 WHERE c.id = #{categoryId}
             ),
             incoming_sku AS (
-                SELECT NULLIF(raw.id, '')::bigint AS requested_id,
-                       NULLIF(raw.generated_id, '')::bigint AS generated_id,
+                SELECT NULLIF(raw.id, '') AS requested_id,
+                       NULLIF(raw.generated_id, '') AS generated_id,
                        raw.sku_code,
                        raw.sku_name,
                        COALESCE(raw.spec_json, '{}'::jsonb) AS spec_json,
                        NULLIF(raw.sku_image_url, '') AS sku_image_url,
-                       raw.price_cent,
-                       raw.original_price_cent,
+                       raw.price_yuan,
+                       raw.original_price_yuan,
                        raw.stock_quantity,
                        raw.status
                 FROM jsonb_to_recordset(CAST(#{skusJson} AS jsonb)) AS raw(
@@ -160,8 +160,8 @@ public interface ProductSpuMapper {
                     sku_name text,
                     spec_json jsonb,
                     sku_image_url text,
-                    price_cent bigint,
-                    original_price_cent bigint,
+                    price_yuan numeric,
+                    original_price_yuan numeric,
                     stock_quantity integer,
                     status text
                 )
@@ -173,8 +173,8 @@ public interface ProductSpuMapper {
                        sku_name,
                        spec_json,
                        sku_image_url,
-                       price_cent,
-                       original_price_cent,
+                       price_yuan,
+                       original_price_yuan,
                        stock_quantity,
                        status
                 FROM incoming_sku
@@ -183,6 +183,7 @@ public interface ProductSpuMapper {
                 SELECT COUNT(*) AS count
                 FROM normalized_sku n
                 WHERE n.id IS NULL
+                   OR n.id !~ '^[0-9a-f]{32}$'
                    OR (
                        n.requested_id IS NOT NULL
                        AND NOT EXISTS (
@@ -302,8 +303,8 @@ public interface ProductSpuMapper {
                     sku_name,
                     spec_json,
                     sku_image_url,
-                    price_cent,
-                    original_price_cent,
+                    price_yuan,
+                    original_price_yuan,
                     stock_quantity,
                     status
                 )
@@ -313,8 +314,8 @@ public interface ProductSpuMapper {
                        n.sku_name,
                        n.spec_json,
                        n.sku_image_url,
-                       n.price_cent,
-                       n.original_price_cent,
+                       n.price_yuan,
+                       n.original_price_yuan,
                        n.stock_quantity,
                        n.status
                 FROM normalized_sku n
@@ -324,8 +325,8 @@ public interface ProductSpuMapper {
                     sku_name = EXCLUDED.sku_name,
                     spec_json = EXCLUDED.spec_json,
                     sku_image_url = EXCLUDED.sku_image_url,
-                    price_cent = EXCLUDED.price_cent,
-                    original_price_cent = EXCLUDED.original_price_cent,
+                    price_yuan = EXCLUDED.price_yuan,
+                    original_price_yuan = EXCLUDED.original_price_yuan,
                     stock_quantity = EXCLUDED.stock_quantity,
                     status = EXCLUDED.status,
                     updated_at = NOW()
