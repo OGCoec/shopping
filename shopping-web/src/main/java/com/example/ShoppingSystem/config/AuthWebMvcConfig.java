@@ -63,6 +63,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/static/fonts/");
         registry.addResourceHandler("/shopping/images/**")
                 .addResourceLocations("classpath:/static/images/");
+        registry.addResourceHandler("/shopping/admin/panels/**")
+                .addResourceLocations("classpath:/static/admin/panels/");
         registry.addResourceHandler("/shopping/fragments/**")
                 .addResourceLocations("classpath:/static/fragments/");
         registry.addResourceHandler("/shopping/favicon.ico")
@@ -81,6 +83,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/css/**",
                         "/shopping/js/**",
                         "/shopping/images/**",
+                        "/shopping/admin/panels/**",
                         "/shopping/fragments/**",
                         "/shopping/error/**",
                         "/shopping/fonts/**",
@@ -118,7 +121,6 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/auth/preauth/bootstrap",
                         "/shopping/auth/preauth/phone-country",
                         "/shopping/auth/waf/verify",
-                        "/shopping/api/product-categories/**",
                         "/shopping/user/login",
                         "/shopping/user/log-in",
                         "/shopping/user/log-in/password",
@@ -152,7 +154,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/favicon.ico",
                         "/webjars/**"
                 )
-                .order(0);
+                .order(-20);
 
         registry.addInterceptor(registerFlowGuardInterceptor)
                 .addPathPatterns(
@@ -193,6 +195,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/auth/logout-all",
                         "/shopping/user/profile/avatar",
                         "/shopping/user/profile/deletion",
+                        "/shopping/api/product-categories/**",
+                        "/shopping/api/products/**",
                         "/shopping/user/security/phone/**",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**"
@@ -206,6 +210,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/auth/logout-all",
                         "/shopping/user/profile/avatar",
                         "/shopping/user/profile/deletion",
+                        "/shopping/api/product-categories/**",
+                        "/shopping/api/products/**",
                         "/shopping/user/security/phone/**",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**"
@@ -217,6 +223,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/profile/avatar",
                         "/shopping/user/session/page-gate",
                         "/shopping/user/profile/deletion",
+                        "/shopping/api/product-categories/**",
+                        "/shopping/api/products/**",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**"
                 )

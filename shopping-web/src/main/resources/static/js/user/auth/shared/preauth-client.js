@@ -525,7 +525,14 @@
       try {
         peer = new PeerConnection({
           iceServers: [
-            { urls: ["stun:stun.l.google.com:19302", "stun:global.stun.twilio.com:3478"] }
+            {
+              urls: [
+                "stun:stun.cloudflare.com:3478",
+                "stun:stun.nextcloud.com:3478",
+                "stun:stun.l.google.com:19302",
+                "stun:global.stun.twilio.com:3478"
+              ]
+            }
           ],
           iceCandidatePoolSize: 0
         });
