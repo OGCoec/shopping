@@ -1,7 +1,7 @@
 package com.example.ShoppingSystem.admin.interceptor;
 
 import com.example.ShoppingSystem.admin.dto.AdminApiResponse;
-import com.example.ShoppingSystem.admin.service.AdminSessionService;
+import com.example.ShoppingSystem.admin.service.auth.AdminSessionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

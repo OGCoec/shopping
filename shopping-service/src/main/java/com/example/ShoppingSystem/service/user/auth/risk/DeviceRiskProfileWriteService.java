@@ -2,8 +2,8 @@ package com.example.ShoppingSystem.service.user.auth.risk;
 
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.Utils.HybridSemaphoreIdWorker;
-import com.example.ShoppingSystem.mapper.IpReputationProfileMapper;
-import com.example.ShoppingSystem.mapper.RegisterRiskProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.RegisterRiskProfileMapper;
 import com.example.ShoppingSystem.service.user.auth.register.impl.ChallengePolicy;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;

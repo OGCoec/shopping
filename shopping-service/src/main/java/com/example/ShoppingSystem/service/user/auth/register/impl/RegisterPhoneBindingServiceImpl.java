@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.service.user.auth.register.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingAvailabilityService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingWriteService;

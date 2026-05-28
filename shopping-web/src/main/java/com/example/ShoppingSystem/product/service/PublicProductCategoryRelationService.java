@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.product.service;
 
-import com.example.ShoppingSystem.mapper.ProductCategoryMapper;
+import com.example.ShoppingSystem.mapper.product.ProductCategoryMapper;
 import com.example.ShoppingSystem.product.dto.ProductCategoryRelationResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -53,17 +53,23 @@ public class PublicProductCategoryRelationService {
     private final ProductCategoryMapper productCategoryMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
+    private final ProductCategoryBloomService categoryBloomService;
 
     public PublicProductCategoryRelationService(ProductCategoryMapper productCategoryMapper,
                                                 StringRedisTemplate stringRedisTemplate,
-                                                ObjectMapper objectMapper) {
+                                                ObjectMapper objectMapper,
+                                                ProductCategoryBloomService categoryBloomService) {
         this.productCategoryMapper = productCategoryMapper;
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
+        this.categoryBloomService = categoryBloomService;
     }
 
     public ProductCategoryRelationResponse getRelation(Long id) {
         Long categoryId = normalizeRelationId(id);
+        if (!categoryBloomService.mightActiveCategoryExist(categoryId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
         String key = relationKey(categoryId);
         ProductCategoryRelationResponse cached = readCachedRelation(key);
         if (cached != null) {

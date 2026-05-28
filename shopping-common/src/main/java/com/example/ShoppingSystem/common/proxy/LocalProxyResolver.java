@@ -27,11 +27,11 @@ public class LocalProxyResolver {
 
     public LocalProxyResolver(@Value("${local-proxy.enabled:true}") boolean enabled,
                               @Value("${local-proxy.host:127.0.0.1}") String defaultHost,
-                              @Value("${local-proxy.ports:7892,7897}") String candidatePorts,
+                              @Value("${local-proxy.ports:7897}") String candidatePorts,
                               @Value("${local-proxy.connect-timeout-ms:300}") int connectTimeoutMs) {
         this.enabled = enabled;
         this.defaultHost = StrUtil.blankToDefault(defaultHost, "127.0.0.1").trim();
-        this.candidatePorts = StrUtil.blankToDefault(candidatePorts, "7892,7897");
+        this.candidatePorts = StrUtil.blankToDefault(candidatePorts, "7897");
         this.connectTimeoutMs = Math.max(100, connectTimeoutMs);
     }
 

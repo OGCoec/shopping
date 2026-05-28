@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.service.user.auth.risk.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.config.TerminatedAccountEmailCountingBloomProperties;
-import com.example.ShoppingSystem.mapper.UserRiskAccountTerminationMapper;
+import com.example.ShoppingSystem.mapper.risk.UserRiskAccountTerminationMapper;
 import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import org.slf4j.Logger;

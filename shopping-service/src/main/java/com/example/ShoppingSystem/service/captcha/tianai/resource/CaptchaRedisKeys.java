@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.service.captcha.tianai.resource;
 
+import java.util.Locale;
+
 public final class CaptchaRedisKeys {
 
     private CaptchaRedisKeys() {
@@ -15,18 +17,22 @@ public final class CaptchaRedisKeys {
     public static final String RESOURCE_DEFAULT_INIT_LOCK = "lock:captcha:config:resource:default:init";
 
     public static String resourceDefaultKey(String type) {
-        return RESOURCE_DEFAULT_PREFIX + type;
+        return RESOURCE_DEFAULT_PREFIX + normalizeType(type);
     }
 
     public static String resourceDefaultTempKey(String type, String suffix) {
-        return RESOURCE_DEFAULT_PREFIX + type + ":tmp:" + suffix;
+        return RESOURCE_DEFAULT_PREFIX + normalizeType(type) + ":tmp:" + suffix;
     }
 
     public static String templateDefaultKey(String type) {
-        return TEMPLATE_DEFAULT_PREFIX + type;
+        return TEMPLATE_DEFAULT_PREFIX + normalizeType(type);
     }
 
     public static String templateDefaultTempKey(String type, String suffix) {
-        return TEMPLATE_DEFAULT_PREFIX + type + ":tmp:" + suffix;
+        return TEMPLATE_DEFAULT_PREFIX + normalizeType(type) + ":tmp:" + suffix;
+    }
+
+    private static String normalizeType(String type) {
+        return type.toUpperCase(Locale.ROOT);
     }
 }

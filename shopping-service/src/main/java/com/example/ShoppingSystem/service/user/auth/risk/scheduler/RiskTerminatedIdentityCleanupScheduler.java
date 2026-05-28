@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.service.user.auth.risk.scheduler;
 
-import com.example.ShoppingSystem.mapper.UserRiskAccountTerminationMapper;
+import com.example.ShoppingSystem.mapper.risk.UserRiskAccountTerminationMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;

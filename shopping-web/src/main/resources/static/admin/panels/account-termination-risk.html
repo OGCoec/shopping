@@ -1,0 +1,53 @@
+<section class="admin-panel" data-admin-panel="accountTerminationRisk">
+  <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="accountTermination">返回账号停用管理</button>
+    <article class="admin-oauth-config-card admin-risk-ip-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Risk disabled</span>
+          <strong>被动停用管理</strong>
+        </div>
+        <div class="admin-risk-ip-current">
+          <span id="admin-account-risk-term-current-filter">全部风控停用</span>
+          <strong>只读</strong>
+        </div>
+      </div>
+
+      <form id="admin-account-risk-term-filter-form" class="admin-risk-ip-filter-form admin-account-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>User ID</span>
+          <input id="admin-account-risk-term-user-id" type="number" min="1" step="1" placeholder="用户 ID" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>邮箱</span>
+          <input id="admin-account-risk-term-email" type="search" autocomplete="off" placeholder="邮箱关键词" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>手机号</span>
+          <input id="admin-account-risk-term-phone" type="search" autocomplete="off" placeholder="手机号关键词" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-account-risk-term-page-size" type="number" min="1" step="1" value="50" inputmode="numeric" />
+        </label>
+        <div class="admin-risk-ip-actions">
+          <button id="admin-account-risk-term-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-account-risk-term-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary">
+        <div><span>总数</span><strong id="admin-account-risk-term-total">-</strong></div>
+        <div><span>当前页</span><strong id="admin-account-risk-term-page-label">1</strong></div>
+        <div><span>操作</span><strong>只读查看</strong></div>
+      </div>
+
+      <p id="admin-account-risk-term-status-text" class="admin-oauth-config-status"></p>
+      <div id="admin-account-risk-term-list" class="admin-risk-ip-list"></div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-account-risk-term-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-account-risk-term-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+  </div>
+</section>

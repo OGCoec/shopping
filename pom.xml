@@ -35,6 +35,7 @@
         <lombok.version>1.18.42</lombok.version>
         <springdoc-openapi.version>2.8.5</springdoc-openapi.version>
         <byte-buddy.version>1.17.7</byte-buddy.version>
+        <debezium.version>3.4.0.Final</debezium.version>
     </properties>
 
     <dependencyManagement>

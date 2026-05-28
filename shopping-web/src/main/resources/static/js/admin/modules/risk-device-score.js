@@ -5,6 +5,7 @@
 
   const PREFIX = "admin-risk-device";
   const SECTION = "riskDeviceScore";
+  const PAGE_SIZE_ERROR = "每页数量必须是大于 0 的整数。";
   const LEVEL_LABELS = {
     L1: "L1 · 8500+",
     L2: "L2 · 7500-8499",
@@ -59,6 +60,16 @@
   function levelLabel(level) {
     const normalized = normalizeLevel(level);
     return normalized ? LEVEL_LABELS[normalized] : "全部分数区间";
+  }
+
+  function readPositivePageSize(node, statusNode) {
+    const rawValue = String(node?.value || "").trim();
+    const pageSize = Number(rawValue);
+    if (!rawValue || !Number.isInteger(pageSize) || pageSize <= 0) {
+      dom.setStatusNode(statusNode, PAGE_SIZE_ERROR, "error");
+      return null;
+    }
+    return pageSize;
   }
 
   function sortLabel(sort) {
@@ -179,13 +190,16 @@
 
     readParams() {
       const level = normalizeLevel(this.nodes.level?.value || "");
-      const pageSize = Number(this.nodes.pageSize?.value || 50);
+      const pageSize = readPositivePageSize(this.nodes.pageSize, this.nodes.status);
+      if (pageSize == null) {
+        return null;
+      }
       const sortValue = (this.nodes.sort?.value || "risk_first").trim();
       const q = (this.nodes.query?.value || "").trim();
       return {
         level,
         q,
-        pageSize: [50, 100, 200].includes(pageSize) ? pageSize : 50,
+        pageSize,
         sort: SORT_LABELS[sortValue] ? sortValue : "risk_first"
       };
     }
@@ -235,6 +249,9 @@
         this.page = 1;
       }
       const params = this.readParams();
+      if (!params) {
+        return;
+      }
       this.updateCurrentLabels(params);
       this.setLoading(true);
       dom.setStatusNode(this.nodes.status, "正在读取设备分数...");

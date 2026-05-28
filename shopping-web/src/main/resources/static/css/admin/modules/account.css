@@ -1,0 +1,128 @@
+.admin-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-account-detail-dialog {
+  max-width: 880px;
+}
+
+.admin-account-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-account-detail-grid div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 8px;
+  padding: 11px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.admin-account-detail-grid span,
+.admin-account-detail-grid strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-account-detail-grid span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-account-detail-grid strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.admin-account-event-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-account-event-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-account-event-heading div {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-account-event-list {
+  display: grid;
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.admin-account-event-row {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border-bottom: 1px solid rgba(21, 32, 24, 0.08);
+}
+
+.admin-account-event-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-account-event-row strong,
+.admin-account-event-row span,
+.admin-account-event-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-account-event-row strong {
+  font-size: 14px;
+}
+
+.admin-account-event-row span,
+.admin-account-event-row small {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-risk-shortcut-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 0 4px;
+}
+
+.admin-risk-shortcut-label {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-risk-shortcut-btn {
+  min-height: 36px;
+  font-size: 13px;
+}
+.admin-risk-ip-country-cell .fi {
+  width: 22px;
+  height: 16px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(21, 32, 24, 0.1);
+}

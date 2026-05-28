@@ -3,7 +3,7 @@ package com.example.ShoppingSystem.service.user.auth.phone.impl;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingWriteService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneVerifiedUserLookupService;

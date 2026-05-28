@@ -86,6 +86,19 @@
     document.documentElement.classList.remove("page-gate-passed", "page-gate-failed");
   }
 
+  function isSilentGate() {
+    return isBrowserRuntime()
+      && document.documentElement?.dataset?.pageGateMode === "silent";
+  }
+
+  function prepareSilentGate() {
+    if (!isBrowserRuntime()) {
+      return;
+    }
+    document.documentElement.classList.remove("page-gate-pending", "page-gate-passed", "page-gate-failed");
+    document.querySelector(".page-access-gate-overlay")?.remove();
+  }
+
   function ensureOverlay() {
     if (!isBrowserRuntime()) {
       return null;
@@ -358,29 +371,42 @@
     return false;
   }
 
-  async function runDeviceGate(startedAt) {
+  async function runDeviceGate(startedAt, visible = true) {
     const preAuthClient = root.ShoppingPreAuthClient;
     if (!preAuthClient?.bootstrapPreAuthToken) {
-      await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+      if (visible) {
+        await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+      }
       return true;
     }
     const payload = await preAuthClient.bootstrapPreAuthToken(false);
     if (payload?.error === WAF_REQUIRED_ERROR) {
-      await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+      if (visible) {
+        await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+      }
       return false;
     }
     if (payload?.blocked || String(payload?.riskLevel || "").toUpperCase() === "L6") {
-      await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+      if (visible) {
+        await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+      }
       failPage(PAGE_FAILED_MESSAGE, "device");
       return false;
     }
-    await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+    if (visible) {
+      await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+    }
     return true;
   }
 
   async function runGate() {
-    ensurePendingClass();
-    setGateState("is-device-checking", DEFAULT_SUBTITLE);
+    const silent = isSilentGate();
+    if (silent) {
+      prepareSilentGate();
+    } else {
+      ensurePendingClass();
+      setGateState("is-device-checking", DEFAULT_SUBTITLE);
+    }
 
     const authClient = root.ShoppingAuthClient;
     if (!authClient?.fetchWithAuth) {
@@ -390,13 +416,15 @@
 
     try {
       const deviceStartedAt = Date.now();
-      const deviceAllowed = await runDeviceGate(deviceStartedAt);
+      const deviceAllowed = await runDeviceGate(deviceStartedAt, !silent);
       if (!deviceAllowed) {
         return false;
       }
-      setGateState("is-device-done", DEVICE_DONE_SUBTITLE);
-      await wait(260);
-      setGateState("is-session-checking", SESSION_CHECK_SUBTITLE);
+      if (!silent) {
+        setGateState("is-device-done", DEVICE_DONE_SUBTITLE);
+        await wait(260);
+        setGateState("is-session-checking", SESSION_CHECK_SUBTITLE);
+      }
 
       const sessionStartedAt = Date.now();
       const response = await authClient.fetchWithAuth(PAGE_GATE_PATH, {
@@ -404,21 +432,27 @@
         headers: { "Accept": "application/json" }
       });
       if (response.ok) {
-        await waitRemaining(sessionStartedAt, MIN_SESSION_VISIBLE_MS);
-        setGateState("is-session-done", SESSION_DONE_SUBTITLE);
-        await wait(620);
+        if (!silent) {
+          await waitRemaining(sessionStartedAt, MIN_SESSION_VISIBLE_MS);
+          setGateState("is-session-done", SESSION_DONE_SUBTITLE);
+          await wait(620);
+        }
         revealPage();
         return true;
       }
       const payload = await parseJson(response);
-      await waitRemaining(sessionStartedAt, MIN_SESSION_VISIBLE_MS);
+      if (!silent) {
+        await waitRemaining(sessionStartedAt, MIN_SESSION_VISIBLE_MS);
+      }
       if (handleBlockedResponse(response, payload)) {
         return false;
       }
       failPage(payload?.message || FAILED_MESSAGE, "session");
       return false;
     } catch (_) {
-      await wait(MIN_SESSION_VISIBLE_MS);
+      if (!silent) {
+        await wait(MIN_SESSION_VISIBLE_MS);
+      }
       failPage(FAILED_MESSAGE, "session");
       return false;
     }

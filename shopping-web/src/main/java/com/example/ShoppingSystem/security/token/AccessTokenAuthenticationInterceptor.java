@@ -23,6 +23,8 @@ import java.util.concurrent.CompletionException;
 @Component
 public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor {
 
+    private static final String LOGIN_PATH = "/shopping/user/log-in";
+
     private final AuthTokenService authTokenService;
     private final ObjectMapper objectMapper;
 
@@ -43,6 +45,9 @@ public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor 
         try {
             String accessToken = authTokenService.resolveAccessToken(request);
             if (StrUtil.isBlank(accessToken)) {
+                if (redirectLoginForHtmlNavigation(response, request)) {
+                    return false;
+                }
                 writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED,
                         "AUTH_REQUIRED", "Authentication is required.");
                 return false;
@@ -66,12 +71,21 @@ public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor 
             clearAuthenticationContext();
             Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
             if (cause instanceof ExpiredJwtException) {
+                if (redirectLoginForHtmlNavigation(response, request)) {
+                    return false;
+                }
                 writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED,
                         "ACCESS_TOKEN_EXPIRED", "Access token has expired.");
                 return false;
             }
             if (cause instanceof AuthTokenException authError) {
+                if (redirectLoginForHtmlNavigation(response, request)) {
+                    return false;
+                }
                 writeJsonError(response, request, authError.status(), authError.error(), authError.getMessage());
+                return false;
+            }
+            if (redirectLoginForHtmlNavigation(response, request)) {
                 return false;
             }
             writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED,
@@ -99,6 +113,28 @@ public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor 
     private void clearAuthenticationContext() {
         AuthUserContextHolder.clear();
         SecurityContextHolder.clearContext();
+    }
+
+    private boolean redirectLoginForHtmlNavigation(HttpServletResponse response,
+                                                   HttpServletRequest request) throws IOException {
+        if (!isHtmlNavigationRequest(request) || response.isCommitted()) {
+            return false;
+        }
+        response.sendRedirect(LOGIN_PATH);
+        return true;
+    }
+
+    private boolean isHtmlNavigationRequest(HttpServletRequest request) {
+        String method = request.getMethod();
+        if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
+            return false;
+        }
+        String requestedWith = request.getHeader("X-Requested-With");
+        if ("XMLHttpRequest".equalsIgnoreCase(requestedWith)) {
+            return false;
+        }
+        String accept = request.getHeader("Accept");
+        return accept != null && accept.contains(MediaType.TEXT_HTML_VALUE);
     }
 
     private void writeJsonError(HttpServletResponse response,

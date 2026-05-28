@@ -19,12 +19,17 @@ import org.springframework.aop.framework.AopProxyUtils;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -59,6 +64,14 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
     private final TianaiCaptchaResourceProperties resourceProperties;
     private final Gson gson = new Gson();
     private final SliderTemplateImageGenerator sliderTemplateImageGenerator = new SliderTemplateImageGenerator();
+    private final ResourcePatternResolver resourcePatternResolver = new PathMatchingResourcePatternResolver();
+
+    private record CaptchaImageResource(String name,
+                                        Resource captchaResource,
+                                        File file,
+                                        org.springframework.core.io.Resource classpathResource,
+                                        String displayPath) {
+    }
 
     /**
      * 注入天爱验证码应用对象和 Redis 操作模板。
@@ -103,14 +116,17 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
             return;
         }
 
-        // 扫描本地背景图目录，目前只导入 png 文件，并按文件名排序保证初始化顺序稳定。
-        File backgroundDir = backgroundDirectory();
-        File[] backgroundFiles = backgroundDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
-        if (backgroundFiles == null || backgroundFiles.length == 0) {
+        boolean redisCrudResourceStore = isRedisCrudResourceStore(crudResourceStore);
+        if (redisCrudResourceStore) {
+            replaceRotateDefaultTemplate();
+        }
+
+        // 扫描背景图资源，优先读取外部文件系统目录，找不到时回退到 classpath 资源。
+        List<CaptchaImageResource> backgroundResources = backgroundResources();
+        if (backgroundResources.isEmpty()) {
             log.warn("Background image directory is empty, skip custom background import: {}", resourceProperties.getBackgroundDir());
             return;
         }
-        Arrays.sort(backgroundFiles, Comparator.comparing(File::getName));
 
         String[] types = {
                 CaptchaTypeConstant.SLIDER,
@@ -120,14 +136,14 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
         };
 
         // 所有背景图都会先生成通用 payload，供非 ROTATE 类型直接复用。
-        List<String> payloads = Arrays.stream(backgroundFiles)
-                .map(this::buildFileResource)
+        List<String> payloads = backgroundResources.stream()
+                .map(CaptchaImageResource::captchaResource)
                 .map(gson::toJson)
                 .toList();
         // ROTATE 会额外做高度筛选，避免模板裁剪时越界。
-        List<String> rotatePayloads = Arrays.stream(backgroundFiles)
+        List<String> rotatePayloads = backgroundResources.stream()
                 .filter(this::isRotateCompatibleBackground)
-                .map(this::buildFileResource)
+                .map(CaptchaImageResource::captchaResource)
                 .map(gson::toJson)
                 .toList();
         if (rotatePayloads.isEmpty()) {
@@ -136,25 +152,25 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
         }
 
         // Redis 存储要走“临时 key + rename”的整体替换流程，避免初始化中途读到半成品。
-        if (isRedisCrudResourceStore(crudResourceStore)) {
+        if (redisCrudResourceStore) {
             rebuildResourcesWithLock(types, payloads, rotatePayloads, buildDefaultResourcePayloads(), buildDefaultTemplatePayloads());
         } else {
             // 非 Redis 存储直接往当前 store 追加默认资源和背景图即可。
             addDefaultResources(crudResourceStore);
             addDefaultTemplates(crudResourceStore);
-            for (File backgroundFile : backgroundFiles) {
+            for (CaptchaImageResource backgroundResource : backgroundResources) {
                 for (String type : types) {
                     // 旋转验证码只接收满足高度要求的背景图，其它类型暂时不做这层过滤。
-                    if (CaptchaTypeConstant.ROTATE.equals(type) && !isRotateCompatibleBackground(backgroundFile)) {
+                    if (CaptchaTypeConstant.ROTATE.equals(type) && !isRotateCompatibleBackground(backgroundResource)) {
                         continue;
                     }
-                    crudResourceStore.addResource(type, buildFileResource(backgroundFile));
+                    crudResourceStore.addResource(type, backgroundResource.captchaResource());
                 }
             }
         }
 
         log.info("Registered {} background images for {} captcha types, ROTATE compatible count={}",
-                backgroundFiles.length, types.length, rotatePayloads.size());
+                backgroundResources.size(), types.length, rotatePayloads.size());
     }
 
     /**
@@ -172,6 +188,24 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
             storeClass = crudResourceStore.getClass();
         }
         return REDIS_RESOURCE_STORE_CLASS.equals(storeClass.getName());
+    }
+
+    private void replaceRotateDefaultTemplate() {
+        String tempSuffix = UUID.randomUUID().toString();
+        String tempKey = buildTemplateTempKey(CaptchaTypeConstant.ROTATE, tempSuffix);
+        String targetKey = CaptchaRedisKeys.templateDefaultKey(CaptchaTypeConstant.ROTATE);
+        List<String> rotateTemplatePayloads = List.of(gson.toJson(buildTemplateResourceMap("rotate_1")));
+        stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
+            @Override
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            public Object execute(RedisOperations operations) {
+                operations.delete(tempKey);
+                operations.opsForList().rightPushAll(tempKey, rotateTemplatePayloads);
+                operations.rename(tempKey, targetKey);
+                return null;
+            }
+        });
+        log.info("Tianai ROTATE default template key has been replaced with built-in rotate_1 template");
     }
 
     /**
@@ -224,6 +258,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
                                         Map<String, List<String>> defaultResourcePayloads,
                                         Map<String, List<String>> defaultTemplatePayloads,
                                         String lockValue) {
+        stringRedisTemplate.delete(CaptchaRedisKeys.RESOURCE_DEFAULT_PREFIX + FontCache.FONT_TYPE);
         stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
             /**
              * 在同一个 Redis pipeline 中完成临时 key 删除、资源写入和 rename 覆盖。
@@ -294,28 +329,28 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
      * 判断背景图是否适合 ROTATE 旋转验证码。
      * Tianai 默认旋转模板高度约为 200px，过矮的背景图会导致裁剪坐标越界。
      *
-     * @param backgroundFile 候选背景图文件
+     * @param backgroundResource 候选背景图资源
      * @return true 表示可以写入 ROTATE 背景资源池
      */
-    private boolean isRotateCompatibleBackground(File backgroundFile) {
+    private boolean isRotateCompatibleBackground(CaptchaImageResource backgroundResource) {
         try {
             // 先尝试把文件解码成图片，损坏文件或假后缀文件会在这里被过滤掉。
-            BufferedImage image = ImageIO.read(backgroundFile);
+            BufferedImage image = readImage(backgroundResource);
             if (image == null) {
-                log.warn("Skip ROTATE background because it is not a readable image: {}", backgroundFile.getAbsolutePath());
+                log.warn("Skip ROTATE background because it is not a readable image: {}", backgroundResource.displayPath());
                 return false;
             }
             // 旋转模板高度接近 200px，背景图过矮时裁剪区域容易越界。
             int height = image.getHeight();
             if (height < ROTATE_MIN_BACKGROUND_HEIGHT) {
                 log.warn("Skip ROTATE background {} because height {} < {}",
-                        backgroundFile.getName(), height, ROTATE_MIN_BACKGROUND_HEIGHT);
+                        backgroundResource.name(), height, ROTATE_MIN_BACKGROUND_HEIGHT);
                 return false;
             }
             return true;
         } catch (IOException e) {
             log.warn("Skip ROTATE background because it cannot be read: {}, error={}",
-                    backgroundFile.getAbsolutePath(), e.getMessage());
+                    backgroundResource.displayPath(), e.getMessage());
             return false;
         }
     }
@@ -410,26 +445,46 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
         File templateDir = sliderTemplateDirectory();
         // 先按扩展名做一层粗过滤，减少无关文件参与后续图片解码。
         File[] templateFiles = templateDir.listFiles((dir, name) -> isSupportedImageFileName(name));
-        if (templateFiles == null || templateFiles.length == 0) {
+        if (templateFiles != null && templateFiles.length > 0) {
+            return Arrays.stream(templateFiles)
+                    // 再确认图片真的可读，过滤损坏文件或伪装扩展名文件。
+                    .filter(this::isReadableImage)
+                    // 按文件名排序，保证不同机器重建出来的模板顺序一致。
+                    .sorted(Comparator.comparing(File::getName))
+                    // 每张源图会被切成一个独立模板目录。
+                    .map(this::generateSliderTemplateDirectory)
+                    .filter(templateDirectory -> templateDirectory != null)
+                    .toList();
+        }
+
+        List<CaptchaImageResource> classpathTemplateResources = classpathImageResources(resourceProperties.getSliderTemplateDir());
+        if (classpathTemplateResources.isEmpty()) {
             log.warn("Custom SLIDER template directory is empty, only built-in templates will be used: {}",
                     resourceProperties.getSliderTemplateDir());
             return List.of();
         }
-        return Arrays.stream(templateFiles)
-                // 再确认图片真的可读，过滤损坏文件或伪装扩展名文件。
+        return classpathTemplateResources.stream()
+                .map(this::copyClasspathSliderTemplateSource)
+                .filter(templateFile -> templateFile != null)
                 .filter(this::isReadableImage)
-                // 按文件名排序，保证不同机器重建出来的模板顺序一致。
                 .sorted(Comparator.comparing(File::getName))
-                // 每张源图会被切成一个独立模板目录。
-                .map(this::generateSliderTemplateDirectory)
+                .map(this::generateClasspathSliderTemplateDirectory)
                 .filter(templateDirectory -> templateDirectory != null)
                 .toList();
     }
 
     private File generateSliderTemplateDirectory(File sourceTemplateFile) {
+        return generateSliderTemplateDirectory(sourceTemplateFile, generatedSliderTemplateDirectory());
+    }
+
+    private File generateClasspathSliderTemplateDirectory(File sourceTemplateFile) {
+        return generateSliderTemplateDirectory(sourceTemplateFile, classpathGeneratedSliderTemplateDirectory());
+    }
+
+    private File generateSliderTemplateDirectory(File sourceTemplateFile, File outputRoot) {
         try {
             // 调用模板生成器，把单张源图切成 Tianai 约定的模板目录结构。
-            return sliderTemplateImageGenerator.generate(sourceTemplateFile, generatedSliderTemplateDirectory());
+            return sliderTemplateImageGenerator.generate(sourceTemplateFile, outputRoot);
         } catch (IOException e) {
             log.warn("Skip custom SLIDER template because generated files cannot be created: {}, error={}",
                     sourceTemplateFile.getAbsolutePath(), e.getMessage());
@@ -546,12 +601,114 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
         return new File(sliderTemplateDirectory(), "generated");
     }
 
+    private File classpathGeneratedSliderTemplateDirectory() {
+        return new File(System.getProperty("java.io.tmpdir"), "shopping/tianai/rotate/spilt/generated");
+    }
+
+    private File classpathSliderTemplateSourceDirectory() {
+        return new File(classpathGeneratedSliderTemplateDirectory(), "classpath-source");
+    }
+
     private Resource buildFileResource(File file) {
         return new Resource(FILE_RESOURCE_TYPE, normalizeFilePath(file));
     }
 
+    private Resource buildClasspathResource(String resourcePath) {
+        return new Resource(TEMPLATE_RESOURCE_TYPE, resourcePath);
+    }
+
     private String normalizeFilePath(File file) {
-        return file.getPath().replace('\\', '/');
+        return file.getAbsolutePath().replace('\\', '/');
+    }
+
+    private List<CaptchaImageResource> backgroundResources() {
+        File backgroundDir = backgroundDirectory();
+        File[] backgroundFiles = backgroundDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
+        if (backgroundFiles != null && backgroundFiles.length > 0) {
+            Arrays.sort(backgroundFiles, Comparator.comparing(File::getName));
+            return Arrays.stream(backgroundFiles)
+                    .map(file -> new CaptchaImageResource(
+                            file.getName(),
+                            buildFileResource(file),
+                            file,
+                            null,
+                            file.getAbsolutePath()
+                    ))
+                    .toList();
+        }
+        return classpathImageResources(resourceProperties.getBackgroundDir());
+    }
+
+    private List<CaptchaImageResource> classpathImageResources(String configuredDirectory) {
+        String classpathDirectory = normalizeClasspathResourcePath(configuredDirectory);
+        if (classpathDirectory.isEmpty()) {
+            return List.of();
+        }
+
+        String pattern = ResourcePatternResolver.CLASSPATH_ALL_URL_PREFIX + classpathDirectory + "/*.png";
+        try {
+            org.springframework.core.io.Resource[] resources = resourcePatternResolver.getResources(pattern);
+            return Arrays.stream(resources)
+                    .filter(resource -> resource.getFilename() != null)
+                    .sorted(Comparator.comparing(org.springframework.core.io.Resource::getFilename))
+                    .map(resource -> {
+                        String resourcePath = classpathDirectory + "/" + resource.getFilename();
+                        return new CaptchaImageResource(
+                                resource.getFilename(),
+                                buildClasspathResource(resourcePath),
+                                null,
+                                resource,
+                                "classpath:" + resourcePath
+                        );
+                    })
+                    .toList();
+        } catch (IOException e) {
+            log.warn("Classpath captcha resource directory cannot be read: {}, error={}", configuredDirectory, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private String normalizeClasspathResourcePath(String path) {
+        String normalized = path.trim().replace('\\', '/');
+        if (normalized.startsWith(ResourcePatternResolver.CLASSPATH_ALL_URL_PREFIX)) {
+            normalized = normalized.substring(ResourcePatternResolver.CLASSPATH_ALL_URL_PREFIX.length());
+        } else if (normalized.startsWith("classpath:")) {
+            normalized = normalized.substring("classpath:".length());
+        }
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private BufferedImage readImage(CaptchaImageResource imageResource) throws IOException {
+        if (imageResource.file() != null) {
+            return ImageIO.read(imageResource.file());
+        }
+        try (InputStream inputStream = imageResource.classpathResource().getInputStream()) {
+            return ImageIO.read(inputStream);
+        }
+    }
+
+    private File copyClasspathSliderTemplateSource(CaptchaImageResource templateResource) {
+        File sourceDirectory = classpathSliderTemplateSourceDirectory();
+        if (!sourceDirectory.exists() && !sourceDirectory.mkdirs()) {
+            log.warn("Skip classpath SLIDER template because source directory cannot be created: {}",
+                    sourceDirectory.getAbsolutePath());
+            return null;
+        }
+        File sourceFile = new File(sourceDirectory, templateResource.name());
+        try (InputStream inputStream = templateResource.classpathResource().getInputStream()) {
+            Files.copy(inputStream, sourceFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            return sourceFile;
+        } catch (IOException e) {
+            log.warn("Skip classpath SLIDER template because source file cannot be copied: {}, error={}",
+                    templateResource.displayPath(), e.getMessage());
+            return null;
+        }
     }
 
     /**

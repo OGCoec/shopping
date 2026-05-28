@@ -1,0 +1,87 @@
+<section class="admin-panel" data-admin-panel="riskIpScoreIpv4">
+  <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score" data-risk-ip-family="ipv4">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="riskIpScore">返回 IP 分数</button>
+    <article class="admin-oauth-config-card admin-risk-ip-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>IPv4 score</span>
+          <strong>IPv4 IP 分数</strong>
+        </div>
+        <div class="admin-risk-ip-current">
+          <span id="admin-risk-ip-ipv4-current-country">全部国家/地区</span>
+          <strong id="admin-risk-ip-ipv4-current-level">全部分数区间</strong>
+        </div>
+      </div>
+
+      <form id="admin-risk-ip-ipv4-filter-form" class="admin-risk-ip-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>国家 / 区号</span>
+          <input id="admin-risk-ip-ipv4-country-code" type="hidden" value="" />
+          <div id="admin-risk-ip-ipv4-country-picker" class="admin-risk-country-picker" data-open="false">
+            <button id="admin-risk-ip-ipv4-country-trigger" class="admin-risk-country-trigger admin-spring-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span class="admin-risk-country-trigger-main">
+                <span id="admin-risk-ip-ipv4-country-flag" class="admin-risk-country-flag"></span>
+                <span id="admin-risk-ip-ipv4-country-name">全部国家/地区</span>
+              </span>
+              <span id="admin-risk-ip-ipv4-country-dial" class="admin-risk-country-dial">All</span>
+            </button>
+            <div id="admin-risk-ip-ipv4-country-popover" class="admin-risk-country-popover">
+              <input id="admin-risk-ip-ipv4-country-search" class="admin-risk-country-search" type="search" autocomplete="off" placeholder="输入国家、ISO2 或区号" />
+              <ul id="admin-risk-ip-ipv4-country-list" class="admin-risk-country-list" role="listbox"></ul>
+            </div>
+          </div>
+        </label>
+
+        <label class="admin-risk-ip-field">
+          <span>分数区间</span>
+          <select id="admin-risk-ip-ipv4-level">
+            <option value="">全部区间</option>
+            <option value="L1">L1 · 8500+</option>
+            <option value="L2">L2 · 7500-8499</option>
+            <option value="L3">L3 · 6000-7499</option>
+            <option value="L4">L4 · 4800-5999</option>
+            <option value="L5">L5 · 3000-4799</option>
+            <option value="L6">L6 · 0-2999</option>
+          </select>
+        </label>
+
+        <label class="admin-risk-ip-field">
+          <span>IP</span>
+          <input id="admin-risk-ip-ipv4-query" type="search" autocomplete="off" inputmode="decimal" placeholder="IPv4 前缀" />
+        </label>
+
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-risk-ip-ipv4-page-size" type="number" min="1" step="1" value="50" inputmode="numeric" />
+        </label>
+
+        <div class="admin-risk-ip-actions">
+          <button id="admin-risk-ip-ipv4-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-risk-ip-ipv4-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary">
+        <div>
+          <span>总数</span>
+          <strong id="admin-risk-ip-ipv4-total">-</strong>
+        </div>
+        <div>
+          <span>当前页</span>
+          <strong id="admin-risk-ip-ipv4-page-label">1</strong>
+        </div>
+        <div>
+          <span>排序</span>
+          <strong>风险优先</strong>
+        </div>
+      </div>
+
+      <p id="admin-risk-ip-ipv4-status" class="admin-oauth-config-status"></p>
+      <div id="admin-risk-ip-ipv4-list" class="admin-risk-ip-list"></div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-risk-ip-ipv4-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-risk-ip-ipv4-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+  </div>
+</section>

@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.admin.config;
 
-import com.example.ShoppingSystem.admin.service.AdminManagedEnvService;
+import com.example.ShoppingSystem.admin.service.config.AdminManagedEnvService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;

@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.quota;
 
-import com.example.ShoppingSystem.mapper.IpReputationProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper;
 import com.example.ShoppingSystem.quota.writeback.IpRiskWritebackOrchestrator;
 import com.example.ShoppingSystem.service.user.auth.register.risk.IpReputationEvidence;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,6 +35,7 @@ public class IpReputationMultiLevelQueryService {
 
     private static final int SCORE_MIN = 0;
     private static final int SCORE_MAX = 10000;
+    private static final int DEFAULT_SCORE_WHEN_UNAVAILABLE = 4500;
     private static final int DEFAULT_FRAUD_SCORE_WHEN_MISSING = 50;
     private static final int FRAUD_PENALTY_MULTIPLIER = 80;
 
@@ -51,6 +52,12 @@ public class IpReputationMultiLevelQueryService {
 
     @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:v2:}")
     private String redisKeyPrefix;
+
+    @Value("${register.ip-risk-multi-level.miss-redis-key-prefix:register:ip:risk:miss:v1:}")
+    private String missRedisKeyPrefix;
+
+    @Value("${register.ip-risk-multi-level.miss-ttl-minutes:10}")
+    private int missTtlMinutes;
 
     @Value("${register.ip-risk-multi-level.db-expire-hours:24}")
     private int dbExpireHours;
@@ -112,6 +119,11 @@ public class IpReputationMultiLevelQueryService {
             return MultiLevelQueryResult.success(SOURCE_DB, evidence, dbHit.score());
         }
 
+        IpRiskMissCachePayload missHit = readMissFromRedis(ip, now);
+        if (missHit != null) {
+            return MultiLevelQueryResult.failed(SOURCE_REDIS, missHit.reason());
+        }
+
         IpRiskCachedPayload fromApi = readFromApi(ip, now);
         if (fromApi != null) {
             localCacheStore.putRisk(ip, fromApi.currentScore(), fromApi.country());
@@ -161,6 +173,35 @@ public class IpReputationMultiLevelQueryService {
         } catch (Exception e) {
             log.debug("IP risk Redis cache read failed, ip={}, reason={}", ip, e.getMessage());
             return null;
+        }
+    }
+
+    private IpRiskMissCachePayload readMissFromRedis(String ip, long now) {
+        String key = missRedisKey(ip);
+        try {
+            String value = stringRedisTemplate.opsForValue().get(key);
+            if (isBlank(value)) {
+                return null;
+            }
+
+            IpRiskMissCachePayload payload = objectMapper.readValue(value, IpRiskMissCachePayload.class);
+            if (payload.expiresAt() <= now) {
+                deleteMissKeyQuietly(key, ip);
+                return null;
+            }
+            return payload;
+        } catch (Exception e) {
+            deleteMissKeyQuietly(key, ip);
+            log.debug("IP risk miss cache read failed, ip={}, reason={}", ip, e.getMessage());
+            return null;
+        }
+    }
+
+    private void deleteMissKeyQuietly(String key, String ip) {
+        try {
+            stringRedisTemplate.delete(key);
+        } catch (Exception e) {
+            log.debug("IP risk miss cache delete failed, ip={}, reason={}", ip, e.getMessage());
         }
     }
 
@@ -242,7 +283,7 @@ public class IpReputationMultiLevelQueryService {
 
         if (shouldFallbackToIping(ip2LocationResult)) {
             IpingApiHttpService.IpingQueryResult ipingResult = ipingApiHttpService.queryByIp(ip);
-            if (ipingResult.success() && ipingResult.riskFields() != null) {
+            if (ipingResult != null && ipingResult.success() && ipingResult.riskFields() != null) {
                 log.info("IP reputation fallback succeeded, ip={}, primaryProvider={}, primaryReason={}, fallbackProvider={}, fallbackReason={}",
                         ip,
                         PROVIDER_IP2LOCATION,
@@ -251,14 +292,39 @@ public class IpReputationMultiLevelQueryService {
                         ipingResult.reason());
                 return toCachedPayload(ipingResult.riskFields(), now, PROVIDER_IPING);
             }
+            String primaryReason = ip2LocationResult != null ? ip2LocationResult.reason() : "null_result";
+            String fallbackReason = ipingResult != null ? ipingResult.reason() : "null_result";
             log.warn("IP reputation fallback failed, ip={}, primaryProvider={}, primaryReason={}, fallbackProvider={}, fallbackReason={}",
                     ip,
                     PROVIDER_IP2LOCATION,
-                    ip2LocationResult != null ? ip2LocationResult.reason() : "null_result",
+                    primaryReason,
                     PROVIDER_IPING,
-                    ipingResult.reason());
+                    fallbackReason);
+            writeMissToRedis(ip, now, primaryReason, fallbackReason);
         }
         return null;
+    }
+
+    private void writeMissToRedis(String ip, long now, String primaryReason, String fallbackReason) {
+        if (missTtlMinutes <= 0) {
+            return;
+        }
+        try {
+            Duration ttl = Duration.ofMinutes(missTtlMinutes);
+            long expiresAt = now + ttl.toMillis();
+            IpRiskMissCachePayload payload = new IpRiskMissCachePayload(
+                    DEFAULT_SCORE_WHEN_UNAVAILABLE,
+                    "unavailable_fallback",
+                    PROVIDER_IP2LOCATION,
+                    primaryReason,
+                    PROVIDER_IPING,
+                    fallbackReason,
+                    now,
+                    expiresAt);
+            stringRedisTemplate.opsForValue().set(missRedisKey(ip), objectMapper.writeValueAsString(payload), ttl);
+        } catch (Exception e) {
+            log.debug("IP risk miss cache write failed, ip={}, reason={}", ip, e.getMessage());
+        }
     }
 
     private IpRiskCachedPayload toCachedPayload(Ip2LocationQuotaHttpService.RiskRelevantFields fields,
@@ -322,6 +388,10 @@ public class IpReputationMultiLevelQueryService {
 
     private String redisKey(String ip) {
         return redisKeyPrefix + ip;
+    }
+
+    private String missRedisKey(String ip) {
+        return missRedisKeyPrefix + ip;
     }
 
     private IpRiskCachedPayload buildDbMinimalPayload(int score,
@@ -721,6 +791,19 @@ public class IpReputationMultiLevelQueryService {
 
     private record RiskCacheHit(int score,
                                 String country) {
+    }
+
+    private record IpRiskMissCachePayload(int score,
+                                          String source,
+                                          String primaryProvider,
+                                          String primaryReason,
+                                          String fallbackProvider,
+                                          String fallbackReason,
+                                          long createdAt,
+                                          long expiresAt) {
+        private String reason() {
+            return source + ":" + primaryProvider + ":" + primaryReason + ":" + fallbackProvider + ":" + fallbackReason;
+        }
     }
 
     private record NormalizedRisk(int fraudScore,

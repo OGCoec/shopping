@@ -4,6 +4,7 @@
   const imageUtils = root.AdminProductImageUtils;
   const formUi = root.AdminProductFormUi;
   const {
+    normalizeImageItems,
     normalizeImageOrder,
     imagePayload,
     buildDisplayImages,
@@ -16,7 +17,7 @@
   const {
     actionButton,
     skuInput,
-    pickImageFile,
+    pickImageFiles,
     appendImageOrderBadge,
     imageOrderControls
   } = formUi;
@@ -236,7 +237,7 @@
         skuCode: "",
         skuName: "",
         specJsonText: "{}",
-        skuImageUrl: "",
+        skuImageUrls: [],
         priceYuan: "0",
         originalPriceYuan: "",
         stockQuantity: "0",
@@ -337,10 +338,7 @@
     function createSkuDraftRow(sku, index) {
       const row = document.createElement("div");
       row.className = "admin-product-detail-sku-edit-row admin-product-spu-create-sku-row";
-      const image = document.createElement("div");
-      image.className = "admin-product-detail-edit-preview";
-      image.innerHTML = sku.skuImageUrl ? `<img src="${escapeAttribute(sku.skuImageUrl)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />` : "<span>-</span>";
-      row.appendChild(image);
+      row.appendChild(skuImageList(sku, renderSkus));
       row.appendChild(skuInput("SKU 编码", sku.skuCode, (value) => { sku.skuCode = value; }));
       row.appendChild(skuInput("SKU 名称", sku.skuName, (value) => { sku.skuName = value; }));
       row.appendChild(skuInput("价格(元)", sku.priceYuan, (value) => { sku.priceYuan = value; }, "number"));
@@ -364,16 +362,9 @@
       const actions = document.createElement("div");
       actions.className = "admin-product-detail-actions";
       actions.append(
-        actionButton("上传图", async () => {
-          const uploaded = await uploadSkuImage();
-          if (uploaded) {
-            await cancelTempByUrl(sku.skuImageUrl);
-            sku.skuImageUrl = uploaded.tempUrl || "";
-            renderSkus();
-          }
-        }),
+        actionButton("批量上传图", async () => uploadSkuImages(sku, renderSkus)),
         actionButton("删除", async () => {
-          await cancelTempByUrl(sku.skuImageUrl);
+          await cancelSkuTempImages(sku);
           state.skus.splice(index, 1);
           renderSkus();
         }, "admin-api-back")
@@ -382,30 +373,75 @@
       return row;
     }
 
-    async function uploadSkuImage() {
-      const file = await pickImageFile();
-      if (!file) {
+    function skuImageList(sku, rerender) {
+      sku.skuImageUrls = normalizeImageItems(sku.skuImageUrls);
+      const list = document.createElement("div");
+      list.className = "admin-product-sku-image-list";
+      if (!sku.skuImageUrls.length) {
+        const empty = document.createElement("div");
+        empty.className = "admin-product-detail-edit-preview";
+        empty.innerHTML = "<span>-</span>";
+        list.appendChild(empty);
+        return list;
+      }
+      sku.skuImageUrls.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "admin-product-spu-multi-item";
+        const url = imageItemUrl(item);
+        const preview = document.createElement("div");
+        preview.className = "admin-product-detail-edit-preview";
+        preview.innerHTML = url ? `<img src="${escapeAttribute(url)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />` : "<span>-</span>";
+        appendImageOrderBadge(preview, index);
+        const controls = imageOrderControls(sku.skuImageUrls, index, rerender, async () => {
+          await cancelTempByUrl(url);
+          sku.skuImageUrls.splice(index, 1);
+        });
+        row.append(preview, controls);
+        list.appendChild(row);
+      });
+      return list;
+    }
+
+    async function uploadSkuImages(sku, rerender) {
+      const files = await pickImageFiles();
+      if (!files.length) {
         return null;
       }
-      if (!file.type || !file.type.startsWith("image/")) {
+      const images = files.filter((file) => file?.type?.startsWith("image/"));
+      if (!images.length) {
         api.setStatus(el.formStatus, "只能上传图片文件。", "error");
         return null;
       }
       setBusy(true);
       try {
-        api.setStatus(el.formStatus, "正在预上传 SKU 图片。");
-        const uploaded = await uploadOneImage(file);
-        if (uploaded?.uploadSessionId && uploaded?.tempUrl) {
+        api.setStatus(el.formStatus, `正在预上传 ${images.length} 张 SKU 图片。`);
+        const results = await Promise.allSettled(images.map((file) => uploadOneImage(file)));
+        let successCount = 0;
+        sku.skuImageUrls = normalizeImageItems(sku.skuImageUrls);
+        results.forEach((result) => {
+          if (result.status !== "fulfilled" || !result.value?.uploadSessionId || !result.value?.tempUrl) {
+            return;
+          }
+          const uploaded = result.value;
           state.tempImages.set(uploaded.tempUrl, uploaded);
-        }
-        api.setStatus(el.formStatus, "SKU 图片已预上传。", "ok");
-        return uploaded;
+          sku.skuImageUrls.push({ url: uploaded.tempUrl, sort: sku.skuImageUrls.length + 1 });
+          successCount += 1;
+        });
+        normalizeImageOrder(sku.skuImageUrls);
+        rerender();
+        api.setStatus(el.formStatus, `已预上传 ${successCount} 张 SKU 图片。`, successCount === images.length ? "ok" : "error");
+        return successCount;
       } catch (error) {
         api.setStatus(el.formStatus, error.message || "SKU 图片预上传失败。", "error");
         return null;
       } finally {
         setBusy(false);
       }
+    }
+
+    async function cancelSkuTempImages(sku) {
+      const urls = imagePayload(sku?.skuImageUrls || []);
+      await Promise.all(urls.map((url) => cancelTempByUrl(url)));
     }
 
     async function cancelTempByUrl(url) {
@@ -550,7 +586,7 @@
           skuCode,
           skuName,
           specJson,
-          skuImageUrl: String(sku.skuImageUrl || "").trim(),
+          skuImageUrls: imagePayload(sku.skuImageUrls || []),
           priceYuan: decimalOrZero(sku.priceYuan),
           originalPriceYuan: sku.originalPriceYuan === "" ? null : decimalOrZero(sku.originalPriceYuan),
           stockQuantity: integerOrZero(sku.stockQuantity),

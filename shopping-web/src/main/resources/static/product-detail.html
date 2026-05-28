@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-gate-mode="silent">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>商品详情</title>
+  <link rel="stylesheet" href="/shopping/css/page-access-gate.css?v=7" />
+  <link rel="stylesheet" href="/shopping/css/product-detail.css?v=2" />
+</head>
+<body>
+  <div class="product-detail-background" aria-hidden="true">
+    <div class="product-detail-background__wash"></div>
+    <div class="product-detail-background__dots"></div>
+  </div>
+
+  <main class="product-detail-page" aria-label="商品详情">
+    <header class="product-detail-header">
+      <a class="product-detail-back" href="/shopping/user/console">返回商品列表</a>
+      <a class="product-detail-profile" href="/shopping/user/profile">个人资料</a>
+    </header>
+
+    <section class="product-detail-status" id="product-detail-status">正在加载商品详情</section>
+    <article class="product-detail-content" id="product-detail-content" hidden></article>
+  </main>
+
+  <script src="/shopping/js/user/auth/shared/preauth-client.js?v=2"></script>
+  <script src="/shopping/js/user/auth/shared/auth-client.js"></script>
+  <script src="/shopping/js/user/auth/shared/page-access-gate.js?v=8"></script>
+  <script src="/shopping/js/vendor/gsap.min.js"></script>
+  <script src="/shopping/js/user/auth/console/console-noomo-background.js?v=3"></script>
+  <script src="/shopping/js/user/product-detail.js?v=2"></script>
+</body>
+</html>

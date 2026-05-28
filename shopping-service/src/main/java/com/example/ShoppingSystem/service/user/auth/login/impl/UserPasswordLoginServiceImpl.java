@@ -4,7 +4,7 @@ import cn.hutool.core.lang.Validator;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
 import com.example.ShoppingSystem.redisdata.LoginRedisKeys;
 import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
@@ -648,10 +648,10 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             }
         }
 
-        ChallengeSelection riskBasedSelection = loginChallengePolicy.resolveChallengeSelection(riskLevel, email, deviceFingerprint);
+        String normalizedRiskLevel = loginChallengePolicy.normalizeRiskLevel(riskLevel);
         ChallengeSelection challengeSelection = resolveChallengeSelectionForCurrentRisk(
                 pendingSelection,
-                riskBasedSelection,
+                normalizedRiskLevel,
                 email,
                 deviceFingerprint);
         String challengeType = challengeSelection == null ? null : challengeSelection.type();
@@ -702,9 +702,13 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
     }
 
     private ChallengeSelection resolveChallengeSelectionForCurrentRisk(ChallengeSelection pendingSelection,
-                                                                       ChallengeSelection riskBasedSelection,
+                                                                       String normalizedRiskLevel,
                                                                        String email,
                                                                        String deviceFingerprint) {
+        if (isStablePendingChallengeForRisk(pendingSelection, normalizedRiskLevel)) {
+            return pendingSelection;
+        }
+        ChallengeSelection riskBasedSelection = loginChallengePolicy.resolveChallengeSelection(normalizedRiskLevel, email, deviceFingerprint);
         if (pendingSelection == null) {
             return riskBasedSelection;
         }
@@ -713,6 +717,25 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         }
         loginChallengeSessionService.clearPendingChallengeSelection(email, deviceFingerprint);
         return riskBasedSelection;
+    }
+
+    private boolean isStablePendingChallengeForRisk(ChallengeSelection pendingSelection, String normalizedRiskLevel) {
+        if (pendingSelection == null) {
+            return false;
+        }
+        if ("L3".equals(normalizedRiskLevel)) {
+            return CHALLENGE_TIANAI.equals(pendingSelection.type());
+        }
+        if ("L4".equals(normalizedRiskLevel)) {
+            return isL4CaptchaChallenge(pendingSelection.type());
+        }
+        return false;
+    }
+
+    private boolean isL4CaptchaChallenge(String challengeType) {
+        return CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)
+                || CHALLENGE_HCAPTCHA.equals(challengeType)
+                || CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType);
     }
 
     private boolean isCompatiblePendingChallenge(ChallengeSelection pendingSelection,

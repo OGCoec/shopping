@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper">
+
+    <select id="countIpv4ByCurrentScoreLessThan" resultType="long">
+        <![CDATA[
+SELECT COUNT(1)
+FROM ipv4_reputation_profile
+WHERE current_score < #{scoreThreshold}
+        ]]>
+    </select>
+
+    <select id="countIpv6ByCurrentScoreLessThan" resultType="long">
+        <![CDATA[
+SELECT COUNT(1)
+FROM ipv6_reputation_profile
+WHERE current_score < #{scoreThreshold}
+        ]]>
+    </select>
+
+    <select id="listIpv4IpsByCurrentScoreLessThan" resultType="string">
+        <![CDATA[
+SELECT ip
+FROM ipv4_reputation_profile
+WHERE current_score < #{scoreThreshold}
+ORDER BY ip
+LIMIT #{limit}
+OFFSET #{offset}
+        ]]>
+    </select>
+
+    <select id="listIpv6IpsByCurrentScoreLessThan" resultType="string">
+        <![CDATA[
+SELECT ip
+FROM ipv6_reputation_profile
+WHERE current_score < #{scoreThreshold}
+ORDER BY ip
+LIMIT #{limit}
+OFFSET #{offset}
+        ]]>
+    </select>
+
+    <select id="findIpv4RiskCacheByIp" resultType="map">
+        <![CDATA[
+SELECT ip,
+       current_score,
+       country,
+       region,
+       city,
+       latitude,
+       longitude,
+       EXTRACT(EPOCH FROM expires_at) * 1000 AS expires_at_epoch_millis,
+       raw_json::text AS raw_json_text
+FROM ipv4_reputation_profile
+WHERE ip = #{ip}
+LIMIT 1
+        ]]>
+    </select>
+
+    <select id="findIpv6RiskCacheByIp" resultType="map">
+        <![CDATA[
+SELECT ip,
+       current_score,
+       country,
+       region,
+       city,
+       latitude,
+       longitude,
+       EXTRACT(EPOCH FROM expires_at) * 1000 AS expires_at_epoch_millis,
+       raw_json::text AS raw_json_text
+FROM ipv6_reputation_profile
+WHERE ip = #{ip}
+LIMIT 1
+        ]]>
+    </select>
+
+    <select id="listIpv4AdminRiskProfiles" resultType="map">
+        SELECT ip AS "ip",
+               current_score AS "currentScore",
+               country AS "country",
+               region AS "region",
+               city AS "city",
+               asn AS "asn",
+               provider_name AS "providerName",
+               ip_type AS "ipType",
+               is_datacenter AS "datacenter",
+               is_vpn AS "vpn",
+               is_proxy AS "proxy",
+               is_tor AS "tor",
+               source_provider AS "sourceProvider",
+               last_seen_at AS "lastSeenAt",
+               queried_at AS "queriedAt",
+               expires_at AS "expiresAt"
+        FROM ipv4_reputation_profile
+        <where>
+            <if test="country != null and country != ''">
+                UPPER(country) = #{country}
+            </if>
+            <if test="minScore != null">
+                AND current_score &gt;= #{minScore}
+            </if>
+            <if test="maxScoreExclusive != null">
+                AND current_score &lt; #{maxScoreExclusive}
+            </if>
+            <if test="ipQueryPattern != null and ipQueryPattern != ''">
+                AND LOWER(ip) LIKE LOWER(#{ipQueryPattern})
+            </if>
+        </where>
+        ORDER BY current_score ASC,
+                 is_tor DESC,
+                 is_proxy DESC,
+                 is_vpn DESC,
+                 is_datacenter DESC,
+                 last_seen_at DESC NULLS LAST,
+                 queried_at DESC NULLS LAST,
+                 ip ASC
+    </select>
+
+    <select id="listIpv6AdminRiskProfiles" resultType="map">
+        SELECT ip AS "ip",
+               current_score AS "currentScore",
+               country AS "country",
+               region AS "region",
+               city AS "city",
+               asn AS "asn",
+               provider_name AS "providerName",
+               ip_type AS "ipType",
+               is_datacenter AS "datacenter",
+               is_vpn AS "vpn",
+               is_proxy AS "proxy",
+               is_tor AS "tor",
+               source_provider AS "sourceProvider",
+               last_seen_at AS "lastSeenAt",
+               queried_at AS "queriedAt",
+               expires_at AS "expiresAt"
+        FROM ipv6_reputation_profile
+        <where>
+            <if test="country != null and country != ''">
+                UPPER(country) = #{country}
+            </if>
+            <if test="minScore != null">
+                AND current_score &gt;= #{minScore}
+            </if>
+            <if test="maxScoreExclusive != null">
+                AND current_score &lt; #{maxScoreExclusive}
+            </if>
+            <if test="ipQueryPattern != null and ipQueryPattern != ''">
+                AND LOWER(ip) LIKE LOWER(#{ipQueryPattern})
+            </if>
+        </where>
+        ORDER BY current_score ASC,
+                 is_tor DESC,
+                 is_proxy DESC,
+                 is_vpn DESC,
+                 is_datacenter DESC,
+                 last_seen_at DESC NULLS LAST,
+                 queried_at DESC NULLS LAST,
+                 ip ASC
+    </select>
+
+    <update id="upsertIpv4RiskProfile">
+        <![CDATA[
+INSERT INTO ipv4_reputation_profile (
+    ip, ip_type, country, region, city, asn, provider_name, latitude, longitude, is_datacenter, is_vpn, is_proxy, is_tor,
+    provider_score, reference_score, base_score, current_score,
+    source_provider, raw_json, queried_at, expires_at, last_seen_at
+) VALUES (
+    #{ip}, #{ipType}, #{country}, #{region}, #{city}, #{asn}, #{providerName}, #{latitude}, #{longitude}, #{isDatacenter}, #{isVpn}, #{isProxy}, #{isTor},
+    #{providerScore}, #{referenceScore}, #{baseScore}, #{currentScore},
+    #{sourceProvider}, CAST(#{rawJson} AS jsonb), #{queriedAt}, #{expiresAt}, #{queriedAt}
+)
+ON CONFLICT (ip) DO UPDATE
+SET ip_type = EXCLUDED.ip_type,
+    country = EXCLUDED.country,
+    region = EXCLUDED.region,
+    city = EXCLUDED.city,
+    asn = EXCLUDED.asn,
+    provider_name = EXCLUDED.provider_name,
+    latitude = EXCLUDED.latitude,
+    longitude = EXCLUDED.longitude,
+    is_datacenter = EXCLUDED.is_datacenter,
+    is_vpn = EXCLUDED.is_vpn,
+    is_proxy = EXCLUDED.is_proxy,
+    is_tor = EXCLUDED.is_tor,
+    provider_score = EXCLUDED.provider_score,
+    reference_score = EXCLUDED.reference_score,
+    base_score = EXCLUDED.base_score,
+    current_score = EXCLUDED.current_score,
+    source_provider = EXCLUDED.source_provider,
+    raw_json = EXCLUDED.raw_json,
+    queried_at = EXCLUDED.queried_at,
+    expires_at = EXCLUDED.expires_at,
+    last_seen_at = EXCLUDED.last_seen_at
+        ]]>
+    </update>
+
+    <update id="upsertIpv6RiskProfile">
+        <![CDATA[
+INSERT INTO ipv6_reputation_profile (
+    ip, ip_type, country, region, city, asn, provider_name, latitude, longitude, is_datacenter, is_vpn, is_proxy, is_tor,
+    provider_score, reference_score, base_score, current_score,
+    source_provider, raw_json, queried_at, expires_at, last_seen_at
+) VALUES (
+    #{ip}, #{ipType}, #{country}, #{region}, #{city}, #{asn}, #{providerName}, #{latitude}, #{longitude}, #{isDatacenter}, #{isVpn}, #{isProxy}, #{isTor},
+    #{providerScore}, #{referenceScore}, #{baseScore}, #{currentScore},
+    #{sourceProvider}, CAST(#{rawJson} AS jsonb), #{queriedAt}, #{expiresAt}, #{queriedAt}
+)
+ON CONFLICT (ip) DO UPDATE
+SET ip_type = EXCLUDED.ip_type,
+    country = EXCLUDED.country,
+    region = EXCLUDED.region,
+    city = EXCLUDED.city,
+    asn = EXCLUDED.asn,
+    provider_name = EXCLUDED.provider_name,
+    latitude = EXCLUDED.latitude,
+    longitude = EXCLUDED.longitude,
+    is_datacenter = EXCLUDED.is_datacenter,
+    is_vpn = EXCLUDED.is_vpn,
+    is_proxy = EXCLUDED.is_proxy,
+    is_tor = EXCLUDED.is_tor,
+    provider_score = EXCLUDED.provider_score,
+    reference_score = EXCLUDED.reference_score,
+    base_score = EXCLUDED.base_score,
+    current_score = EXCLUDED.current_score,
+    source_provider = EXCLUDED.source_provider,
+    raw_json = EXCLUDED.raw_json,
+    queried_at = EXCLUDED.queried_at,
+    expires_at = EXCLUDED.expires_at,
+    last_seen_at = EXCLUDED.last_seen_at
+        ]]>
+    </update>
+
+    <select id="applyIpv4AutomationPenalty" resultType="int">
+        <![CDATA[
+INSERT INTO ipv4_reputation_profile (
+    ip,
+    ip_type,
+    reference_score,
+    base_score,
+    current_score,
+    source_provider,
+    last_seen_at
+) VALUES (
+    #{ip},
+    'UNKNOWN',
+    6000,
+    6000,
+    GREATEST(0, 6000 - GREATEST(0, #{penaltyScore})),
+    'AUTOMATION',
+    #{seenAt}
+)
+ON CONFLICT (ip) DO UPDATE
+SET current_score = GREATEST(0, ipv4_reputation_profile.current_score - GREATEST(0, #{penaltyScore})),
+    last_seen_at = EXCLUDED.last_seen_at,
+    source_provider = COALESCE(ipv4_reputation_profile.source_provider, EXCLUDED.source_provider)
+WHERE #{penaltyScore} > 0
+RETURNING current_score
+        ]]>
+    </select>
+
+    <select id="applyIpv6AutomationPenalty" resultType="int">
+        <![CDATA[
+INSERT INTO ipv6_reputation_profile (
+    ip,
+    ip_type,
+    reference_score,
+    base_score,
+    current_score,
+    source_provider,
+    last_seen_at
+) VALUES (
+    #{ip},
+    'UNKNOWN',
+    6000,
+    6000,
+    GREATEST(0, 6000 - GREATEST(0, #{penaltyScore})),
+    'AUTOMATION',
+    #{seenAt}
+)
+ON CONFLICT (ip) DO UPDATE
+SET current_score = GREATEST(0, ipv6_reputation_profile.current_score - GREATEST(0, #{penaltyScore})),
+    last_seen_at = EXCLUDED.last_seen_at,
+    source_provider = COALESCE(ipv6_reputation_profile.source_provider, EXCLUDED.source_provider)
+WHERE #{penaltyScore} > 0
+RETURNING current_score
+        ]]>
+    </select>
+
+    <update id="batchUpdateIpv4Scores">
+        UPDATE ipv4_reputation_profile
+        SET current_score = #{targetScore},
+            source_provider = COALESCE(source_provider, 'ADMIN'),
+            last_seen_at = NOW()
+        WHERE ip IN
+        <foreach item="ip" collection="ips" open="(" separator="," close=")">
+            #{ip}
+        </foreach>
+    </update>
+
+    <update id="batchUpdateIpv6Scores">
+        UPDATE ipv6_reputation_profile
+        SET current_score = #{targetScore},
+            source_provider = COALESCE(source_provider, 'ADMIN'),
+            last_seen_at = NOW()
+        WHERE ip IN
+        <foreach item="ip" collection="ips" open="(" separator="," close=")">
+            #{ip}
+        </foreach>
+    </update>
+</mapper>

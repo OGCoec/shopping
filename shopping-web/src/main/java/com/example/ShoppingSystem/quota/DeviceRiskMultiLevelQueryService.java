@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.quota;
 
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthHashingService;
-import com.example.ShoppingSystem.mapper.RegisterRiskProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.RegisterRiskProfileMapper;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceL6CountingBloomDecisionService;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceRiskProfileWriteService;
 import com.fasterxml.jackson.databind.ObjectMapper;

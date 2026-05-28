@@ -1,8 +1,7 @@
 package com.example.ShoppingSystem.filter.preauth.support;
 
-import com.example.ShoppingSystem.filter.preauth.PreAuthHeaders;
-
 import cn.hutool.core.util.StrUtil;
+import com.example.ShoppingSystem.filter.preauth.PreAuthHeaders;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
@@ -57,7 +56,13 @@ public class PreAuthRequestResolver {
         if (StrUtil.isNotBlank(rawFingerprint)) {
             return rawFingerprint.trim();
         }
+        return normalizeNavigationFingerprint(request);
+    }
 
+    /**
+     * 规范化普通页面跳转可携带的导航指纹。
+     */
+    public String normalizeNavigationFingerprint(HttpServletRequest request) {
         // 前端未提供指纹时，用浏览器环境信息拼一个可复用的兜底值。
         String userAgent = resolveUserAgent(request);
         String language = request == null

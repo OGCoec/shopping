@@ -7,6 +7,7 @@
   const RISK_PREFIX = "admin-account-risk-term";
   const SELF_SECTION = "accountTerminationSelf";
   const RISK_SECTION = "accountTerminationRisk";
+  const PAGE_SIZE_ERROR = "每页数量必须是大于 0 的整数。";
   const SELF_SCOPE_LABELS = {
     within7Days: "7 天内可恢复",
     expired: "7 天外未清理",
@@ -45,6 +46,16 @@
       hour: "2-digit",
       minute: "2-digit"
     }).format(date);
+  }
+
+  function readPositivePageSize(node, statusNode) {
+    const rawValue = String(node?.value || "").trim();
+    const pageSize = Number(rawValue);
+    if (!rawValue || !Number.isInteger(pageSize) || pageSize <= 0) {
+      dom.setStatusNode(statusNode, PAGE_SIZE_ERROR, "error");
+      return null;
+    }
+    return pageSize;
   }
 
   function appendStackCell(row, primaryText, secondaryText) {
@@ -165,13 +176,16 @@
     }
 
     readParams() {
-      const pageSize = Number(this.nodes.pageSize?.value || 50);
+      const pageSize = readPositivePageSize(this.nodes.pageSize, this.nodes.statusText);
+      if (pageSize == null) {
+        return null;
+      }
       return {
         scope: (this.nodes.scope?.value || "").trim(),
         userId: (this.nodes.userId?.value || "").trim(),
         email: (this.nodes.email?.value || "").trim(),
         phone: (this.nodes.phone?.value || "").trim(),
-        pageSize: [50, 100, 200].includes(pageSize) ? pageSize : 50
+        pageSize
       };
     }
 
@@ -235,6 +249,9 @@
         this.page = 1;
       }
       const params = this.readParams();
+      if (!params) {
+        return;
+      }
       this.updateCurrentLabels(params);
       this.setLoading(true);
       dom.setStatusNode(this.nodes.statusText, "正在读取主动停用记录...");
@@ -409,12 +426,15 @@
     }
 
     readParams() {
-      const pageSize = Number(this.nodes.pageSize?.value || 50);
+      const pageSize = readPositivePageSize(this.nodes.pageSize, this.nodes.statusText);
+      if (pageSize == null) {
+        return null;
+      }
       return {
         userId: (this.nodes.userId?.value || "").trim(),
         email: (this.nodes.email?.value || "").trim(),
         phone: (this.nodes.phone?.value || "").trim(),
-        pageSize: [50, 100, 200].includes(pageSize) ? pageSize : 50
+        pageSize
       };
     }
 
@@ -474,6 +494,9 @@
         this.page = 1;
       }
       const params = this.readParams();
+      if (!params) {
+        return;
+      }
       this.updateCurrentLabels(params);
       this.setLoading(true);
       dom.setStatusNode(this.nodes.statusText, "正在读取被动停用记录...");

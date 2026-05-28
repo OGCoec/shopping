@@ -22,6 +22,7 @@ import java.util.Map;
 public class PreAuthBindingRepository {
 
     private static final String FIELD_FP_HASH = "fpHash";
+    private static final String FIELD_NAVIGATION_FP_HASH = "navigationFpHash";
     private static final String FIELD_UA_HASH = "uaHash";
     private static final String FIELD_CURRENT_IP = "currentIp";
     private static final String FIELD_RECENT_IPS = "recentIps";
@@ -74,6 +75,7 @@ public class PreAuthBindingRepository {
             return new PreAuthBinding(
                     token.trim(),
                     toStringValue(raw.get(FIELD_FP_HASH)),
+                    toStringValue(raw.get(FIELD_NAVIGATION_FP_HASH)),
                     toStringValue(raw.get(FIELD_UA_HASH)),
                     toStringValue(raw.get(FIELD_CURRENT_IP)),
                     parseRecentIps(toStringValue(raw.get(FIELD_RECENT_IPS))),
@@ -106,6 +108,7 @@ public class PreAuthBindingRepository {
     public void save(PreAuthBinding binding) {
         Map<String, String> hash = new LinkedHashMap<>();
         hash.put(FIELD_FP_HASH, binding.fpHash());
+        hash.put(FIELD_NAVIGATION_FP_HASH, normalizeNullable(binding.navigationFpHash()));
         hash.put(FIELD_UA_HASH, binding.uaHash());
         hash.put(FIELD_CURRENT_IP, binding.currentIp());
         hash.put(FIELD_RECENT_IPS, stringifyRecentIps(binding.recentIps()));

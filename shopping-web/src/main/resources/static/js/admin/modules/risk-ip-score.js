@@ -50,6 +50,7 @@
     ipv4: { section: "riskIpScoreIpv4", prefix: "admin-risk-ip-ipv4", label: "IPv4" },
     ipv6: { section: "riskIpScoreIpv6", prefix: "admin-risk-ip-ipv6", label: "IPv6" }
   };
+  const PAGE_SIZE_ERROR = "每页数量必须是大于 0 的整数。";
 
   function normalizeCountryCode(rawCountryCode) {
     if (typeof rawCountryCode !== "string") {
@@ -489,6 +490,16 @@
     return normalized ? LEVEL_LABELS[normalized] : "全部分数区间";
   }
 
+  function readPositivePageSize(node, statusNode) {
+    const rawValue = String(node?.value || "").trim();
+    const pageSize = Number(rawValue);
+    if (!rawValue || !Number.isInteger(pageSize) || pageSize <= 0) {
+      dom.setStatusNode(statusNode, PAGE_SIZE_ERROR, "error");
+      return null;
+    }
+    return pageSize;
+  }
+
   function buildHeaderRow() {
     const row = document.createElement("div");
     row.className = "admin-risk-ip-row is-header";
@@ -695,6 +706,12 @@
       if (!this.nodes.form) {
         return;
       }
+      if (Object.prototype.hasOwnProperty.call(pendingLevels, this.family)) {
+        this.nodes.level.value = pendingLevels[this.family] || "";
+        this.loaded = false;
+        this.page = 1;
+        delete pendingLevels[this.family];
+      }
       this.countryPicker = new AdminCountryPicker(prefix, () => this.load({ resetPage: true }));
       this.countryPicker.init();
       this.bindEvents();
@@ -736,13 +753,16 @@
     readParams() {
       const country = normalizeCountryCode(this.nodes.countryCode?.value || "").toUpperCase();
       const level = normalizeLevel(this.nodes.level?.value || "");
-      const pageSize = Number(this.nodes.pageSize?.value || 50);
+      const pageSize = readPositivePageSize(this.nodes.pageSize, this.nodes.status);
+      if (pageSize == null) {
+        return null;
+      }
       const q = (this.nodes.query?.value || "").trim();
       return {
         country,
         level,
         q,
-        pageSize: [50, 100, 200].includes(pageSize) ? pageSize : 50
+        pageSize
       };
     }
 
@@ -798,6 +818,9 @@
         this.page = 1;
       }
       const params = this.readParams();
+      if (!params) {
+        return;
+      }
       this.updateCurrentLabels(params);
       this.setLoading(true);
       dom.setStatusNode(this.nodes.status, `正在读取 ${this.config.label} IP 分数...`);
@@ -853,18 +876,26 @@
   }
 
   const views = {};
+  const pendingLevels = {};
 
   function mount() {
     Object.keys(FAMILY_CONFIG).forEach((family) => {
-      const view = new RiskIpFamilyView(family);
+      if (views[family]?.nodes?.form) {
+        return;
+      }
+      const view = views[family] || new RiskIpFamilyView(family);
       view.mount();
       views[family] = view;
     });
   }
 
   function presetLevel(family, level) {
+    if (!FAMILY_CONFIG[family]) {
+      return;
+    }
     const view = views[family];
     if (!view || !view.nodes.level) {
+      pendingLevels[family] = level || "";
       return;
     }
     view.nodes.level.value = level || "";

@@ -29,6 +29,7 @@ public class PreAuthInterceptor implements HandlerInterceptor {
     private static final String BLOCKED_PUBLIC_ERROR_MESSAGE = "当前操作过于频繁，请稍后重试";
 
     private static final String SCENE_PREAUTH_IP_CHANGED_WAF_REQUIRED = "PREAUTH_IP_CHANGED_WAF_REQUIRED";
+    private static final String LOGIN_PATH = "/shopping/user/log-in";
 
     private final PreAuthBindingService preAuthBindingService;
     private final ObjectMapper objectMapper;
@@ -55,6 +56,9 @@ public class PreAuthInterceptor implements HandlerInterceptor {
 
         String token = preAuthBindingService.resolveIncomingToken(request);
         if (StrUtil.isBlank(token)) {
+            if (redirectLoginForHtmlNavigation(response, request)) {
+                return false;
+            }
             writeJsonError(
                     response,
                     request,
@@ -75,6 +79,9 @@ public class PreAuthInterceptor implements HandlerInterceptor {
             switch (outcome.error()) {
                 case EXPIRED -> {
                     refreshExpiredCookie(response, request);
+                    if (redirectLoginForHtmlNavigation(response, request)) {
+                        return false;
+                    }
                     writeJsonError(
                             response,
                             request,
@@ -86,6 +93,9 @@ public class PreAuthInterceptor implements HandlerInterceptor {
                 }
                 case FINGERPRINT_MISMATCH -> {
                     refreshExpiredCookie(response, request);
+                    if (redirectLoginForHtmlNavigation(response, request)) {
+                        return false;
+                    }
                     writeJsonError(
                             response,
                             request,
@@ -97,6 +107,9 @@ public class PreAuthInterceptor implements HandlerInterceptor {
                 }
                 case USER_AGENT_MISMATCH -> {
                     refreshExpiredCookie(response, request);
+                    if (redirectLoginForHtmlNavigation(response, request)) {
+                        return false;
+                    }
                     writeJsonError(
                             response,
                             request,
@@ -112,6 +125,9 @@ public class PreAuthInterceptor implements HandlerInterceptor {
                 }
                 default -> {
                     refreshExpiredCookie(response, request);
+                    if (redirectLoginForHtmlNavigation(response, request)) {
+                        return false;
+                    }
                     writeJsonError(
                             response,
                             request,
@@ -233,6 +249,15 @@ public class PreAuthInterceptor implements HandlerInterceptor {
             body.put("verifyUrl", verifyUrl);
         }
         objectMapper.writeValue(response.getWriter(), body);
+    }
+
+    private boolean redirectLoginForHtmlNavigation(HttpServletResponse response,
+                                                   HttpServletRequest request) throws IOException {
+        if (!isHtmlNavigationRequest(request) || response.isCommitted()) {
+            return false;
+        }
+        response.sendRedirect(LOGIN_PATH);
+        return true;
     }
 
     private void writeWafVerificationRequired(HttpServletResponse response,

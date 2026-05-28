@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.service.user.auth.phone.impl;
 
 import com.example.ShoppingSystem.config.PhoneBoundCountingBloomProperties;
 import com.example.ShoppingSystem.config.PhoneVerifiedUserCountingBloomProperties;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneVerifiedUserBloomService;
 import org.slf4j.Logger;

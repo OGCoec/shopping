@@ -2,11 +2,13 @@
   const api = root.AdminApi;
   const router = root.AdminRouter;
   const API_BASE = "/shopping/admin/api/product-categories";
-  const MAX_LEVEL = 3;
+  const HIGHLIGHT_START = "[[HL]]";
+  const HIGHLIGHT_END = "[[/HL]]";
 
   const state = {
     mounted: false,
     treeLoaded: false,
+    searchKeyword: "",
     tree: [],
     expanded: new Set(),
     selectedIds: new Set(),
@@ -32,6 +34,10 @@
       expandAll: $("admin-product-category-expand-all"),
       collapseAll: $("admin-product-category-collapse-all"),
       refresh: $("admin-product-category-refresh"),
+      searchForm: $("admin-product-category-search-form"),
+      searchKeyword: $("admin-product-category-search-keyword"),
+      searchSubmit: $("admin-product-category-search-submit"),
+      searchClear: $("admin-product-category-search-clear"),
       total: $("admin-product-category-total"),
       activeTotal: $("admin-product-category-active-total"),
       activeProducts: $("admin-product-category-active-products"),
@@ -77,6 +83,19 @@
       render();
     });
     el.refresh?.addEventListener("click", loadTree);
+    el.searchForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.searchKeyword = normalizeSearchKeyword(el.searchKeyword?.value);
+      loadTree();
+    });
+    el.searchClear?.addEventListener("click", () => {
+      state.searchKeyword = "";
+      state.treeLoaded = false;
+      if (el.searchKeyword) {
+        el.searchKeyword.value = "";
+      }
+      loadTree();
+    });
     el.dialogBackdrop?.addEventListener("click", closeDialog);
     el.dialogClose?.addEventListener("click", closeDialog);
     el.cancel?.addEventListener("click", closeDialog);
@@ -92,9 +111,11 @@
     setPageBusy(true);
     api.setStatus(el.status, "正在加载分类树。");
     try {
-      const response = await api.get(`${API_BASE}/tree`);
+      const response = await api.get(categoryTreePath());
       state.tree = Array.isArray(response.data) ? response.data : [];
-      if (!state.treeLoaded) {
+      if (state.searchKeyword) {
+        expandAllNodes();
+      } else if (!state.treeLoaded) {
         expandAllNodes();
         state.treeLoaded = true;
       } else {
@@ -109,6 +130,13 @@
     } finally {
       setPageBusy(false);
     }
+  }
+
+  function categoryTreePath() {
+    if (!state.searchKeyword) {
+      return `${API_BASE}/tree`;
+    }
+    return `${API_BASE}/tree?keyword=${encodeURIComponent(state.searchKeyword)}`;
   }
 
   function render() {
@@ -185,7 +213,7 @@
     const nameText = document.createElement("div");
     nameText.className = "admin-product-category-name-text";
     const nameStrong = document.createElement("strong");
-    nameStrong.textContent = node.name || "-";
+    renderHighlightedName(nameStrong, node.nameHighlight || node.name || "-");
     const nameSmall = document.createElement("small");
     nameSmall.textContent = `ID ${node.id || "-"}`;
     nameText.append(nameStrong, nameSmall);
@@ -206,6 +234,32 @@
     cell.className = "admin-product-category-cell";
     cell.textContent = text;
     return cell;
+  }
+
+  function renderHighlightedName(target, value) {
+    const source = String(value || "-");
+    let cursor = 0;
+    while (cursor < source.length) {
+      const start = source.indexOf(HIGHLIGHT_START, cursor);
+      if (start < 0) {
+        target.appendChild(document.createTextNode(source.slice(cursor)));
+        return;
+      }
+      if (start > cursor) {
+        target.appendChild(document.createTextNode(source.slice(cursor, start)));
+      }
+      const contentStart = start + HIGHLIGHT_START.length;
+      const end = source.indexOf(HIGHLIGHT_END, contentStart);
+      if (end < 0) {
+        target.appendChild(document.createTextNode(source.slice(start)));
+        return;
+      }
+      const mark = document.createElement("span");
+      mark.className = "admin-product-category-search-highlight";
+      mark.textContent = source.slice(contentStart, end);
+      target.appendChild(mark);
+      cursor = end + HIGHLIGHT_END.length;
+    }
   }
 
   function statusCell(status) {
@@ -231,7 +285,7 @@
   function actionCell(node) {
     const cell = document.createElement("div");
     cell.className = "admin-product-category-actions";
-    if (Number(node.level || 1) < MAX_LEVEL && Number(node.productCount || 0) === 0) {
+    if (Number(node.productCount || 0) === 0) {
       cell.appendChild(actionButton("添加子分类", "", () => openCreateDialog(node)));
     }
     cell.appendChild(actionButton("修改", "", () => openEditDialog(node)));
@@ -311,8 +365,8 @@
 
   function selectedCategoryIds() {
     return Array.from(state.selectedIds)
-      .map((id) => Number.parseInt(id, 10))
-      .filter((id) => Number.isSafeInteger(id) && id > 0);
+      .map((id) => String(id || "").trim())
+      .filter(Boolean);
   }
 
   function openCreateDialog(parentNode) {
@@ -574,7 +628,7 @@
   }
 
   function setPageBusy(busy) {
-    [el.createRoot, el.batchDisable, el.expandAll, el.collapseAll, el.refresh].forEach((button) => {
+    [el.createRoot, el.batchDisable, el.expandAll, el.collapseAll, el.refresh, el.searchKeyword, el.searchSubmit, el.searchClear].forEach((button) => {
       if (button) {
         button.disabled = Boolean(busy);
       }
@@ -617,6 +671,10 @@
     if (node) {
       node.textContent = text;
     }
+  }
+
+  function normalizeSearchKeyword(value) {
+    return String(value || "").trim();
   }
 
   async function send(method, path, payload) {

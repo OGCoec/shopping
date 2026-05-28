@@ -87,6 +87,11 @@ public class StaticController {
         return htmlPage("console.html");
     }
 
+    @GetMapping("/shopping/user/products/{id}")
+    public ResponseEntity<Resource> productDetailPage() {
+        return htmlPage("product-detail.html");
+    }
+
     @GetMapping("/shopping/user/security/phone")
     public ResponseEntity<Resource> securityPhonePage() {
         return htmlPage("security-phone.html");

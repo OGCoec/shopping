@@ -23,6 +23,7 @@
     let recaptchaScriptPromise = null;
     let currentRecaptchaSiteKey = "";
     let currentRecaptchaWidgetId = null;
+    let googleRecaptchaReady = false;
     let recaptchaSubmissionInFlight = false;
 
     function getDomId(suffix) {
@@ -60,19 +61,27 @@
       }
       recaptchaSubmissionInFlight = false;
       clearRecaptchaError();
-      if (window.grecaptcha && currentRecaptchaWidgetId !== null) {
+      if (hasGoogleRecaptchaRenderApi() && currentRecaptchaWidgetId !== null) {
         window.grecaptcha.reset(currentRecaptchaWidgetId);
       }
+    }
+
+    function hasRecaptchaRenderApi() {
+      return Boolean(window.grecaptcha && typeof window.grecaptcha.render === "function");
+    }
+
+    function hasGoogleRecaptchaRenderApi() {
+      return googleRecaptchaReady && hasRecaptchaRenderApi();
     }
 
     function loadRecaptchaScript(siteKey) {
       if (!siteKey) {
         return Promise.reject(new Error("Google reCAPTCHA site key is not configured."));
       }
-      if (window.grecaptcha && typeof window.grecaptcha.render === "function") {
+      if (hasGoogleRecaptchaRenderApi()) {
         return Promise.resolve();
       }
-      if (recaptchaScriptPromise && currentRecaptchaSiteKey === siteKey) {
+      if (recaptchaScriptPromise) {
         return recaptchaScriptPromise;
       }
 
@@ -91,16 +100,19 @@
           settle(() => {
             window[recaptchaOnloadName] = undefined;
             recaptchaScriptPromise = null;
+            googleRecaptchaReady = false;
             reject(new Error("Google reCAPTCHA script timed out"));
           });
         }, 15000);
         window[recaptchaOnloadName] = () => {
           settle(() => {
-            if (window.grecaptcha && typeof window.grecaptcha.render === "function") {
+            if (hasRecaptchaRenderApi()) {
+              googleRecaptchaReady = true;
               resolve();
               return;
             }
             recaptchaScriptPromise = null;
+            googleRecaptchaReady = false;
             reject(new Error("Google reCAPTCHA initialization failed"));
           });
         };
@@ -113,6 +125,7 @@
           settle(() => {
             window[recaptchaOnloadName] = undefined;
             recaptchaScriptPromise = null;
+            googleRecaptchaReady = false;
             reject(new Error("Google reCAPTCHA script failed to load"));
           });
         };
@@ -169,7 +182,7 @@
           }
           showRecaptchaError(payload.message || "Google reCAPTCHA verification failed. Please retry.");
           triggerCaptchaFailureAnimation?.();
-          if (window.grecaptcha && currentRecaptchaWidgetId !== null) {
+          if (hasGoogleRecaptchaRenderApi() && currentRecaptchaWidgetId !== null) {
             window.grecaptcha.reset(currentRecaptchaWidgetId);
           }
           return;
@@ -186,7 +199,7 @@
       } catch (_) {
         showRecaptchaError("Google reCAPTCHA verification failed. Please retry.");
         triggerCaptchaFailureAnimation?.();
-        if (window.grecaptcha && currentRecaptchaWidgetId !== null) {
+        if (hasGoogleRecaptchaRenderApi() && currentRecaptchaWidgetId !== null) {
           window.grecaptcha.reset(currentRecaptchaWidgetId);
         }
       } finally {
@@ -211,7 +224,7 @@
       }
 
       const container = document.getElementById(getDomId("recaptcha-container"));
-      if (!container || !window.grecaptcha || typeof window.grecaptcha.render !== "function") {
+      if (!container || !hasGoogleRecaptchaRenderApi()) {
         showRecaptchaError("Google reCAPTCHA initialization failed.");
         return;
       }
@@ -226,7 +239,7 @@
         },
         "expired-callback"() {
           showRecaptchaError("Google reCAPTCHA expired. Please retry.");
-          if (window.grecaptcha && currentRecaptchaWidgetId !== null) {
+          if (hasGoogleRecaptchaRenderApi() && currentRecaptchaWidgetId !== null) {
             window.grecaptcha.reset(currentRecaptchaWidgetId);
           }
         },

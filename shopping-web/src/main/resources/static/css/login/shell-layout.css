@@ -1,0 +1,150 @@
+/* ============ LOGIN PAGE ============ */
+#login-page {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 100vh;
+}
+
+/* Left Panel */
+.left-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(135deg,
+      rgba(212, 208, 220, 0.6) 0%,
+      rgba(200, 196, 208, 0.55) 50%,
+      rgba(187, 183, 197, 0.5) 100%);
+  padding: 40px 48px;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+.left-panel .logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 10;
+  position: relative;
+}
+
+.left-panel .logo svg {
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.characters-wrapper {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 420px;
+}
+
+.left-panel .footer-links {
+  display: flex;
+  gap: 28px;
+  font-size: 13px;
+  color: rgba(80, 70, 90, 0.7);
+  z-index: 10;
+  position: relative;
+}
+
+.left-panel .footer-links a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.left-panel .footer-links a:hover {
+  color: #333;
+}
+
+/* Decorative blurs */
+.left-panel::after {
+  content: "";
+  position: absolute;
+  top: 20%;
+  right: 15%;
+  width: 260px;
+  height: 260px;
+  background: rgba(180, 170, 200, 0.25);
+  border-radius: 50%;
+  filter: blur(80px);
+}
+
+.left-panel::before {
+  content: "";
+  position: absolute;
+  bottom: 15%;
+  left: 10%;
+  width: 350px;
+  height: 350px;
+  background: rgba(200, 195, 210, 0.2);
+  border-radius: 50%;
+  filter: blur(100px);
+}
+
+/* Right Panel */
+.right-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.45);
+  padding: 40px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+.form-container {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+body.auth-route-pending .form-container {
+  visibility: hidden;
+}
+
+/* Sparkle icon */
+.sparkle-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.sparkle-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.form-header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.form-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+}
+
+.form-header p {
+  font-size: 14px;
+  color: #888;
+}

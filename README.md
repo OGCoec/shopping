@@ -45,6 +45,33 @@ README 不放图片和截图；需要更细的规则说明时，请查看 [docs/
 - 商品分类、商品 SPU、商品图片等商城基础管理能力。
 - 风控后台：IP 风险分查询和批量调整、设备风险画像查询、验证码配置、风险 API 配置、IP2Location quota key 管理。
 
+## 管理员后台操作与主从表关联
+
+下面只列管理员后台直接查询、创建、更新、删除或恢复时涉及的主要数据表关系。Redis、Windows 环境变量、YAML 配置和 OSS 文件对象等非关系型存储不放入主从表关系表。
+
+| 管理模块 | 主表 | 从表 / 关联表 | 关联字段 | 主要管理员操作 |
+| --- | --- | --- | --- | --- |
+| 商品分类管理 | `product_category` | `product_category` 子分类 | `product_category.parent_id -> product_category.id` | 分类树查询、新增分类、编辑分类、启用/禁用分类、批量禁用子树、删除叶子分类。 |
+| 商品分类管理 | `product_category` | `product_spu` | `product_spu.category_id -> product_category.id` | 分类树统计商品数量；禁用分类前检查分类及子分类下是否存在启用商品。 |
+| 商品 SPU 管理 | `product_spu` | `product_detail` | `product_detail.spu_id -> product_spu.id` | 新增/编辑商品详情，维护轮播图、详情图、属性、描述和售后信息。 |
+| 商品 SPU 管理 | `product_spu` | `product_sku` | `product_sku.spu_id -> product_spu.id` | 新增/编辑商品规格、价格、库存、SKU 图片和 SKU 状态。 |
+| 商品 SPU 管理 | `product_category` | `product_spu` | `product_spu.category_id -> product_category.id` | 商品分页筛选、创建商品、移动商品分类、按叶子分类批量禁用/删除商品。 |
+| 账号信用管理 | `user_risk_profile` | `user_login_identity` | `user_login_identity.user_id -> user_risk_profile.user_id` | 按用户、邮箱、手机号、账号状态和风险等级查询账号信用。 |
+| 账号信用管理 | `user_risk_profile` | `user_risk_score_event` | `user_risk_score_event.user_id -> user_risk_profile.user_id` | 查看账号风险分事件；管理员手动调整账号分数时写入事件流水。 |
+| 账号信用管理 | `user_risk_profile` | `user_login_success_record` | `user_login_success_record.user_id -> user_risk_profile.user_id` | 查看账号详情时补充首次登录 IP、设备指纹和登录类型。 |
+| 自助注销管理 | `user_account_self_deletion` | `user_login_identity` | `user_login_identity.user_id -> user_account_self_deletion.user_id` | 查询自助注销记录；7 天内恢复时把用户身份状态恢复为 `ACTIVE` 并写入恢复信息。 |
+| 风控封号管理 | `user_risk_account_termination` | `user_login_identity` / `user_risk_profile` | `user_login_identity.user_id -> user_risk_account_termination.user_id`，`user_risk_profile.user_id -> user_risk_account_termination.user_id` | 查询风控封号列表和详情，展示账号状态、当前分数、风险等级和锁定次数。 |
+| IP 风险分管理 | `ipv4_reputation_profile` / `ipv6_reputation_profile` | 无固定从表 | `ip` 为主键 | 按 IP、国家和风险等级分页查询 IPv4/IPv6 风险画像；批量调整 IP 当前分数。 |
+| 设备风险画像管理 | `device_risk_profile` | `device_risk_score_event` | `device_risk_score_event.device_id -> device_risk_profile.id` | 查询设备风险列表、设备详情和设备扣分事件。 |
+| 设备风险画像管理 | `device_risk_profile` | `device_user_relation` | `device_user_relation.device_id -> device_risk_profile.id` | 业务链路维护设备关联用户数，后台在设备画像中查看关联用户数量。 |
+
+配置型后台操作不属于主从表关系：
+
+- 管理员登录和后台会话：管理员账号来自 `config/admin.yaml`，后台会话存 Redis。
+- 风险 API 配置、验证码配置、OAuth2 配置、SMTP 配置、OSS 配置、短信配置：主要用于读取和更新运行时配置或 Windows 环境变量。
+- IP2Location quota key：存储在 Redis DB 2，key 前缀为 `ip2location:quota:`，不是数据库主从表。
+- 商品图片预上传和取消：主要操作对象存储文件或预上传 URL，最终由 `product_spu`、`product_detail`、`product_sku` 中的图片 URL 字段引用。
+
 ## 风控系统概览
 
 项目中的风控不是独立服务，而是嵌入注册、登录、OAuth2、短信、密码重置和登录态请求等关键链路。
@@ -178,10 +205,18 @@ mvn -pl shopping-web -am spring-boot:run
 | `RECAPTCHA_SITE_KEY` / `RECAPTCHA_SECRET_KEY` | Google reCAPTCHA。 |
 | `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 阿里云 OSS。 |
 | `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET` | 阿里云短信。 |
-| `IP2LOCATION_IO_API_URL` | IP2Location.io API 地址。 |
+| `IP2LOCATION_IO_API_URL` | IP2Location.io API 地址（只控制外部请求地址，不是 Redis key）。 |
 | `IPING_API_ENABLED` / `IPING_API_URL` / `IPING_API_LANGUAGE` | iPing 降级查询。 |
 
 不要把真实密钥提交到仓库。
+
+IP2Location 配额 key 说明：
+
+- `IP2LOCATION_IO_API_URL` 只配置 `https://api.ip2location.io/` 这类请求地址；真正存入 Redis 的是配额 key。
+- Redis 配额主前缀是 `ip2location:quota:`，完整格式为 `ip2location:quota:{accountType}:{yyyy-MM-dd-HH:mm}:{apiKey}`。
+- 计数总和 key 是 `ip2location:quota:count`，轮询游标 key 是 `ip2location:round-robin:cursor`。
+- `AccountType.FREE` 作为试用 key，TTL 为 7 天；`STARTER`、`PLUS`、`SECURITY` 的 TTL 为 30 天。
+- 本项目的使用机制是：后台可以批量添加/删除 quota key，查询时按轮询从仍有剩余额度的 key 中取一个，调用失败时会回补额度；当 IP2Location 配额不足时，风控查询链路会降级到 iPing。
 
 ## 文档索引
 

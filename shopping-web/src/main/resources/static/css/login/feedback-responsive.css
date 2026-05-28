@@ -1,0 +1,30 @@
+/* Error styles */
+.error-msg {
+  display: none;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.form-group input.error {
+  border-bottom-color: #dc2626;
+}
+
+.form-group label.error-label {
+  color: #dc2626;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  #login-page {
+    grid-template-columns: 1fr;
+  }
+
+  .left-panel {
+    display: none;
+  }
+}

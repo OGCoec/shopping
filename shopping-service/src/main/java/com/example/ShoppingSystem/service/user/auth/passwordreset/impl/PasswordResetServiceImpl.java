@@ -5,7 +5,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.redisdata.PasswordResetRedisKeys;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetMailSender;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetService;

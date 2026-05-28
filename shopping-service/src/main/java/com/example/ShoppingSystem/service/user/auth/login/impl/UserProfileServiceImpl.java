@@ -1,7 +1,7 @@
 package com.example.ShoppingSystem.service.user.auth.login.impl;
 
 import com.example.ShoppingSystem.entity.entity.UserProfile;
-import com.example.ShoppingSystem.mapper.UserProfileMapper;
+import com.example.ShoppingSystem.mapper.user.UserProfileMapper;
 import com.example.ShoppingSystem.service.user.auth.login.UserProfileService;
 import com.example.ShoppingSystem.service.user.auth.login.model.UserProfileDraft;
 import org.springframework.stereotype.Service;

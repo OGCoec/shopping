@@ -1,0 +1,107 @@
+<section class="admin-panel" data-admin-panel="productCategories">
+  <div class="admin-api-detail admin-product-category-detail">
+    <article class="admin-oauth-config-card admin-product-category-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Product Categories</span>
+          <strong>商品分类管理</strong>
+        </div>
+        <div class="admin-product-category-tools">
+          <button id="admin-product-category-create-root" class="admin-nav-button admin-spring-button" type="button">添加一级分类</button>
+          <button id="admin-product-category-batch-disable" class="admin-ghost-button admin-spring-button" type="button" disabled>批量禁用</button>
+          <button id="admin-product-category-expand-all" class="admin-ghost-button admin-spring-button" type="button">展开全部</button>
+          <button id="admin-product-category-collapse-all" class="admin-ghost-button admin-spring-button" type="button">收起全部</button>
+          <button id="admin-product-category-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </div>
+
+      <form id="admin-product-category-search-form" class="admin-product-category-search">
+        <label class="admin-risk-ip-field">
+          <span>&#20998;&#31867;&#25628;&#32034;</span>
+          <input id="admin-product-category-search-keyword" type="search" maxlength="64" autocomplete="off" placeholder="&#25353;&#20998;&#31867;&#21517;&#31216;&#25628;&#32034;" />
+        </label>
+        <button id="admin-product-category-search-submit" class="admin-nav-button admin-spring-button" type="submit">&#25628;&#32034;</button>
+        <button id="admin-product-category-search-clear" class="admin-ghost-button admin-spring-button" type="button">&#28165;&#31354;</button>
+      </form>
+
+      <div class="admin-risk-ip-summary admin-product-category-summary">
+        <div><span>分类总数</span><strong id="admin-product-category-total">-</strong></div>
+        <div><span>启用分类</span><strong id="admin-product-category-active-total">-</strong></div>
+        <div><span>启用商品</span><strong id="admin-product-category-active-products">-</strong></div>
+      </div>
+
+      <p id="admin-product-category-status" class="admin-oauth-config-status"></p>
+      <div class="admin-product-category-tree" aria-label="商品分类树">
+        <div class="admin-product-category-row admin-product-category-header">
+          <label class="admin-product-category-select-all">
+            <input id="admin-product-category-select-all" type="checkbox" aria-label="选择所有可见分类" />
+            <span>选择</span>
+          </label>
+          <span>分类</span>
+          <span>编码</span>
+          <span>层级</span>
+          <span>排序</span>
+          <span>状态</span>
+          <span>商品</span>
+          <span>操作</span>
+        </div>
+        <div id="admin-product-category-list" class="admin-product-category-list"></div>
+      </div>
+    </article>
+
+    <div id="admin-product-category-dialog" class="admin-product-category-dialog" aria-hidden="true" hidden>
+      <button id="admin-product-category-dialog-backdrop" class="admin-product-category-dialog-backdrop" type="button" aria-label="关闭分类表单"></button>
+      <section class="admin-product-category-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="admin-product-category-dialog-title">
+        <header class="admin-product-category-dialog-header">
+          <div>
+            <span id="admin-product-category-dialog-subtitle">Category</span>
+            <strong id="admin-product-category-dialog-title">添加分类</strong>
+          </div>
+          <button id="admin-product-category-dialog-close" class="admin-detail-close admin-spring-button" type="button" aria-label="关闭分类表单">&times;</button>
+        </header>
+        <form id="admin-product-category-form" class="admin-product-category-form">
+          <input id="admin-product-category-id" type="hidden" />
+          <input id="admin-product-category-parent-id" type="hidden" />
+          <div class="admin-product-category-parent">
+            <span>父分类</span>
+            <strong id="admin-product-category-parent-label">一级分类</strong>
+          </div>
+          <div class="admin-product-category-form-grid">
+            <label class="admin-risk-ip-field">
+              <span>分类名称</span>
+              <input id="admin-product-category-name" type="text" maxlength="64" autocomplete="off" required />
+            </label>
+            <label class="admin-risk-ip-field">
+              <span>分类编码</span>
+              <input id="admin-product-category-code" type="text" maxlength="64" autocomplete="off" required />
+            </label>
+            <label class="admin-risk-ip-field">
+              <span>排序</span>
+              <input id="admin-product-category-sort-order" type="number" step="1" value="0" />
+            </label>
+            <label class="admin-risk-ip-field">
+              <span>状态</span>
+              <select id="admin-product-category-edit-status">
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="DISABLED">DISABLED</option>
+              </select>
+            </label>
+            <label class="admin-risk-ip-field admin-product-category-wide-field">
+              <span>图标 JSON 数组</span>
+              <textarea id="admin-product-category-icon-urls" rows="4" spellcheck="false" placeholder='[{"type":"default","url":"https://example.com/category.png"}]'></textarea>
+            </label>
+            <label class="admin-risk-ip-field admin-product-category-wide-field">
+              <span>分类描述</span>
+              <textarea id="admin-product-category-description" rows="3" maxlength="255"></textarea>
+            </label>
+          </div>
+          <p id="admin-product-category-form-status" class="admin-oauth-config-status"></p>
+          <div class="admin-product-category-form-actions">
+            <button id="admin-product-category-cancel" class="admin-api-back admin-spring-button" type="button">取消</button>
+            <button id="admin-product-category-save" class="admin-nav-button admin-spring-button" type="submit">保存</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+</section>

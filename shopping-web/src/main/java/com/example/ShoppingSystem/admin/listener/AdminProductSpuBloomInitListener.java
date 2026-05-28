@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.admin.listener;
 
-import com.example.ShoppingSystem.admin.service.AdminProductSpuBloomInitializerService;
+import com.example.ShoppingSystem.admin.service.product.AdminProductSpuBloomInitializerService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;

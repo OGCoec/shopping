@@ -1,0 +1,17 @@
+/* Sign up link */
+.signup-link {
+  text-align: center;
+  font-size: 13px;
+  color: #888;
+  margin-top: 32px;
+}
+
+.signup-link a {
+  color: #1a1a2e;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.signup-link a:hover {
+  text-decoration: underline;
+}

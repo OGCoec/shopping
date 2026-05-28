@@ -1,7 +1,7 @@
 package com.example.ShoppingSystem.service.user.auth.risk.impl;
 
 import cn.hutool.core.util.StrUtil;
-import com.example.ShoppingSystem.mapper.IpReputationProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper;
 import com.example.ShoppingSystem.redisdata.BotDefenseRedisKeys;
 import com.example.ShoppingSystem.service.user.auth.register.risk.impl.IpL6CountingBloomDecisionService;
 import com.example.ShoppingSystem.service.user.auth.risk.AutomationRiskGateService;

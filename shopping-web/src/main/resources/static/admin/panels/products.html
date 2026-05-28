@@ -1,0 +1,137 @@
+<section class="admin-panel" data-admin-panel="products">
+  <div class="admin-api-detail admin-product-spu-detail">
+    <article class="admin-oauth-config-card admin-product-spu-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Products</span>
+          <strong>商品管理</strong>
+        </div>
+        <div class="admin-product-spu-tools">
+          <button id="admin-product-spu-create" class="admin-nav-button admin-spring-button" type="button">添加商品</button>
+          <button id="admin-product-spu-batch-disable" class="admin-ghost-button admin-spring-button" type="button" disabled>批量禁用</button>
+          <button id="admin-product-spu-batch-delete" class="admin-ghost-button admin-spring-button" type="button" disabled>批量删除</button>
+          <button id="admin-product-spu-category-batch-disable" class="admin-ghost-button admin-spring-button" type="button" disabled>禁用当前分类商品</button>
+          <button id="admin-product-spu-category-batch-delete" class="admin-ghost-button admin-spring-button" type="button" disabled>删除当前分类商品</button>
+          <button id="admin-product-spu-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </div>
+
+      <form id="admin-product-spu-filter-form" class="admin-risk-ip-filter-form admin-product-spu-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>商品名称</span>
+          <input id="admin-product-spu-filter-name" type="search" autocomplete="off" placeholder="商品名称关键词" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>叶子分类</span>
+          <select id="admin-product-spu-filter-category">
+            <option value="">全部分类</option>
+          </select>
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>状态</span>
+          <select id="admin-product-spu-filter-status">
+            <option value="">全部状态</option>
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="DISABLED">DISABLED</option>
+          </select>
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-product-spu-page-size" type="number" min="1" step="1" value="20" inputmode="numeric" />
+        </label>
+        <div class="admin-risk-ip-actions">
+          <button id="admin-product-spu-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-product-spu-filter-reset" class="admin-api-back admin-spring-button" type="button">重置</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary admin-product-spu-summary">
+        <div><span>商品总数</span><strong id="admin-product-spu-total">-</strong></div>
+        <div><span>当前页</span><strong id="admin-product-spu-page-label">1</strong></div>
+        <div><span>创建范围</span><strong>叶子分类</strong></div>
+      </div>
+
+      <p id="admin-product-spu-status" class="admin-oauth-config-status"></p>
+      <div class="admin-product-spu-table" aria-label="商品列表">
+        <div class="admin-product-spu-row admin-product-spu-header">
+          <label class="admin-product-spu-select-all">
+            <input id="admin-product-spu-select-all" type="checkbox" aria-label="选择当前页商品" />
+            <span>选择</span>
+          </label>
+          <span>主图</span>
+          <span>商品</span>
+          <span>品牌</span>
+          <span>分类</span>
+          <span>状态</span>
+          <span>创建时间</span>
+          <span>操作</span>
+        </div>
+        <div id="admin-product-spu-list" class="admin-product-spu-list"></div>
+      </div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-product-spu-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-product-spu-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+
+    <div id="admin-product-spu-dialog" class="admin-product-category-dialog admin-product-spu-dialog" aria-hidden="true" hidden>
+      <button id="admin-product-spu-dialog-backdrop" class="admin-product-category-dialog-backdrop" type="button" aria-label="关闭商品表单"></button>
+      <section class="admin-product-category-dialog-panel admin-product-spu-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="admin-product-spu-dialog-title">
+        <header class="admin-product-category-dialog-header">
+          <div>
+            <span>Product SPU</span>
+            <strong id="admin-product-spu-dialog-title">添加商品</strong>
+          </div>
+          <button id="admin-product-spu-dialog-close" class="admin-detail-close admin-spring-button" type="button" aria-label="关闭商品表单">&times;</button>
+        </header>
+        <form id="admin-product-spu-form" class="admin-product-category-form admin-product-spu-form">
+          <div class="admin-product-category-form-grid">
+            <label class="admin-risk-ip-field">
+              <span>叶子分类</span>
+              <input id="admin-product-spu-category-search" type="search" autocomplete="off" placeholder="输入分类名称 / 编码 / ID 模糊查询" />
+              <select id="admin-product-spu-category" required>
+                <option value="">请选择启用叶子分类</option>
+              </select>
+            </label>
+            <label class="admin-risk-ip-field">
+              <span>商品名称</span>
+              <input id="admin-product-spu-name" type="text" maxlength="128" autocomplete="off" required />
+            </label>
+            <label class="admin-risk-ip-field">
+              <span>品牌名称</span>
+              <input id="admin-product-spu-brand" type="text" maxlength="64" autocomplete="off" />
+            </label>
+            <label class="admin-risk-ip-field">
+              <span>状态</span>
+              <select id="admin-product-spu-edit-status">
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="DISABLED">DISABLED</option>
+              </select>
+            </label>
+            <label class="admin-risk-ip-field admin-product-category-wide-field">
+              <span>商品副标题</span>
+              <input id="admin-product-spu-subtitle" type="text" maxlength="255" autocomplete="off" />
+            </label>
+            <div class="admin-risk-ip-field admin-product-category-wide-field admin-product-spu-image-field">
+              <span>商品主图</span>
+              <div id="admin-product-spu-image-upload" class="admin-product-spu-upload">
+                <button id="admin-product-spu-image-pick" class="admin-ghost-button admin-spring-button" type="button">选择图片</button>
+                <button id="admin-product-spu-image-remove" class="admin-api-back admin-spring-button" type="button" hidden>删除图片</button>
+                <input id="admin-product-spu-image-input" type="file" accept="image/*" hidden />
+                <div class="admin-product-spu-preview">
+                  <img id="admin-product-spu-image-preview" alt="商品主图预览" hidden />
+                  <span id="admin-product-spu-image-empty">未上传主图</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p id="admin-product-spu-form-status" class="admin-oauth-config-status"></p>
+          <div class="admin-product-category-form-actions">
+            <button id="admin-product-spu-cancel" class="admin-api-back admin-spring-button" type="button">取消</button>
+            <button id="admin-product-spu-save" class="admin-nav-button admin-spring-button" type="submit">保存</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+</section>

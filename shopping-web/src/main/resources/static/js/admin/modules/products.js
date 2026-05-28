@@ -5,6 +5,9 @@
   const imageUtils = root.AdminProductImageUtils;
   const CONSOLE_PRODUCTS_PATH = "/shopping/admin/console/products";
   const PRODUCT_IMAGE_CAROUSEL_MODULE_PATH = "/shopping/js/admin/modules/product-image-ripple-carousel.js?v=3";
+  const HIGHLIGHT_START = "[[HL]]";
+  const HIGHLIGHT_END = "[[/HL]]";
+  const PAGE_SIZE_ERROR = "每页数量必须是大于 0 的整数。";
   const {
     escapeHtml,
     escapeAttribute,
@@ -30,6 +33,19 @@
 
   function $(id) {
     return document.getElementById(id);
+  }
+
+  function readPageSize() {
+    if (!el.pageSize) {
+      return state.pageSize;
+    }
+    const rawValue = String(el.pageSize.value || "").trim();
+    const pageSize = Number(rawValue);
+    if (!rawValue || !Number.isInteger(pageSize) || pageSize <= 0) {
+      api.setStatus(el.status, PAGE_SIZE_ERROR, "error");
+      return null;
+    }
+    return pageSize;
   }
 
   function mount() {
@@ -133,7 +149,11 @@
       loadPage();
     });
     el.pageSize?.addEventListener("change", () => {
-      state.pageSize = Number.parseInt(el.pageSize.value || "20", 10) || 20;
+      const pageSize = readPageSize();
+      if (!pageSize) {
+        return;
+      }
+      state.pageSize = pageSize;
       state.page = 1;
       loadPage();
     });
@@ -269,13 +289,18 @@
   }
 
   async function loadPage() {
+    const pageSize = readPageSize();
+    if (!pageSize) {
+      return;
+    }
+    state.pageSize = pageSize;
     setPageBusy(true);
     api.setStatus(el.status, "正在加载商品列表。");
     try {
       await loadLeafCategories();
       const params = new URLSearchParams();
       params.set("page", String(state.page));
-      params.set("pageSize", String(Number.parseInt(el.pageSize?.value || String(state.pageSize), 10) || state.pageSize));
+      params.set("pageSize", String(pageSize));
       const name = el.filterName?.value?.trim();
       const categoryId = el.filterCategory?.value;
       const status = el.filterStatus?.value;
@@ -442,7 +467,7 @@
     const nameCell = document.createElement("div");
     nameCell.className = "admin-product-spu-name-cell";
     const name = document.createElement("strong");
-    name.textContent = product.name || "-";
+    renderHighlightedName(name, product.nameHighlight || product.name || "-");
     const subtitle = document.createElement("small");
     subtitle.textContent = product.subtitle || `ID ${product.id || "-"}`;
     nameCell.append(name, subtitle);
@@ -461,6 +486,32 @@
     cell.className = "admin-product-spu-cell";
     cell.textContent = String(text ?? "-");
     return cell;
+  }
+
+  function renderHighlightedName(target, value) {
+    const source = String(value || "-");
+    let cursor = 0;
+    while (cursor < source.length) {
+      const start = source.indexOf(HIGHLIGHT_START, cursor);
+      if (start < 0) {
+        target.appendChild(document.createTextNode(source.slice(cursor)));
+        return;
+      }
+      if (start > cursor) {
+        target.appendChild(document.createTextNode(source.slice(cursor, start)));
+      }
+      const contentStart = start + HIGHLIGHT_START.length;
+      const end = source.indexOf(HIGHLIGHT_END, contentStart);
+      if (end < 0) {
+        target.appendChild(document.createTextNode(source.slice(start)));
+        return;
+      }
+      const mark = document.createElement("span");
+      mark.className = "admin-product-search-highlight";
+      mark.textContent = source.slice(contentStart, end);
+      target.appendChild(mark);
+      cursor = end + HIGHLIGHT_END.length;
+    }
   }
 
   function statusCell(status) {
@@ -698,6 +749,8 @@
       node.textContent = text;
     }
   }
+
+  root.AdminProductsModule = { mount };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", mount);

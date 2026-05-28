@@ -1,0 +1,108 @@
+.auth-terminal-view {
+  text-align: center;
+  color: #1a1a2e;
+}
+
+.auth-terminal-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 24px;
+  color: #1a1a2e;
+}
+
+.auth-terminal-mark svg {
+  width: 54px;
+  height: 54px;
+}
+
+.auth-terminal-title {
+  margin: 0 0 14px;
+  font-size: 34px;
+  line-height: 1.18;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.auth-terminal-copy {
+  max-width: 320px;
+  margin: 0 auto 34px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgba(26, 26, 46, 0.72);
+}
+
+.auth-terminal-actions {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.auth-terminal-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #111827;
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset;
+  font-size: 15px;
+  font-weight: 650;
+  text-decoration: none;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.auth-terminal-button-secondary {
+  background: #1a1a2e;
+  color: #ffffff;
+  border-color: #1a1a2e;
+}
+
+.auth-terminal-button:hover,
+.auth-terminal-button:focus-visible {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.12);
+}
+
+.auth-terminal-button-secondary:hover,
+.auth-terminal-button-secondary:focus-visible {
+  background: #111827;
+  color: #ffffff;
+}
+
+.auth-terminal-secondary {
+  display: inline-block;
+  margin-top: 22px;
+  color: #1a1a2e;
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.auth-terminal-secondary:hover,
+.auth-terminal-secondary:focus-visible,
+.auth-terminal-links a:hover,
+.auth-terminal-links a:focus-visible {
+  text-decoration: underline;
+}
+
+.auth-terminal-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 34px;
+  font-size: 13px;
+  color: rgba(26, 26, 46, 0.72);
+}
+
+.auth-terminal-links a {
+  color: inherit;
+  text-decoration: none;
+}

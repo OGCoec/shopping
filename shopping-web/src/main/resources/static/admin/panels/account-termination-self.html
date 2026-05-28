@@ -1,0 +1,63 @@
+<section class="admin-panel" data-admin-panel="accountTerminationSelf">
+  <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="accountTermination">返回账号停用管理</button>
+    <article class="admin-oauth-config-card admin-risk-ip-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Self disabled</span>
+          <strong>主动停用管理</strong>
+        </div>
+        <div class="admin-risk-ip-current">
+          <span id="admin-account-self-current-filter">全部主动停用</span>
+          <strong id="admin-account-self-current-scope">全部范围</strong>
+        </div>
+      </div>
+
+      <form id="admin-account-self-filter-form" class="admin-risk-ip-filter-form admin-account-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>范围</span>
+          <select id="admin-account-self-scope">
+            <option value="">全部范围</option>
+            <option value="within7Days">7 天内可恢复</option>
+            <option value="expired">7 天外未清理</option>
+            <option value="deleted">已清理</option>
+            <option value="restored">已恢复</option>
+          </select>
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>User ID</span>
+          <input id="admin-account-self-user-id" type="number" min="1" step="1" placeholder="用户 ID" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>邮箱</span>
+          <input id="admin-account-self-email" type="search" autocomplete="off" placeholder="邮箱关键词" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>手机号</span>
+          <input id="admin-account-self-phone" type="search" autocomplete="off" placeholder="手机号关键词" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-account-self-page-size" type="number" min="1" step="1" value="50" inputmode="numeric" />
+        </label>
+        <div class="admin-risk-ip-actions">
+          <button id="admin-account-self-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-account-self-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary">
+        <div><span>总数</span><strong id="admin-account-self-total">-</strong></div>
+        <div><span>当前页</span><strong id="admin-account-self-page-label">1</strong></div>
+        <div><span>恢复规则</span><strong>7 天内</strong></div>
+      </div>
+
+      <p id="admin-account-self-status-text" class="admin-oauth-config-status"></p>
+      <div id="admin-account-self-list" class="admin-risk-ip-list"></div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-account-self-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-account-self-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+  </div>
+</section>

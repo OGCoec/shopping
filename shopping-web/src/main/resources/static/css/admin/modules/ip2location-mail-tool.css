@@ -1,0 +1,172 @@
+.admin-ip2location-mail-tool {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.admin-ip2location-mail-tool[hidden] {
+  display: none;
+}
+
+.admin-ip2location-mail-tool-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(18, 28, 22, 0.34);
+}
+
+.admin-ip2location-mail-tool-dialog {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 18px;
+  width: min(1180px, 100%);
+  max-height: min(86vh, 860px);
+  overflow: auto;
+  border: 1px solid rgba(21, 32, 24, 0.12);
+  border-radius: 8px;
+  padding: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 248, 0.9)),
+    var(--admin-panel-solid);
+  box-shadow: 0 24px 70px rgba(23, 35, 27, 0.24);
+}
+
+.admin-ip2location-mail-tool-header {
+  position: relative;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding-right: 48px;
+}
+
+.admin-ip2location-mail-tool-header div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-ip2location-mail-tool-header span,
+.admin-ip2location-mail-tool-panel-heading span,
+.admin-ip2location-mail-results > div > span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.admin-ip2location-mail-tool-header strong {
+  overflow-wrap: anywhere;
+  font-size: 28px;
+  line-height: 1.14;
+}
+
+.admin-ip2location-mail-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
+.admin-ip2location-mail-tool-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.admin-ip2location-mail-tool-panel-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 12px;
+  align-items: end;
+  min-width: 0;
+}
+
+.admin-ip2location-mail-tool-panel-heading div,
+.admin-ip2location-mail-tool-panel-heading label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.admin-ip2location-mail-tool-panel-heading strong {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 1.22;
+}
+
+.admin-ip2location-mail-tool textarea {
+  min-height: 150px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.admin-ip2location-mail-tool-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-ip2location-mail-results {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-ip2location-mail-results > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.admin-ip2location-mail-result-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-ip2location-mail-result-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(248, 251, 248, 0.72);
+}
+
+.admin-ip2location-mail-result-item strong,
+.admin-ip2location-mail-result-item a {
+  overflow-wrap: anywhere;
+  color: var(--admin-ink);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.45;
+}
+
+.admin-ip2location-mail-result-item a {
+  color: var(--admin-green);
+}
+
+.admin-ip2location-mail-result-item small {
+  overflow-wrap: anywhere;
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}

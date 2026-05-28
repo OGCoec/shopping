@@ -99,6 +99,7 @@ public class PreAuthBindingService {
         // 先把当前请求环境标准化，得到本次请求对应的指纹 hash、UA hash 和真实 IP。
         String normalizedFingerprint = requestResolver.normalizeFingerprint(rawFingerprint, request);
         String fpHash = hashingService.sha256(normalizedFingerprint);
+        String navigationFpHash = hashingService.sha256(requestResolver.normalizeNavigationFingerprint(request));
         String uaHash = hashingService.sha256(requestResolver.resolveUserAgent(request));
         String ip = requestResolver.resolveClientIp(request);
 
@@ -142,7 +143,12 @@ public class PreAuthBindingService {
                 }
 
                 // 复用旧绑定时刷新上下文并刷新 Redis TTL。
-                PreAuthBinding refreshed = bindingFactory.refreshExistingBinding(existing, ip, normalizedFingerprint);
+                PreAuthBinding refreshed = bindingFactory.refreshExistingBinding(
+                        existing,
+                        ip,
+                        normalizedFingerprint,
+                        navigationFpHash
+                );
                 refreshed = webRtcIpConsistencyService.applyRequestState(refreshed, request);
                 bindingRepository.save(refreshed);
                 riskStateSyncService.syncAfterBindingSaved(existing, refreshed, request);
@@ -154,6 +160,7 @@ public class PreAuthBindingService {
         PreAuthBinding created = bindingFactory.createNewBinding(
                 IdUtil.nanoId(48),
                 fpHash,
+                navigationFpHash,
                 uaHash,
                 ip,
                 normalizedFingerprint
@@ -198,9 +205,10 @@ public class PreAuthBindingService {
         }
 
         // 重新计算本次请求的指纹 hash，并与绑定中的值比较。
-        String normalizedFingerprint = requestResolver.normalizeFingerprint(rawFingerprint, request);
+        String normalizedFingerprint = resolveValidationFingerprint(rawFingerprint, request);
         String fpHash = hashingService.sha256(normalizedFingerprint);
-        if (!fpHash.equals(existing.fpHash())) {
+        String expectedFpHash = resolveExpectedFingerprintHash(rawFingerprint, request, existing);
+        if (StrUtil.isBlank(expectedFpHash) || !fpHash.equals(expectedFpHash)) {
             logPreAuthDecision(
                     "validate_fingerprint_mismatch",
                     token,
@@ -255,11 +263,51 @@ public class PreAuthBindingService {
         }
 
         // 校验通过后刷新绑定并续期，确保活跃上下文保持最新。
-        PreAuthBinding updated = bindingFactory.refreshExistingBinding(existing, currentIp, normalizedFingerprint);
+        PreAuthBinding updated = bindingFactory.refreshExistingBinding(
+                existing,
+                currentIp,
+                normalizedFingerprint,
+                hashingService.sha256(requestResolver.normalizeNavigationFingerprint(request))
+        );
         updated = webRtcIpConsistencyService.applyRequestState(updated, request);
         bindingRepository.save(updated);
         riskStateSyncService.syncAfterBindingSaved(existing, updated, request);
         return PreAuthValidationOutcome.valid(updated);
+    }
+
+    private String resolveValidationFingerprint(String rawFingerprint, HttpServletRequest request) {
+        if (StrUtil.isNotBlank(rawFingerprint)) {
+            return requestResolver.normalizeFingerprint(rawFingerprint, request);
+        }
+        return requestResolver.normalizeNavigationFingerprint(request);
+    }
+
+    private String resolveExpectedFingerprintHash(String rawFingerprint,
+                                                  HttpServletRequest request,
+                                                  PreAuthBinding existing) {
+        if (StrUtil.isNotBlank(rawFingerprint)) {
+            return existing.fpHash();
+        }
+        if (isHtmlNavigationRequest(request)) {
+            return existing.navigationFpHash();
+        }
+        return "";
+    }
+
+    private boolean isHtmlNavigationRequest(HttpServletRequest request) {
+        if (request == null) {
+            return false;
+        }
+        String method = request.getMethod();
+        if (!"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method)) {
+            return false;
+        }
+        String requestedWith = request.getHeader("X-Requested-With");
+        if ("XMLHttpRequest".equalsIgnoreCase(requestedWith)) {
+            return false;
+        }
+        String accept = request.getHeader("Accept");
+        return accept != null && accept.contains("text/html");
     }
 
     /**
@@ -303,6 +351,7 @@ public class PreAuthBindingService {
         PreAuthBinding blocked = new PreAuthBinding(
                 existing.token(),
                 existing.fpHash(),
+                existing.navigationFpHash(),
                 existing.uaHash(),
                 ip,
                 existing.recentIps(),

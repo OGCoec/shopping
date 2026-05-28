@@ -387,7 +387,7 @@ elasticsearch:
   # Elasticsearch 主机地址。
   host: localhost
   # Elasticsearch 端口。
-  port: 9200
+  port: ${ELASTICSEARCH_PORT:9201}
   # Elasticsearch 访问协议。
   scheme: http
 
@@ -459,7 +459,7 @@ captcha:
     # 验证码代理主机。
     host: ${CAPTCHA_PROXY_HOST:127.0.0.1}
     # 验证码代理端口。
-    port: ${CAPTCHA_PROXY_PORT:7892}
+    port: ${CAPTCHA_PROXY_PORT:7897}
   # 验证码过期时间配置。
   expire:
     # 默认验证码过期时间，单位毫秒。
@@ -472,7 +472,7 @@ local-proxy:
   # 本地代理主机。
   host: ${LOCAL_PROXY_HOST:127.0.0.1}
   # 可用本地代理端口列表。
-  ports: ${LOCAL_PROXY_PORTS:7892,7897}
+  ports: ${LOCAL_PROXY_PORTS:7897}
   # 本地代理连接超时时间，单位毫秒。
   connect-timeout-ms: ${LOCAL_PROXY_CONNECT_TIMEOUT_MS:300}
 

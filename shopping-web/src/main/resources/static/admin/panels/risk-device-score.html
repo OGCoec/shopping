@@ -1,0 +1,77 @@
+<section class="admin-panel" data-admin-panel="riskDeviceScore">
+  <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score" data-risk-device-family="device">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="riskCreditScore">返回信用分管理</button>
+    <article class="admin-oauth-config-card admin-risk-ip-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Device score</span>
+          <strong>设备分数</strong>
+        </div>
+        <div class="admin-risk-ip-current">
+          <span id="admin-risk-device-current-level">全部分数区间</span>
+          <strong id="admin-risk-device-current-sort">风险优先</strong>
+        </div>
+      </div>
+
+      <form id="admin-risk-device-filter-form" class="admin-risk-ip-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>分数区间</span>
+          <select id="admin-risk-device-level">
+            <option value="">全部区间</option>
+            <option value="L1">L1 · 8500+</option>
+            <option value="L2">L2 · 7500-8499</option>
+            <option value="L3">L3 · 6000-7499</option>
+            <option value="L4">L4 · 4800-5999</option>
+            <option value="L5">L5 · 3000-4799</option>
+            <option value="L6">L6 · 0-2999</option>
+          </select>
+        </label>
+
+        <label class="admin-risk-ip-field">
+          <span>设备查询</span>
+          <input id="admin-risk-device-query" type="search" autocomplete="off" inputmode="text" placeholder="deviceId / IP 前缀" />
+        </label>
+
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-risk-device-page-size" type="number" min="1" step="1" value="50" inputmode="numeric" />
+        </label>
+
+        <label class="admin-risk-ip-field">
+          <span>排序</span>
+          <select id="admin-risk-device-sort">
+            <option value="risk_first">风险优先</option>
+            <option value="recent_first">最近活跃</option>
+          </select>
+        </label>
+
+        <div class="admin-risk-ip-actions">
+          <button id="admin-risk-device-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-risk-device-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary">
+        <div>
+          <span>总数</span>
+          <strong id="admin-risk-device-total">-</strong>
+        </div>
+        <div>
+          <span>当前页</span>
+          <strong id="admin-risk-device-page-label">1</strong>
+        </div>
+        <div>
+          <span>数据来源</span>
+          <strong id="admin-risk-device-source">-</strong>
+        </div>
+      </div>
+
+      <p id="admin-risk-device-status" class="admin-oauth-config-status"></p>
+      <div id="admin-risk-device-list" class="admin-risk-ip-list"></div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-risk-device-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-risk-device-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+  </div>
+</section>

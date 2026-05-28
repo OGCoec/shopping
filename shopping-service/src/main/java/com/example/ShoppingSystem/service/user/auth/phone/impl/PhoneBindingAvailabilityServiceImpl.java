@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.service.user.auth.phone.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingAvailabilityService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
 import org.springframework.stereotype.Service;

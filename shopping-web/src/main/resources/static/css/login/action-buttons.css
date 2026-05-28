@@ -1,0 +1,171 @@
+/* Buttons */
+.btn-login {
+  position: relative;
+  width: 100%;
+  height: 50px;
+  border-radius: 25px;
+  border: 1.5px solid #24292e;
+  background: #24292e;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  margin-bottom: 18px;
+  transition: all 0.3s;
+}
+
+.btn-login .btn-text {
+  display: inline-block;
+  transition: all 0.3s;
+}
+
+.btn-login .btn-hover-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #5b21b6;
+  color: #fff;
+  opacity: 0;
+  transition: all 0.3s;
+  border-radius: 25px;
+}
+
+.btn-login .btn-disabled-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+  background: #5b21b6;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s;
+  border-radius: 25px;
+}
+
+.btn-login:hover .btn-text {
+  transform: translateX(40px);
+  opacity: 0;
+}
+
+.btn-login:hover .btn-hover-content {
+  opacity: 1;
+}
+
+.btn-login.is-submitting,
+.btn-login:disabled {
+  cursor: not-allowed;
+}
+
+.btn-login.is-submitting .btn-text {
+  opacity: 1;
+  transform: none;
+}
+
+.btn-login.is-submitting .btn-hover-content,
+.btn-login.is-submitting .btn-disabled-content {
+  opacity: 0;
+  transform: none;
+}
+
+.btn-login.is-submitting:hover .btn-text {
+  transform: translateX(40px);
+  opacity: 0;
+}
+
+.btn-login.is-submitting:hover .btn-disabled-content {
+  opacity: 1;
+}
+
+.btn-google {
+  position: relative;
+  width: 100%;
+  height: 50px;
+  border-radius: 25px;
+  border: 1.5px solid #d7d7d7;
+  background: #ebebeb;
+  color: #1f2937;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.3s;
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+.btn-google .btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.3s;
+}
+
+.btn-google .btn-hover-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #5b21b6;
+  color: #fff;
+  opacity: 0;
+  transition: all 0.3s;
+  border-radius: 25px;
+}
+
+.btn-google:hover .btn-text {
+  transform: translateX(40px);
+  opacity: 0;
+}
+
+.btn-google:hover .btn-hover-content {
+  opacity: 1;
+}
+
+.google-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-github {
+  background: #acaeb0;
+  border-color: #999c9f;
+  color: #111827;
+}
+
+.btn-github .btn-hover-content {
+  background: #5b21b6;
+  color: #fff;
+}
+
+.btn-microsoft {
+  background: #6d7175;
+  border-color: #5b5f63;
+  color: #fff;
+}
+
+.btn-microsoft .btn-hover-content {
+  background: #5b21b6;
+  color: #fff;
+}
+
+.btn-phone {
+  background: #24292e;
+  border-color: #24292e;
+  color: #fff;
+}
+
+.btn-phone .btn-hover-content {
+  background: #5b21b6;
+  color: #fff;
+}

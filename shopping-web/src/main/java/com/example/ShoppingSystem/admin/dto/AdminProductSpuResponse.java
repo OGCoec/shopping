@@ -14,5 +14,6 @@ public record AdminProductSpuResponse(@JsonSerialize(using = ToStringSerializer.
                                       String mainImageUrl,
                                       String status,
                                       OffsetDateTime createdAt,
-                                      OffsetDateTime updatedAt) {
+                                      OffsetDateTime updatedAt,
+                                      String nameHighlight) {
 }

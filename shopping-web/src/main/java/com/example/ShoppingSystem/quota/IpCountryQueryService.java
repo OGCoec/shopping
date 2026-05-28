@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.quota;
 
-import com.example.ShoppingSystem.mapper.IpReputationProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;

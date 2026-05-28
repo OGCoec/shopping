@@ -1,0 +1,71 @@
+<section class="admin-panel" data-admin-panel="riskApiIp2Location">
+  <div class="admin-api-detail">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="ipRisk">返回 Risk API</button>
+    <div class="admin-oauth-config-card admin-risk-api-key-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Redis quota keys</span>
+          <strong>IP2Location API Keys</strong>
+        </div>
+        <div class="admin-oauth-config-tools">
+          <button id="admin-risk-api-ip2location-mail-tool-open" class="admin-ghost-button admin-spring-button" type="button">注册邮箱工具</button>
+          <button id="admin-risk-api-ip2location-config-toggle" class="admin-ghost-button admin-spring-button" type="button" aria-expanded="false" aria-controls="admin-risk-api-ip2location-config-card">API 配置</button>
+          <button id="admin-risk-api-ip2location-keys-load" class="admin-ghost-button admin-spring-button" type="button">刷新列表</button>
+          <button id="admin-risk-api-ip2location-keys-delete" class="admin-ghost-button admin-spring-button" type="button">批量删除</button>
+        </div>
+      </div>
+      <p id="admin-risk-api-ip2location-keys-status" class="admin-oauth-config-status">API key 存在 Redis DB 2 的 quota key 中，不写入 Windows 环境变量。</p>
+      <div class="admin-risk-api-key-summary">
+        <div><span>Redis DB</span><strong id="admin-risk-api-ip2location-keys-db">-</strong></div>
+        <div><span>Key 前缀</span><strong id="admin-risk-api-ip2location-keys-prefix">-</strong></div>
+        <div><span>总剩余额度</span><strong id="admin-risk-api-ip2location-keys-total">-</strong></div>
+      </div>
+      <div id="admin-risk-api-ip2location-keys-list" class="admin-risk-api-key-list" hidden></div>
+      <form id="admin-risk-api-ip2location-keys-add-form" class="admin-oauth-config-form">
+        <div class="admin-risk-api-key-add-grid">
+          <label class="admin-risk-api-key-textarea-label">
+            <span>批量 API key</span>
+            <textarea id="admin-risk-api-ip2location-keys-input" rows="6" spellcheck="false" placeholder="一行一个 API key"></textarea>
+          </label>
+          <label>
+            <span>账户类型</span>
+            <select id="admin-risk-api-ip2location-keys-account-type">
+              <option value="STARTER">STARTER</option>
+              <option value="FREE">FREE</option>
+              <option value="PLUS">PLUS</option>
+              <option value="SECURITY">SECURITY</option>
+            </select>
+          </label>
+          <label>
+            <span>剩余额度</span>
+            <input id="admin-risk-api-ip2location-keys-quota" type="number" min="0" step="1" placeholder="留空使用账户默认额度" />
+          </label>
+        </div>
+        <div class="admin-oauth-config-actions">
+          <small>批量添加会一次写入 Redis，并替换同 API key 的旧 quota key。</small>
+          <button id="admin-risk-api-ip2location-keys-add" class="admin-ghost-button admin-spring-button" type="submit">批量添加</button>
+        </div>
+      </form>
+    </div>
+    <div id="admin-risk-api-ip2location-config-card" class="admin-oauth-config-card admin-risk-api-config-card" hidden>
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Configuration</span>
+          <strong>IP2Location API 配置</strong>
+        </div>
+        <div class="admin-oauth-config-tools">
+          <button id="admin-risk-api-ip2location-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+        </div>
+      </div>
+      <p id="admin-risk-api-ip2location-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 IP2Location API 配置。</p>
+      <div id="admin-risk-api-ip2location-config-fields" class="admin-oauth-config-fields" hidden></div>
+      <form id="admin-risk-api-ip2location-config-form" class="admin-oauth-config-form" hidden>
+        <div id="admin-risk-api-ip2location-config-inputs" class="admin-oauth-config-inputs"></div>
+        <div class="admin-oauth-config-actions">
+          <small>保存后写入 Windows 系统环境变量，需要后端以管理员身份运行，重启应用后 Risk API 客户端生效。</small>
+          <button id="admin-risk-api-ip2location-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>

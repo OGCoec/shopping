@@ -1,0 +1,95 @@
+.admin-auth-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.admin-auth-panel {
+  width: min(100%, 440px);
+}
+
+.admin-auth-card {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+  padding: 28px;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--admin-shadow);
+}
+
+.admin-login-card {
+  gap: 18px;
+}
+
+.admin-auth-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(15, 139, 110, 0.9), rgba(15, 139, 110, 0.9)) left top / 20px 20px no-repeat,
+    linear-gradient(135deg, rgba(213, 111, 69, 0.9), rgba(213, 111, 69, 0.9)) right top / 20px 20px no-repeat,
+    linear-gradient(135deg, rgba(216, 162, 54, 0.9), rgba(216, 162, 54, 0.9)) left bottom / 20px 20px no-repeat,
+    linear-gradient(135deg, rgba(21, 32, 24, 0.9), rgba(21, 32, 24, 0.9)) right bottom / 20px 20px no-repeat;
+}
+
+.admin-auth-header {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-auth-header p,
+.admin-metric-card span,
+.admin-activity-card span,
+.admin-workbench-card span,
+.admin-detail-drawer > span,
+.admin-section-eyebrow {
+  margin: 0;
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.admin-auth-header h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.admin-field {
+  display: grid;
+  gap: 7px;
+}
+
+.admin-field span {
+  color: #334137;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.admin-field input {
+  min-height: 46px;
+  width: 100%;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  padding: 0 13px;
+  background: #fbfcfb;
+  color: var(--admin-ink);
+  outline: none;
+}
+
+.admin-field input:focus {
+  border-color: rgba(15, 139, 110, 0.55);
+  box-shadow: 0 0 0 4px rgba(15, 139, 110, 0.1);
+}
+
+.admin-code-row {
+  display: grid;
+  grid-template-columns: 1fr 118px;
+  gap: 10px;
+  align-items: end;
+}

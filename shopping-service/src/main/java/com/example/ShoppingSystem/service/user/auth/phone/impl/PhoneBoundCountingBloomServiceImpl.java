@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.service.user.auth.phone.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.config.PhoneBoundCountingBloomProperties;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBoundCountingBloomService;
 import org.slf4j.Logger;

@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.service.user.auth.login.impl;
 
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.service.user.auth.register.impl.ChallengePolicy;
 import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSelection;
@@ -32,7 +33,7 @@ public class LoginChallengePolicy {
         return switch (normalizeRiskLevel(riskLevel)) {
             case "L2" -> new ChallengeSelection(CHALLENGE_HUTOOL_SHEAR, null);
             case "L3" -> new ChallengeSelection(CHALLENGE_TIANAI, challengePolicy.randomTianaiSubType());
-            case "L4" -> resolveL4ChallengeSelection(email, deviceFingerprint);
+            case "L4" -> resolveL4ChallengeSelection();
             case "L5" -> new ChallengeSelection(CHALLENGE_WAF_REQUIRED, null);
             case "L6" -> new ChallengeSelection(CHALLENGE_OPERATION_TIMEOUT, null);
             default -> ChallengeSelection.none();
@@ -83,12 +84,12 @@ public class LoginChallengePolicy {
         };
     }
 
-    private ChallengeSelection resolveL4ChallengeSelection(String email, String deviceFingerprint) {
-        int bucket = Math.floorMod((StrUtil.nullToEmpty(email) + "|" + StrUtil.nullToEmpty(deviceFingerprint)).hashCode(), 3);
-        if (bucket == 0) {
+    private ChallengeSelection resolveL4ChallengeSelection() {
+        int choice = RandomUtil.randomInt(3);
+        if (choice == 0) {
             return new ChallengeSelection(CHALLENGE_CLOUDFLARE_TURNSTILE, null);
         }
-        if (bucket == 1) {
+        if (choice == 1) {
             return new ChallengeSelection(CHALLENGE_HCAPTCHA, null);
         }
         return new ChallengeSelection(CHALLENGE_GOOGLE_RECAPTCHA_V2, null);

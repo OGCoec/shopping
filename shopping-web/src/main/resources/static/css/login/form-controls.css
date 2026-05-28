@@ -1,0 +1,173 @@
+/* Form fields */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.form-group .input-wrapper {
+  position: relative;
+}
+
+.form-group input {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-bottom: 1.5px solid #e0e0e0;
+  padding: 0 40px 0 0;
+  font-size: 15px;
+  font-family: inherit;
+  color: #1a1a2e;
+  background: transparent;
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus {
+  border-bottom-color: #5b21b6;
+}
+
+.form-group input::placeholder {
+  color: #ccc;
+}
+
+.form-group input[type="password"]:not(:placeholder-shown) {
+  font-family: inherit;
+  letter-spacing: 2px;
+}
+
+/* Hide browser-provided password reveal/clear buttons (e.g. Edge) */
+.form-group input[type="password"]::-ms-reveal,
+.form-group input[type="password"]::-ms-clear {
+  display: none;
+}
+
+.toggle-password {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  padding: 6px;
+  transition: color 0.2s;
+}
+
+.toggle-password:hover {
+  color: #333;
+}
+
+.toggle-password:focus-visible {
+  outline: 2px solid rgba(91, 33, 182, 0.24);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.register-password-input {
+  padding-right: 44px;
+}
+
+.register-password-toggle {
+  right: 2px;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+}
+
+.register-password-toggle:hover,
+.register-password-toggle:focus-visible,
+.register-password-toggle.is-visible {
+  color: #5b21b6;
+}
+
+.register-password-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  pointer-events: none;
+}
+
+.password-strength {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 16px;
+  margin: -8px 0 20px;
+  font-size: 13px;
+  color: rgba(26, 26, 46, 0.7);
+}
+
+.password-strength-label {
+  flex: 0 0 auto;
+}
+
+.password-strength-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 80px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(26, 26, 46, 0.15);
+}
+
+.password-strength-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: transparent;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.password-strength-text {
+  flex: 0 0 48px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Remember & Forgot */
+.form-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #555;
+  cursor: pointer;
+}
+
+.remember-me input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #5b21b6;
+  cursor: pointer;
+}
+
+.forgot-link {
+  font-size: 13px;
+  color: #5b21b6;
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.forgot-link:hover {
+  opacity: 0.8;
+}

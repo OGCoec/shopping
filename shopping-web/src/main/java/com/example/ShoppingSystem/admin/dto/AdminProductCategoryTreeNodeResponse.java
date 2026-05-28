@@ -20,5 +20,6 @@ public record AdminProductCategoryTreeNodeResponse(@JsonSerialize(using = ToStri
                                                    Integer childCount,
                                                    Integer productCount,
                                                    Integer activeProductCount,
+                                                   String nameHighlight,
                                                    List<AdminProductCategoryTreeNodeResponse> children) {
 }

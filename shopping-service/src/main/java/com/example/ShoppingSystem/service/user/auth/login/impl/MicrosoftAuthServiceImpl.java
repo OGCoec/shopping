@@ -3,7 +3,7 @@ package com.example.ShoppingSystem.service.user.auth.login.impl;
 import cn.hutool.core.util.IdUtil;
 import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.login.MicrosoftAuthService;
 import com.example.ShoppingSystem.service.user.auth.login.UserAuthAccountUnavailableException;
 import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;

@@ -1,0 +1,75 @@
+<section class="admin-panel" data-admin-panel="accountCredit">
+  <div class="admin-api-detail admin-credit-score-detail admin-risk-ip-score">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="accountManagement">返回账号管理</button>
+    <article class="admin-oauth-config-card admin-risk-ip-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Account credit</span>
+          <strong>账号信用分管理</strong>
+        </div>
+        <div class="admin-risk-ip-current">
+          <span id="admin-account-credit-current-filter">全部账号</span>
+          <strong id="admin-account-credit-current-level">全部风险等级</strong>
+        </div>
+      </div>
+
+      <form id="admin-account-credit-filter-form" class="admin-risk-ip-filter-form admin-account-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>User ID</span>
+          <input id="admin-account-credit-user-id" type="number" min="1" step="1" placeholder="用户 ID" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>邮箱</span>
+          <input id="admin-account-credit-email" type="search" autocomplete="off" placeholder="邮箱关键词" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>手机号</span>
+          <input id="admin-account-credit-phone" type="search" autocomplete="off" placeholder="手机号关键词" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>账号状态</span>
+          <select id="admin-account-credit-status">
+            <option value="">全部状态</option>
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="DISABLED">DISABLED</option>
+            <option value="LOCKED">LOCKED</option>
+            <option value="RISK_TERMINATED">RISK_TERMINATED</option>
+          </select>
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>风险等级</span>
+          <select id="admin-account-credit-risk-level">
+            <option value="">全部等级</option>
+            <option value="L1">L1 · 8500+</option>
+            <option value="L2">L2 · 7500-8499</option>
+            <option value="L3">L3 · 6000-7499</option>
+            <option value="L4">L4 · 4800-5999</option>
+            <option value="L5">L5 · 3000-4799</option>
+            <option value="L6">L6 · 0-2999</option>
+          </select>
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-account-credit-page-size" type="number" min="1" step="1" value="50" inputmode="numeric" />
+        </label>
+        <div class="admin-risk-ip-actions">
+          <button id="admin-account-credit-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-account-credit-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary">
+        <div><span>总数</span><strong id="admin-account-credit-total">-</strong></div>
+        <div><span>当前页</span><strong id="admin-account-credit-page-label">1</strong></div>
+        <div><span>数据来源</span><strong>主库</strong></div>
+      </div>
+
+      <p id="admin-account-credit-status-text" class="admin-oauth-config-status"></p>
+      <div id="admin-account-credit-list" class="admin-risk-ip-list"></div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-account-credit-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-account-credit-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+  </div>
+</section>

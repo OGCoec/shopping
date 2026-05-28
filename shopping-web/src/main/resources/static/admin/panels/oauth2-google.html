@@ -1,0 +1,50 @@
+<section class="admin-panel" data-admin-panel="oauth2Google">
+  <div class="admin-api-detail">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="oauth2">返回 OAuth2</button>
+    <div class="admin-oauth-config-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Configuration</span>
+          <strong>Google OAuth2 配置</strong>
+        </div>
+        <div class="admin-oauth-config-tools">
+          <a class="admin-oauth-doc-link admin-spring-button" href="https://shopping6655.oss-cn-hongkong.aliyuncs.com/Google_OAuth2_ClientID_ClientSecret_%E8%8E%B7%E5%8F%96%E6%AD%A5%E9%AA%A4.docx" target="_blank" rel="noopener">获取步骤文档</a>
+          <button id="admin-google-oauth-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+        </div>
+      </div>
+      <p id="admin-google-oauth-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 clientId 和 clientSecret。</p>
+      <div id="admin-google-oauth-config-fields" class="admin-oauth-config-fields" hidden>
+        <div class="admin-oauth-config-row">
+          <span>clientId</span>
+          <div>
+            <strong id="admin-google-client-id-value">-</strong>
+            <small id="admin-google-client-id-meta">-</small>
+          </div>
+        </div>
+        <div class="admin-oauth-config-row">
+          <span>clientSecret</span>
+          <div>
+            <strong id="admin-google-client-secret-value">-</strong>
+            <small id="admin-google-client-secret-meta">-</small>
+          </div>
+        </div>
+      </div>
+      <form id="admin-google-oauth-config-form" class="admin-oauth-config-form" hidden>
+        <div class="admin-oauth-config-inputs">
+          <label>
+            <span>新的 clientId</span>
+            <input id="admin-google-client-id-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+          </label>
+          <label>
+            <span>新的 clientSecret</span>
+            <input id="admin-google-client-secret-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+          </label>
+        </div>
+        <div class="admin-oauth-config-actions">
+          <small>保存后写入 Windows 系统环境变量，OAuth2 登录客户端重启应用后生效。</small>
+          <button id="admin-google-oauth-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>

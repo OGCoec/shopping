@@ -5,89 +5,100 @@
   const router = window.AdminRouter;
   const transition = window.AdminParticleTransition;
   const accountNode = document.getElementById("admin-console-account");
-  const emailNode = document.getElementById("admin-console-email");
-  const phoneNode = document.getElementById("admin-console-phone");
   const logoutButton = document.getElementById("admin-console-logout");
   const transitionSource = document.querySelector(".admin-split-console") || document.querySelector(".admin-main");
-  window.__ADMIN_CONSOLE_JS_VERSION__ = "modular-v31";
+  const NETWORK_CHECK_ERROR_CODES = new Set(["WEBRTC_SIGNAL_REQUIRED", "WEBRTC_IP_MISMATCH"]);
+  let currentUser = {};
+  window.__ADMIN_CONSOLE_JS_VERSION__ = "modular-v32";
 
   function redirectToLogin() {
     window.location.replace("/shopping/admin/login");
+  }
+
+  function isNetworkCheckError(error) {
+    const status = Number(error?.status || error?.payload?.status || 0);
+    const code = String(error?.payload?.error || error?.payload?.code || "");
+    return status === 403 && NETWORK_CHECK_ERROR_CODES.has(code);
   }
 
   function revealConsole() {
     document.documentElement.classList.remove("admin-session-checking");
   }
 
-  function mountBusinessModules() {
-    window.AdminOAuthConfigModule?.mount();
-    window.AdminCaptchaConfigModule?.mount();
-    window.AdminSmtpConfigModule?.mount();
-    window.AdminSmsConfigModule?.mount();
-    window.AdminOssConfigModule?.mount();
-    window.AdminRiskApiConfigModule?.mount();
-    window.AdminIp2LocationQuotaKeysModule?.mount();
-    window.AdminIp2LocationMailToolModule?.mount();
-    window.AdminRiskIpScoreModule?.mount();
-    window.AdminRiskDeviceScoreModule?.mount();
-    window.AdminAccountCreditModule?.mount();
-    window.AdminAccountTerminationModule?.mount();
-    window.AdminProductCategoriesModule?.mount();
+  function renderSession(user = currentUser) {
+    dom.setText(accountNode, user.username || "管理员");
+    dom.setText(document.getElementById("admin-console-email"), user.email || "-");
+    dom.setText(document.getElementById("admin-console-phone"), user.phone || "-");
   }
 
-  function bindRiskShortcuts() {
-    document.querySelectorAll("[data-shortcut-family][data-shortcut-level]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const family = btn.dataset.shortcutFamily;
-        const level = btn.dataset.shortcutLevel;
+  function hydrateInteractiveCards(root = document) {
+    root.querySelectorAll?.(".admin-console-card").forEach((card) => {
+      card.setAttribute("tabindex", "0");
+      card.setAttribute("role", "button");
+    });
+  }
+
+  function bindSectionLifecycle() {
+    Object.keys(window.AdminSections?.sections || {}).forEach((sectionName) => {
+      router.register(sectionName, () => {
+        hydrateInteractiveCards(router.getLoadedPanel(sectionName) || document);
+      });
+    });
+    router.register("overview", () => renderSession());
+  }
+
+  function bindDelegatedNavigation() {
+    document.addEventListener("click", async (event) => {
+      const trigger = event.target.closest?.("[data-section-target]");
+      if (trigger && document.contains(trigger)) {
+        event.preventDefault();
+        dom.playPress(trigger);
+        const family = trigger.dataset.shortcutFamily;
+        const level = trigger.dataset.shortcutLevel;
         if (family && level) {
           window.AdminRiskIpScoreModule?.presetLevel(family, level);
         }
-      });
-    });
-  }
+        await router.switchSection(trigger.dataset.sectionTarget);
+        return;
+      }
 
-  function bindSectionNavigation() {
-    document.querySelectorAll("[data-section-target]").forEach((trigger) => {
-      trigger.addEventListener("click", () => {
-        dom.playPress(trigger);
-        router.switchSection(trigger.dataset.sectionTarget);
-      });
+      const card = event.target.closest?.(".admin-console-card");
+      if (!card || !document.contains(card) || card.dataset.sectionTarget) {
+        return;
+      }
+      dom.playPress(card);
+      modal.openDetail(card);
     });
-  }
 
-  function bindCardInteractions() {
-    document.querySelectorAll(".admin-console-card").forEach((card) => {
-      card.setAttribute("tabindex", "0");
-      card.setAttribute("role", "button");
-      card.addEventListener("click", () => {
-        if (card.dataset.sectionTarget) {
-          return;
-        }
-        dom.playPress(card);
-        modal.openDetail(card);
-      });
-      card.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          dom.playPress(card);
-          if (card.dataset.sectionTarget) {
-            router.switchSection(card.dataset.sectionTarget);
-            return;
-          }
-          modal.openDetail(card);
-        }
-      });
+    document.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      const card = event.target.closest?.(".admin-console-card");
+      if (!card || !document.contains(card)) {
+        return;
+      }
+      event.preventDefault();
+      dom.playPress(card);
+      if (card.dataset.sectionTarget) {
+        await router.switchSection(card.dataset.sectionTarget);
+        return;
+      }
+      modal.openDetail(card);
     });
   }
 
   function bindSpringButtons() {
-    document.querySelectorAll(".admin-spring-button, .admin-side-item").forEach((button) => {
-      button.addEventListener("pointerdown", () => button.classList.add("is-pressing"));
-      button.addEventListener("pointerup", () => button.classList.remove("is-pressing"));
-      button.addEventListener("pointerleave", () => button.classList.remove("is-pressing"));
-      button.addEventListener("pointercancel", () => button.classList.remove("is-pressing"));
-    });
+    const setPressing = (event, pressing) => {
+      const button = event.target.closest?.(".admin-spring-button, .admin-side-item");
+      if (button && document.contains(button)) {
+        button.classList.toggle("is-pressing", pressing);
+      }
+    };
+    document.addEventListener("pointerdown", (event) => setPressing(event, true));
+    document.addEventListener("pointerup", (event) => setPressing(event, false));
+    document.addEventListener("pointerleave", (event) => setPressing(event, false), true);
+    document.addEventListener("pointercancel", (event) => setPressing(event, false));
   }
 
   function bindGlobalKeys() {
@@ -125,20 +136,22 @@
         redirectToLogin();
         return false;
       }
-      dom.setText(accountNode, user.username || "管理员");
-      dom.setText(emailNode, user.email || "-");
-      dom.setText(phoneNode, user.phone || "-");
+      currentUser = user;
+      renderSession(user);
       return true;
-    } catch (_) {
+    } catch (error) {
+      if (isNetworkCheckError(error)) {
+        return false;
+      }
       redirectToLogin();
       return false;
     }
   }
 
-  function initializeRouting() {
+  async function initializeRouting() {
     const initialSection = router.getSectionFromLocation();
     window.history?.replaceState?.({ adminSection: initialSection }, "", window.location.href);
-    router.switchSection(initialSection, { replaceUrl: true });
+    await router.switchSection(initialSection, { replaceUrl: true });
   }
 
   function playInitialTransition() {
@@ -152,14 +165,13 @@
     if (!sessionLoaded) {
       return;
     }
-    mountBusinessModules();
-    bindRiskShortcuts();
-    bindSectionNavigation();
-    bindCardInteractions();
+    window.AdminIp2LocationMailToolModule?.mount();
+    bindSectionLifecycle();
+    bindDelegatedNavigation();
     bindSpringButtons();
     bindGlobalKeys();
     bindLogout();
-    initializeRouting();
+    await initializeRouting();
     revealConsole();
     playInitialTransition();
   }

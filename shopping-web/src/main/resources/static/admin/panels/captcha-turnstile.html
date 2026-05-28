@@ -1,0 +1,49 @@
+<section class="admin-panel" data-admin-panel="captchaTurnstile">
+  <div class="admin-api-detail">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="captcha">返回第三方验证码</button>
+    <div class="admin-oauth-config-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Configuration</span>
+          <strong>Cloudflare Turnstile 配置</strong>
+        </div>
+        <div class="admin-oauth-config-tools">
+          <button id="admin-captcha-turnstile-config-load" class="admin-ghost-button admin-spring-button" type="button">查看配置</button>
+        </div>
+      </div>
+      <p id="admin-captcha-turnstile-config-status" class="admin-oauth-config-status">点击查看当前项目读取到的脱敏 siteKey 和 secretKey。</p>
+      <div id="admin-captcha-turnstile-config-fields" class="admin-oauth-config-fields" hidden>
+        <div class="admin-oauth-config-row">
+          <span>siteKey</span>
+          <div>
+            <strong id="admin-captcha-turnstile-site-key-value">-</strong>
+            <small id="admin-captcha-turnstile-site-key-meta">-</small>
+          </div>
+        </div>
+        <div class="admin-oauth-config-row">
+          <span>secretKey</span>
+          <div>
+            <strong id="admin-captcha-turnstile-secret-key-value">-</strong>
+            <small id="admin-captcha-turnstile-secret-key-meta">-</small>
+          </div>
+        </div>
+      </div>
+      <form id="admin-captcha-turnstile-config-form" class="admin-oauth-config-form" hidden>
+        <div class="admin-oauth-config-inputs">
+          <label>
+            <span>新的 siteKey</span>
+            <input id="admin-captcha-turnstile-site-key-input" type="text" autocomplete="off" placeholder="留空表示不修改" />
+          </label>
+          <label>
+            <span>新的 secretKey</span>
+            <input id="admin-captcha-turnstile-secret-key-input" type="password" autocomplete="new-password" placeholder="留空表示不修改" />
+          </label>
+        </div>
+        <div class="admin-oauth-config-actions">
+          <small>保存会写入 Windows 系统环境变量，需要以管理员身份运行 Spring Boot；重启应用后验证码服务生效。</small>
+          <button id="admin-captcha-turnstile-config-save" class="admin-ghost-button admin-spring-button" type="submit">保存修改</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>

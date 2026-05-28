@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS product_sku (
     spec_json JSONB NOT NULL DEFAULT '{}'::jsonb,
 
     -- SKU 图片地址，可用于不同颜色或规格展示不同图片
-    sku_image_url VARCHAR(512),
+    sku_image_url TEXT NOT NULL DEFAULT '[]',
 
     -- 销售单价，单位：元
     price_yuan NUMERIC(12,2) NOT NULL,
@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS product_sku (
 
     CONSTRAINT ck_product_sku_spec_json_object
         CHECK (jsonb_typeof(spec_json) = 'object'),
+
+    CONSTRAINT ck_product_sku_image_urls_array
+        CHECK (jsonb_typeof(sku_image_url::jsonb) = 'array'),
 
     CONSTRAINT ck_product_sku_price_yuan
         CHECK (price_yuan >= 0),
@@ -85,7 +88,7 @@ COMMENT ON COLUMN product_sku.spu_id IS '所属商品 SPU ID，对应 product_sp
 COMMENT ON COLUMN product_sku.sku_code IS 'SKU 编码，用于程序识别、库存对接或幂等导入';
 COMMENT ON COLUMN product_sku.sku_name IS 'SKU 名称，用于前台展示和后台管理';
 COMMENT ON COLUMN product_sku.spec_json IS 'SKU 规格信息，JSON 对象格式，例如 {"颜色":"黑色","内存":"12G","存储":"256G"}';
-COMMENT ON COLUMN product_sku.sku_image_url IS 'SKU 图片地址，可用于不同颜色或规格展示不同图片';
+COMMENT ON COLUMN product_sku.sku_image_url IS 'SKU 图片地址 JSON 字符串数组，可用于不同颜色或规格展示多张图片';
 COMMENT ON COLUMN product_sku.price_yuan IS '销售单价，单位：元';
 COMMENT ON COLUMN product_sku.original_price_yuan IS '原价，单位：元，可为空';
 COMMENT ON COLUMN product_sku.stock_quantity IS '当前库存数量';

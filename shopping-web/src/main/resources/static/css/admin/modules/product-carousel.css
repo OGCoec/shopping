@@ -1,0 +1,219 @@
+.admin-product-carousel-page {
+  gap: 16px;
+}
+
+.admin-product-carousel-page-stage,
+.admin-product-ripple-carousel-inline {
+  min-width: 0;
+  width: 100%;
+}
+
+.admin-product-ripple-carousel-panel.admin-product-ripple-carousel-inline-panel {
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-product-carousel-page .admin-product-ripple-carousel-stage {
+  max-height: min(68vh, 720px);
+  min-height: 320px;
+}
+
+.admin-product-carousel-empty {
+  border: 1px dashed rgba(21, 32, 24, 0.16);
+  border-radius: 8px;
+  background: rgba(248, 251, 248, 0.72);
+}
+
+.admin-product-ripple-carousel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(8, 12, 10, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.admin-product-ripple-carousel-panel {
+  display: grid;
+  gap: 14px;
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(246, 249, 246, 0.94);
+  box-shadow: 0 28px 86px rgba(0, 0, 0, 0.34);
+}
+
+.admin-product-ripple-carousel-header,
+.admin-product-ripple-carousel-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-product-ripple-carousel-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--admin-ink);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.admin-product-ripple-carousel-counter {
+  min-width: 64px;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.admin-product-ripple-carousel-close,
+.admin-product-ripple-carousel-nav {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--admin-ink);
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(8px);
+}
+
+.admin-product-ripple-carousel-close {
+  width: 38px;
+  height: 38px;
+}
+
+.admin-product-ripple-carousel-stage-shell {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.admin-product-ripple-carousel-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: min(70vh, 720px);
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid rgba(21, 32, 24, 0.14);
+  border-radius: 8px;
+  background: #111812;
+}
+
+.admin-product-ripple-carousel-canvas,
+.admin-product-ripple-carousel-fallback,
+.admin-product-ripple-carousel-fallback-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.admin-product-ripple-carousel-canvas {
+  display: block;
+}
+
+.admin-product-ripple-carousel-fallback {
+  overflow: hidden;
+  background: #111812;
+}
+
+.admin-product-ripple-carousel-fallback-image {
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 480ms ease;
+}
+
+.admin-product-ripple-carousel-fallback-image.is-active {
+  opacity: 1;
+}
+
+.admin-product-ripple-carousel-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(17, 24, 18, 0.74);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.admin-product-ripple-carousel-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 44px;
+  height: 54px;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(21, 32, 24, 0.42);
+  transform: translateY(-50%);
+}
+
+.admin-product-ripple-carousel-nav:hover:not(:disabled),
+.admin-product-ripple-carousel-close:hover:not(:disabled),
+.admin-product-ripple-carousel-indicator:hover:not(:disabled),
+.admin-product-ripple-carousel-indicator:focus-visible {
+  border-color: rgba(15, 139, 110, 0.42);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--admin-ink);
+}
+
+.admin-product-ripple-carousel-nav:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.admin-product-ripple-carousel-nav.is-previous {
+  left: 14px;
+}
+
+.admin-product-ripple-carousel-nav.is-next {
+  right: 14px;
+}
+
+.admin-product-ripple-carousel-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-product-ripple-carousel-indicator {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(21, 32, 24, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 10px 24px rgba(21, 32, 24, 0.1);
+  backdrop-filter: blur(7px);
+}
+
+.admin-product-ripple-carousel-indicator.is-active {
+  border-color: rgba(15, 139, 110, 0.72);
+  background: rgba(15, 139, 110, 0.92);
+  color: #ffffff;
+}

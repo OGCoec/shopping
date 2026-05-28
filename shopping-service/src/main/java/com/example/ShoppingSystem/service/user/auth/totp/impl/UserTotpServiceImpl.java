@@ -5,7 +5,7 @@ import com.example.ShoppingSystem.Utils.totp.TotpCodeGenerator;
 import com.example.ShoppingSystem.Utils.totp.TotpCodeVerifier;
 import com.example.ShoppingSystem.Utils.totp.TotpSecretGenerator;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.totp.UserTotpService;
 import com.example.ShoppingSystem.service.user.auth.totp.model.TotpSetupStartResult;
 import com.example.ShoppingSystem.service.user.auth.totp.model.TotpVerificationResult;

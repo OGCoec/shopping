@@ -1,7 +1,7 @@
 package com.example.ShoppingSystem.service.user.auth.phone.impl;
 
 import com.example.ShoppingSystem.config.PhoneVerifiedUserCountingBloomProperties;
-import com.example.ShoppingSystem.mapper.UserLoginIdentityMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneVerifiedUserBloomService;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneVerifiedUserLookupService;
 import com.github.benmanes.caffeine.cache.Cache;

@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.service.user.auth.risk;
 
-import com.example.ShoppingSystem.mapper.RegisterRiskProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.RegisterRiskProfileMapper;
 import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

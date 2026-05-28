@@ -4,7 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBinding;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthRiskProfile;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthProperties;
-import com.example.ShoppingSystem.mapper.RegisterRiskProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.RegisterRiskProfileMapper;
 import com.example.ShoppingSystem.quota.IpCountryQueryService;
 import com.example.ShoppingSystem.quota.IpGeoSnapshot;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceL6CountingBloomDecisionService;
@@ -93,6 +93,7 @@ public class PreAuthIpChangePenaltyService {
         return new PreAuthBinding(
                 existing.token(),
                 existing.fpHash(),
+                existing.navigationFpHash(),
                 existing.uaHash(),
                 currentIp,
                 appendRecentIp(existing.recentIps(), currentIp),

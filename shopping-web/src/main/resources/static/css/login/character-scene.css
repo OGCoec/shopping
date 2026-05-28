@@ -1,0 +1,196 @@
+/* Pretext Character Animation Styles */
+.pt-line {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  white-space: pre;
+}
+
+.pt-char {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(20px) scale(0.9);
+  filter: blur(10px);
+  transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pt-char.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+
+/* ============ ANIMATED CHARACTERS ============ */
+.characters-scene {
+  position: relative;
+  width: 480px;
+  height: 360px;
+}
+
+/* Character base styles */
+.character {
+  position: absolute;
+  bottom: 0;
+  transition:
+    transform 0.28s cubic-bezier(0.165, 0.84, 0.44, 1),
+    height 0.28s cubic-bezier(0.165, 0.84, 0.44, 1);
+  transform-origin: bottom center;
+}
+
+/* Purple rectangle */
+.char-purple {
+  left: 60px;
+  width: 170px;
+  height: 370px;
+  background: #6c3ff5;
+  border-radius: 10px 10px 0 0;
+  z-index: 1;
+}
+
+/* Black rectangle */
+.char-black {
+  left: 220px;
+  width: 115px;
+  height: 290px;
+  background: #2d2d2d;
+  border-radius: 8px 8px 0 0;
+  z-index: 2;
+}
+
+/* Orange semi-circle */
+.char-orange {
+  left: 0;
+  width: 230px;
+  height: 190px;
+  background: #ff9b6b;
+  border-radius: 115px 115px 0 0;
+  z-index: 3;
+}
+
+/* Yellow rounded */
+.char-yellow {
+  left: 290px;
+  width: 135px;
+  height: 215px;
+  background: #e8d754;
+  border-radius: 68px 68px 0 0;
+  z-index: 4;
+}
+
+/* Eyes container */
+.eyes {
+  position: absolute;
+  display: flex;
+  transition:
+    left 0.26s cubic-bezier(0.165, 0.84, 0.44, 1),
+    top 0.26s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+/* Eyeball (white with pupil) */
+.eyeball {
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: height 0.15s ease;
+  overflow: hidden;
+}
+
+/* Pupil */
+.pupil {
+  border-radius: 50%;
+  background: #2d2d2d;
+  transition: transform 0.1s ease-out;
+}
+
+/* Bare pupil (no white eyeball) */
+.bare-pupil {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2d2d2d;
+  transition: transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+/* Yellow mouth */
+.yellow-mouth {
+  position: absolute;
+  width: 50px;
+  height: 4px;
+  background: #2d2d2d;
+  border-radius: 2px;
+  transition:
+    left 0.26s ease-in-out,
+    top 0.26s ease-in-out,
+    transform 0.26s ease-in-out;
+}
+
+/* Shake-head: smooth left-right oscillation on face parts */
+@keyframes shakeHead {
+
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  10% {
+    translate: -9px 0;
+  }
+
+  20% {
+    translate: 7px 0;
+  }
+
+  30% {
+    translate: -6px 0;
+  }
+
+  40% {
+    translate: 5px 0;
+  }
+
+  50% {
+    translate: -4px 0;
+  }
+
+  60% {
+    translate: 3px 0;
+  }
+
+  70% {
+    translate: -2px 0;
+  }
+
+  80% {
+    translate: 1px 0;
+  }
+
+  90% {
+    translate: -0.5px 0;
+  }
+}
+
+.eyes.shake-head,
+.yellow-mouth.shake-head,
+.orange-mouth.shake-head {
+  animation: shakeHead 0.8s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Sad mouth (curved down) for orange character on error */
+.orange-mouth {
+  position: absolute;
+  width: 28px;
+  height: 14px;
+  border: 3px solid #2d2d2d;
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  opacity: 0;
+  transition:
+    opacity 0.35s ease-in-out,
+    transform 0.35s ease-in-out;
+}
+
+.orange-mouth.visible {
+  opacity: 1;
+}

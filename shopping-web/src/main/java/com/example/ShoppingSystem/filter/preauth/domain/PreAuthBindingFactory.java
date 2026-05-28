@@ -34,6 +34,7 @@ public class PreAuthBindingFactory {
 
     public PreAuthBinding createNewBinding(String token,
                                            String fpHash,
+                                           String navigationFpHash,
                                            String uaHash,
                                            String currentIp,
                                            String normalizedFingerprint) {
@@ -42,6 +43,7 @@ public class PreAuthBindingFactory {
         return new PreAuthBinding(
                 token,
                 fpHash,
+                navigationFpHash,
                 uaHash,
                 currentIp,
                 appendRecentIp(new ArrayList<>(), currentIp),
@@ -65,12 +67,19 @@ public class PreAuthBindingFactory {
     }
 
     public PreAuthBinding refreshExistingBinding(PreAuthBinding existing, String currentIp) {
-        return refreshExistingBinding(existing, currentIp, null);
+        return refreshExistingBinding(existing, currentIp, null, null);
     }
 
     public PreAuthBinding refreshExistingBinding(PreAuthBinding existing,
                                                  String currentIp,
                                                  String normalizedFingerprint) {
+        return refreshExistingBinding(existing, currentIp, normalizedFingerprint, null);
+    }
+
+    public PreAuthBinding refreshExistingBinding(PreAuthBinding existing,
+                                                 String currentIp,
+                                                 String normalizedFingerprint,
+                                                 String navigationFpHash) {
         boolean ipChanged = !StrUtil.equals(existing.currentIp(), currentIp);
         int changeCount = existing.changeCount();
         List<String> recentIps = existing.recentIps() == null
@@ -81,6 +90,7 @@ public class PreAuthBindingFactory {
         int score = existing.score();
         String riskLevel = existing.riskLevel();
         long currentIpSeenAt = existing.currentIpSeenAtEpochMillis();
+        String nextNavigationFpHash = StrUtil.blankToDefault(navigationFpHash, existing.navigationFpHash());
         IpGeoSnapshot currentGeo = new IpGeoSnapshot(
                 existing.currentCountry(),
                 existing.currentRegion(),
@@ -117,6 +127,7 @@ public class PreAuthBindingFactory {
         return new PreAuthBinding(
                 existing.token(),
                 existing.fpHash(),
+                nextNavigationFpHash,
                 existing.uaHash(),
                 currentIp,
                 recentIps,

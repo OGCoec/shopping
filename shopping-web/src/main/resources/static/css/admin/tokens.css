@@ -1,0 +1,21 @@
+:root {
+  --admin-bg: #f4f7f4;
+  --admin-panel: rgba(255, 255, 255, 0.82);
+  --admin-panel-solid: #ffffff;
+  --admin-ink: #152018;
+  --admin-muted: #657165;
+  --admin-soft: #eef4ef;
+  --admin-line: rgba(21, 32, 24, 0.12);
+  --admin-green: #0f8b6e;
+  --admin-green-soft: rgba(15, 139, 110, 0.12);
+  --admin-coral: #d56f45;
+  --admin-gold: #d8a236;
+  --admin-shadow: 0 24px 70px rgba(28, 45, 33, 0.13);
+  --admin-silicone-shadow:
+    0 22px 54px rgba(28, 45, 33, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 -18px 38px rgba(15, 139, 110, 0.035);
+  color: var(--admin-ink);
+  background: var(--admin-bg);
+  font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+}

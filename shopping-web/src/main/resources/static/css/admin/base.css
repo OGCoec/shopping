@@ -1,0 +1,25 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+body {
+  min-width: 320px;
+  background:
+    linear-gradient(135deg, rgba(15, 139, 110, 0.08), transparent 34%),
+    linear-gradient(160deg, #f4f7f4 0%, #edf3ef 54%, #f7f0e9 100%);
+}

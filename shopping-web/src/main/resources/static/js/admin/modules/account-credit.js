@@ -5,6 +5,7 @@
 
   const PREFIX = "admin-account-credit";
   const SECTION = "accountCredit";
+  const PAGE_SIZE_ERROR = "每页数量必须是大于 0 的整数。";
   const LEVEL_LABELS = {
     L1: "L1 · 8500+",
     L2: "L2 · 7500-8499",
@@ -55,6 +56,16 @@
   function levelLabel(level) {
     const normalized = normalizeLevel(level);
     return normalized ? LEVEL_LABELS[normalized] : "全部风险等级";
+  }
+
+  function readPositivePageSize(node, statusNode) {
+    const rawValue = String(node?.value || "").trim();
+    const pageSize = Number(rawValue);
+    if (!rawValue || !Number.isInteger(pageSize) || pageSize <= 0) {
+      dom.setStatusNode(statusNode, PAGE_SIZE_ERROR, "error");
+      return null;
+    }
+    return pageSize;
   }
 
   function buildHeaderRow() {
@@ -190,14 +201,17 @@
     }
 
     readParams() {
-      const pageSize = Number(this.nodes.pageSize?.value || 50);
+      const pageSize = readPositivePageSize(this.nodes.pageSize, this.nodes.statusText);
+      if (pageSize == null) {
+        return null;
+      }
       return {
         userId: (this.nodes.userId?.value || "").trim(),
         email: (this.nodes.email?.value || "").trim(),
         phone: (this.nodes.phone?.value || "").trim(),
         status: (this.nodes.status?.value || "").trim(),
         riskLevel: normalizeLevel(this.nodes.riskLevel?.value || ""),
-        pageSize: [50, 100, 200].includes(pageSize) ? pageSize : 50
+        pageSize
       };
     }
 
@@ -267,6 +281,9 @@
         this.page = 1;
       }
       const params = this.readParams();
+      if (!params) {
+        return;
+      }
       this.updateCurrentLabels(params);
       this.setLoading(true);
       dom.setStatusNode(this.nodes.statusText, "正在读取账号信用分...");
@@ -385,9 +402,13 @@
         return;
       }
       const safePage = Math.max(1, page);
+      const pageSize = readPositivePageSize(this.nodes.pageSize, status);
+      if (pageSize == null) {
+        return;
+      }
       dom.setStatusNode(status, "正在读取信用分流水...");
       try {
-        const response = await api.get(`/shopping/admin/api/accounts/credit/${encodeURIComponent(userId)}/events?page=${safePage}&pageSize=50`);
+        const response = await api.get(`/shopping/admin/api/accounts/credit/${encodeURIComponent(userId)}/events?page=${safePage}&pageSize=${pageSize}`);
         const data = response.data || {};
         panel.dataset.page = String(data.page || safePage);
         if (prev) {

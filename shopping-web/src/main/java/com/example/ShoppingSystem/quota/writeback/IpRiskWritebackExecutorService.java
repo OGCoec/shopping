@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.quota.writeback;
 
-import com.example.ShoppingSystem.mapper.IpReputationProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper;
 import com.example.ShoppingSystem.quota.IpRiskCachedPayload;
 import com.example.ShoppingSystem.quota.IpRiskLocalCacheStore;
 import com.example.ShoppingSystem.service.user.auth.register.risk.impl.IpL6CountingBloomDecisionService;

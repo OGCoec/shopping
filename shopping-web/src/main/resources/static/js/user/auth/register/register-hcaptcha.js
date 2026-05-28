@@ -109,7 +109,7 @@
           resolve();
         };
         const script = document.createElement("script");
-        script.src = `https://js.hcaptcha.com/1/api.js?onload=${hcaptchaOnloadName}&render=explicit`;
+        script.src = `https://js.hcaptcha.com/1/api.js?onload=${encodeURIComponent(hcaptchaOnloadName)}&render=explicit&recaptchacompat=off`;
         script.async = true;
         script.defer = true;
         script.onerror = () => {

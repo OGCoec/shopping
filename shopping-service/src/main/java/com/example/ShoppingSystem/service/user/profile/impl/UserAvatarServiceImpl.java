@@ -4,7 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.Utils.AliyunUtils;
 import com.example.ShoppingSystem.avatar.AvatarMetadata;
 import com.example.ShoppingSystem.avatar.AvatarMetadataUtils;
-import com.example.ShoppingSystem.mapper.UserProfileMapper;
+import com.example.ShoppingSystem.mapper.user.UserProfileMapper;
 import com.example.ShoppingSystem.service.user.profile.UserAvatarService;
 import com.example.ShoppingSystem.service.user.profile.UserAvatarUploadMessagePublisher;
 import com.example.ShoppingSystem.service.user.profile.mq.UserAvatarUploadMessage;

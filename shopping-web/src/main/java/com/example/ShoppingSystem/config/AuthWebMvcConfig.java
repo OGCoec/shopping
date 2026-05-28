@@ -97,7 +97,6 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/shopping/**")
                 .excludePathPatterns(
                         "/shopping/admin/**",
-                        "/shopping/auth/preauth/phone-country",
                         "/shopping/auth/waf/verify",
                         "/shopping/auth/network-check-failed",
                         "/css/**",
@@ -134,9 +133,6 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/totp-verification",
                         "/shopping/user/add-phone",
                         "/shopping/user/session-ended",
-                        "/shopping/user/profile",
-                        "/shopping/user/console",
-                        "/shopping/user/security/phone",
                         "/shopping/user/forgot-password",
                         "/shopping/user/reset-password-url",
                         "/shopping/user/reset-password-code",
@@ -191,6 +187,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(accessTokenAuthenticationInterceptor)
                 .addPathPatterns(
                         "/shopping/user/auth/me",
+                        "/shopping/user/products/**",
                         "/shopping/user/session/page-gate",
                         "/shopping/user/auth/logout-all",
                         "/shopping/user/profile/avatar",
@@ -206,6 +203,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(postLoginAccountNetworkRiskInterceptor)
                 .addPathPatterns(
                         "/shopping/user/auth/me",
+                        "/shopping/user/products/**",
                         "/shopping/user/session/page-gate",
                         "/shopping/user/auth/logout-all",
                         "/shopping/user/profile/avatar",
@@ -221,6 +219,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(phoneBindingRequiredInterceptor)
                 .addPathPatterns(
                         "/shopping/user/profile/avatar",
+                        "/shopping/user/products/**",
                         "/shopping/user/session/page-gate",
                         "/shopping/user/profile/deletion",
                         "/shopping/api/product-categories/**",

@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.service.user.auth.risk.impl;
 
-import com.example.ShoppingSystem.mapper.UserRiskProfileMapper;
+import com.example.ShoppingSystem.mapper.risk.UserRiskProfileMapper;
 import com.example.ShoppingSystem.service.user.auth.risk.UserRiskLockRecoveryService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
