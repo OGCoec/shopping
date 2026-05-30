@@ -3,10 +3,17 @@ package com.example.ShoppingSystem.admin.service.product;
 import cn.hutool.core.util.IdUtil;
 import com.example.ShoppingSystem.Utils.AliyunUtils;
 import com.example.ShoppingSystem.Utils.HybridSemaphoreIdWorker;
+import com.example.ShoppingSystem.Utils.ProductSkuIdCodec;
 import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
 import com.example.ShoppingSystem.admin.dto.AdminProductImageCancelRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductImagePreuploadResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductImageUsageRequest;
+import com.example.ShoppingSystem.admin.dto.AdminProductSkuBatchIdsRequest;
+import com.example.ShoppingSystem.admin.dto.AdminProductSkuBatchResponse;
+import com.example.ShoppingSystem.admin.dto.AdminProductSkuBatchStatusRequest;
+import com.example.ShoppingSystem.admin.dto.AdminProductSkuCreateRequest;
+import com.example.ShoppingSystem.admin.dto.AdminProductSkuDeleteResponse;
+import com.example.ShoppingSystem.admin.dto.AdminProductSkuUpdateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuBatchDeleteResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuBatchDisableResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuBatchIdsRequest;
@@ -70,7 +77,6 @@ public class AdminProductSpuService {
     private static final int MAX_IMAGE_URL_LENGTH = 512;
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int NANO_ID_LENGTH = 48;
-    private static final String SKU_ID_HEX_PATTERN = "^[0-9a-f]{32}$";
     private static final char[] BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".toCharArray();
     private static final Duration IMAGE_SESSION_TTL = Duration.ofHours(1);
     private static final String IMAGE_SESSION_PREFIX = "admin:product:spu:image:session:";
@@ -201,15 +207,135 @@ public class AdminProductSpuService {
     public AdminProductSpuDetailSkuResponse getSkuDetail(Long id, String skuId) {
         Long spuId = normalizeRequiredId(id, "商品 ID");
         String normalizedSkuId = normalizeSkuId(skuId);
+        byte[] normalizedSkuIdBytes = skuIdBytes(normalizedSkuId);
         if (!skuBloomService.mightSkuExist(normalizedSkuId)) {
             throw skuNotFoundException();
         }
-        AdminProductSpuDetailResponse detail = getDetail(spuId);
-        List<AdminProductSpuDetailSkuResponse> skus = detail.skus() == null ? List.of() : detail.skus();
-        return skus.stream()
-                .filter(sku -> sku != null && normalizedSkuId.equals(sku.id()))
-                .findFirst()
-                .orElseThrow(this::skuNotFoundException);
+        return findSkuDetailResponse(spuId, normalizedSkuIdBytes);
+    }
+
+    @Transactional
+    public AdminProductSpuDetailSkuResponse createSku(Long id, AdminProductSkuCreateRequest request) {
+        Long spuId = normalizeRequiredId(id, "商品 ID");
+        ensureProductExists(spuId);
+        NormalizedSkuUpdate normalized = skuService.normalizeSkuCreate(spuId, request);
+        SkuImageFinalizeResult imageFinalizeResult = finalizeRequestedSkuImages(
+                spuId,
+                normalized.finalId(),
+                normalized.skuImageUrls(),
+                normalizeImageUsageRequests(request == null ? null : request.imageUploadSessions()));
+        registerTransferredImageSynchronization(
+                imageFinalizeResult.tempObjectKeys(),
+                imageFinalizeResult.finalObjectKeys(),
+                imageFinalizeResult.sessionKeys());
+        NormalizedSkuUpdate finalSku = normalized.withSkuImageUrls(imageFinalizeResult.skuImageUrls());
+        Map<String, Object> result = productSpuMapper.insertSku(
+                spuId,
+                finalSku.finalIdBytes(),
+                finalSku.skuCode(),
+                finalSku.skuName(),
+                toJsonString(finalSku.specJson()),
+                toJsonString(finalSku.skuImageUrls()),
+                finalSku.priceYuan(),
+                finalSku.originalPriceYuan(),
+                finalSku.stockQuantity(),
+                finalSku.status());
+        validateSkuCreateResult(result);
+        skuBloomService.addSkuIdsAfterCommit(List.of(finalSku.finalId()));
+        invalidateSkuProductAfterCommit(spuId);
+        return findSkuDetailResponse(spuId, finalSku.finalIdBytes());
+    }
+
+    @Transactional
+    public AdminProductSpuDetailSkuResponse updateSku(Long id, String skuId, AdminProductSkuUpdateRequest request) {
+        Long spuId = normalizeRequiredId(id, "商品 ID");
+        String normalizedSkuId = normalizeSkuId(skuId);
+        byte[] normalizedSkuIdBytes = skuIdBytes(normalizedSkuId);
+        ensureSkuExists(spuId, normalizedSkuIdBytes);
+        NormalizedSkuUpdate normalized = skuService.normalizeSkuUpdate(spuId, normalizedSkuId, request);
+        SkuImageFinalizeResult imageFinalizeResult = finalizeRequestedSkuImages(
+                spuId,
+                normalized.finalId(),
+                normalized.skuImageUrls(),
+                normalizeImageUsageRequests(request == null ? null : request.imageUploadSessions()));
+        registerTransferredImageSynchronization(
+                imageFinalizeResult.tempObjectKeys(),
+                imageFinalizeResult.finalObjectKeys(),
+                imageFinalizeResult.sessionKeys());
+        NormalizedSkuUpdate finalSku = normalized.withSkuImageUrls(imageFinalizeResult.skuImageUrls());
+        Map<String, Object> result = productSpuMapper.updateSkuBySpuIdAndSkuId(
+                spuId,
+                finalSku.finalIdBytes(),
+                finalSku.skuCode(),
+                finalSku.skuName(),
+                toJsonString(finalSku.specJson()),
+                toJsonString(finalSku.skuImageUrls()),
+                finalSku.priceYuan(),
+                finalSku.originalPriceYuan(),
+                finalSku.stockQuantity(),
+                finalSku.status());
+        validateSkuUpdateResult(result);
+        Set<String> oldKeys = new LinkedHashSet<>(cleanupObjectKeys(value(result, "oldImageUrlsJson")));
+        oldKeys.removeAll(cleanupObjectKeys(collectJsonImageUrls(finalSku.skuImageUrls())));
+        queueCleanupKeysAfterCommit(oldKeys);
+        invalidateSkuProductAfterCommit(spuId);
+        return findSkuDetailResponse(spuId, finalSku.finalIdBytes());
+    }
+
+    @Transactional
+    public AdminProductSpuDetailSkuResponse changeSkuStatus(Long id, String skuId, AdminProductSpuStatusRequest request) {
+        Long spuId = normalizeRequiredId(id, "商品 ID");
+        String normalizedSkuId = normalizeSkuId(skuId);
+        String status = normalizeStatus(request == null ? null : request.status(), "");
+        byte[] normalizedSkuIdBytes = skuIdBytes(normalizedSkuId);
+        Map<String, Object> result = productSpuMapper.updateSkuStatusBySpuIdAndSkuId(spuId, normalizedSkuIdBytes, status);
+        validateSkuUpdateResult(result);
+        invalidateSkuProductAfterCommit(spuId);
+        return findSkuDetailResponse(spuId, normalizedSkuIdBytes);
+    }
+
+    @Transactional
+    public AdminProductSkuDeleteResponse deleteSku(Long id, String skuId) {
+        Long spuId = normalizeRequiredId(id, "商品 ID");
+        String normalizedSkuId = normalizeSkuId(skuId);
+        Map<String, Object> result = productSpuMapper.deleteSkuBySpuIdAndSkuIdReturningImages(spuId, skuIdBytes(normalizedSkuId));
+        validateSkuDeleteResult(result);
+        List<String> cleanupKeys = cleanupObjectKeys(value(result, "imageUrlsJson"));
+        queueCleanupKeysAfterCommit(cleanupKeys);
+        skuBloomService.removeSkuIdsAfterCommit(List.of(normalizedSkuId));
+        invalidateSkuProductAfterCommit(spuId);
+        return new AdminProductSkuDeleteResponse(spuId, normalizedSkuId, true, cleanupKeys.size());
+    }
+
+    @Transactional
+    public AdminProductSkuBatchResponse batchChangeSkuStatus(Long id, AdminProductSkuBatchStatusRequest request) {
+        Long spuId = normalizeRequiredId(id, "商品 ID");
+        List<String> skuIds = normalizeBatchSkuIds(request == null ? null : request.ids());
+        String status = normalizeStatus(request == null ? null : request.status(), "");
+        Map<String, Object> result = productSpuMapper.batchUpdateSkuStatusByIds(spuId, skuIdBytes(skuIds), status);
+        validateSkuBatchResult(result);
+        invalidateSkuProductAfterCommit(spuId);
+        return new AdminProductSkuBatchResponse(
+                toInt(value(result, "requestedCount"), skuIds.size()),
+                toInt(value(result, "matchedCount"), 0),
+                toInt(value(result, "affectedCount"), 0));
+    }
+
+    @Transactional
+    public AdminProductSkuBatchResponse batchDeleteSku(Long id, AdminProductSkuBatchIdsRequest request) {
+        Long spuId = normalizeRequiredId(id, "商品 ID");
+        List<String> skuIds = normalizeBatchSkuIds(request == null ? null : request.ids());
+        Map<String, Object> result = productSpuMapper.batchDeleteSkuByIdsReturningImages(spuId, skuIdBytes(skuIds));
+        validateSkuBatchResult(result);
+        List<String> cleanupKeys = cleanupObjectKeys(value(result, "imageUrlsJson"));
+        queueCleanupKeysAfterCommit(cleanupKeys);
+        List<String> deletedSkuIds = parseSkuIdHexList(value(result, "deletedSkuIdsJson"));
+        skuBloomService.removeSkuIdsAfterCommit(deletedSkuIds);
+        invalidateSkuProductAfterCommit(spuId);
+        return new AdminProductSkuBatchResponse(
+                toInt(value(result, "requestedCount"), skuIds.size()),
+                toInt(value(result, "matchedCount"), 0),
+                toInt(value(result, "affectedCount"), 0));
     }
 
     @Transactional
@@ -224,6 +350,7 @@ public class AdminProductSpuService {
         Map<String, Object> result = productSpuMapper.updateSpuDetail(
                 spuId,
                 normalized.categoryId(),
+                normalized.name(),
                 normalized.subtitle(),
                 normalized.brandName(),
                 imageFinalizeResult.mainImageUrl(),
@@ -237,7 +364,7 @@ public class AdminProductSpuService {
                 imageFinalizeResult.skusJson());
         validateDetailUpdateResult(result);
         List<String> createdSkuIds = assembler.parseStringList(value(result, "createdSkuIdsJson"));
-        List<String> deletedSkuIds = assembler.parseStringList(value(result, "deletedSkuIdsJson"));
+        List<String> deletedSkuIds = parseSkuIdHexList(value(result, "deletedSkuIdsJson"));
         skuBloomService.removeSkuIdsAfterCommit(deletedSkuIds);
         skuBloomService.addSkuIdsAfterCommit(createdSkuIds);
         Set<String> oldKeys = new LinkedHashSet<>(cleanupObjectKeys(value(result, "oldImageUrlsJson")));
@@ -368,7 +495,7 @@ public class AdminProductSpuService {
         List<String> cleanupKeys = cleanupObjectKeys(value(result, "imageUrlsJson"));
         queueCleanupKeysAfterCommit(cleanupKeys);
         List<Long> deletedIds = assembler.parseLongList(value(result, "deletedIdsJson"));
-        List<String> deletedSkuIds = assembler.parseStringList(value(result, "deletedSkuIdsJson"));
+        List<String> deletedSkuIds = parseSkuIdHexList(value(result, "deletedSkuIdsJson"));
         detailCacheService.invalidateAfterCommit(deletedIds);
         publicDetailCacheService.invalidateAfterCommit(deletedIds);
         detailCacheService.deleteProductBloomIdsAfterCommit(deletedIds);
@@ -392,7 +519,7 @@ public class AdminProductSpuService {
         List<String> cleanupKeys = cleanupObjectKeys(value(result, "imageUrlsJson"));
         queueCleanupKeysAfterCommit(cleanupKeys);
         List<Long> deletedIds = assembler.parseLongList(value(result, "deletedIdsJson"));
-        List<String> deletedSkuIds = assembler.parseStringList(value(result, "deletedSkuIdsJson"));
+        List<String> deletedSkuIds = parseSkuIdHexList(value(result, "deletedSkuIdsJson"));
         detailCacheService.invalidateAfterCommit(deletedIds);
         publicDetailCacheService.invalidateAfterCommit(deletedIds);
         detailCacheService.deleteProductBloomIdsAfterCommit(deletedIds);
@@ -434,6 +561,82 @@ public class AdminProductSpuService {
         return assembler.toSpuDetailResponse(row);
     }
 
+    private AdminProductSpuDetailSkuResponse findSkuDetailResponse(Long spuId, byte[] skuId) {
+        Map<String, Object> row = productSpuMapper.findSkuBySpuIdAndSkuId(spuId, skuId);
+        AdminProductSpuDetailSkuResponse response = assembler.toSkuResponse(row);
+        if (response == null) {
+            throw skuNotFoundException();
+        }
+        return response;
+    }
+
+    private void ensureProductExists(Long spuId) {
+        Map<String, Object> existing = productSpuMapper.findSpuById(spuId);
+        if (existing == null || existing.isEmpty()) {
+            throw productNotFoundException();
+        }
+    }
+
+    private void ensureSkuExists(Long spuId, byte[] skuId) {
+        Map<String, Object> existing = productSpuMapper.findSkuBySpuIdAndSkuId(spuId, skuId);
+        if (existing == null || existing.isEmpty()) {
+            throw skuNotFoundException();
+        }
+    }
+
+    private void invalidateSkuProductAfterCommit(Long spuId) {
+        detailCacheService.invalidateAfterCommit(List.of(spuId));
+        publicDetailCacheService.invalidateAfterCommit(List.of(spuId));
+        productIndexService.syncProductsAfterCommit(List.of(spuId));
+    }
+
+    private void validateSkuCreateResult(Map<String, Object> result) {
+        if (!toBoolean(value(result, "spuExists"))) {
+            throw productNotFoundException();
+        }
+        if (toInt(value(result, "insertedCount"), 0) <= 0) {
+            throw new AdminServiceException(
+                    "ADMIN_PRODUCT_SKU_CREATE_FAILED",
+                    "SKU 创建失败，请刷新后重试。",
+                    HttpStatus.CONFLICT);
+        }
+    }
+
+    private void validateSkuUpdateResult(Map<String, Object> result) {
+        if (!toBoolean(value(result, "spuExists"))) {
+            throw productNotFoundException();
+        }
+        if (!toBoolean(value(result, "skuExists"))) {
+            throw skuNotFoundException();
+        }
+        if (toInt(value(result, "updatedCount"), 0) <= 0) {
+            throw skuNotFoundException();
+        }
+    }
+
+    private void validateSkuDeleteResult(Map<String, Object> result) {
+        if (!toBoolean(value(result, "spuExists"))) {
+            throw productNotFoundException();
+        }
+        if (!toBoolean(value(result, "skuExists"))) {
+            throw skuNotFoundException();
+        }
+        if (toInt(value(result, "deletedCount"), 0) <= 0) {
+            throw skuNotFoundException();
+        }
+    }
+
+    private void validateSkuBatchResult(Map<String, Object> result) {
+        if (!toBoolean(value(result, "spuExists"))) {
+            throw productNotFoundException();
+        }
+        int requestedCount = toInt(value(result, "requestedCount"), 0);
+        int matchedCount = toInt(value(result, "matchedCount"), 0);
+        if (matchedCount != requestedCount) {
+            throw skuNotFoundException();
+        }
+    }
+
     private NormalizedProductDetailUpdate normalizeDetailUpdateRequest(Long spuId, AdminProductSpuDetailUpdateRequest request) {
         if (request == null) {
             throw new AdminServiceException(
@@ -442,6 +645,7 @@ public class AdminProductSpuService {
                     HttpStatus.BAD_REQUEST);
         }
         Long categoryId = normalizeRequiredId(request.categoryId(), "分类 ID");
+        String name = normalizeRequiredText(request.name(), "商品名称", MAX_NAME_LENGTH);
         String subtitle = normalizeNullableText(request.subtitle(), "商品副标题", MAX_SUBTITLE_LENGTH);
         String brandName = normalizeNullableText(request.brandName(), "品牌名称", MAX_BRAND_NAME_LENGTH);
         String mainImageUrl = normalizeNullableText(request.mainImageUrl(), "商品主图", MAX_IMAGE_URL_LENGTH);
@@ -455,6 +659,7 @@ public class AdminProductSpuService {
         List<AdminProductImageUsageRequest> imageUploadSessions = normalizeImageUsageRequests(request.imageUploadSessions());
         return new NormalizedProductDetailUpdate(
                 categoryId,
+                name,
                 subtitle,
                 brandName,
                 mainImageUrl,
@@ -558,6 +763,69 @@ public class AdminProductSpuService {
                 detailImageUrls,
                 skus,
                 skuService.toSkuJson(skus),
+                tempObjectKeys,
+                finalObjectKeys,
+                sessionKeys);
+    }
+
+    private SkuImageFinalizeResult finalizeRequestedSkuImages(Long spuId,
+                                                              String skuId,
+                                                              JsonNode skuImageUrls,
+                                                              List<AdminProductImageUsageRequest> imageUploadSessions) {
+        Set<String> requestedTempUrls = new LinkedHashSet<>();
+        for (String url : collectJsonImageUrls(skuImageUrls)) {
+            if (!extractTempProductObjectKey(url).isBlank()) {
+                requestedTempUrls.add(url);
+            }
+        }
+        if (requestedTempUrls.isEmpty()) {
+            return new SkuImageFinalizeResult(
+                    jsonNodeOrDefault(skuImageUrls, true),
+                    List.of(),
+                    List.of(),
+                    List.of());
+        }
+        Map<String, ImageSession> sessionsById = loadImageSessionsById(imageUploadSessions);
+        Map<String, String> uploadSessionIdsByTempUrl = new LinkedHashMap<>();
+        Map<String, ImageSession> sessionsByTempUrl = new LinkedHashMap<>();
+        sessionsById.forEach((uploadSessionId, session) -> {
+            uploadSessionIdsByTempUrl.put(session.tempUrl(), uploadSessionId);
+            sessionsByTempUrl.put(session.tempUrl(), session);
+        });
+        for (String tempUrl : requestedTempUrls) {
+            if (!sessionsByTempUrl.containsKey(tempUrl)) {
+                throw new AdminServiceException(
+                        "ADMIN_PRODUCT_IMAGE_SESSION_REQUIRED",
+                        "新上传图片缺少有效的预上传会话。",
+                        HttpStatus.BAD_REQUEST);
+            }
+        }
+        Map<String, FinalImage> finalImagesByTempUrl = new LinkedHashMap<>();
+        List<String> finalObjectKeys = new ArrayList<>();
+        try {
+            for (String tempUrl : requestedTempUrls) {
+                ImageSession session = sessionsByTempUrl.get(tempUrl);
+                FinalImage finalImage = copyTempImageToSkuProduct(session.objectKey(), spuId, skuId);
+                finalImagesByTempUrl.put(tempUrl, finalImage);
+                finalObjectKeys.add(finalImage.objectKey());
+            }
+        } catch (RuntimeException e) {
+            deleteObjectKeysWithCompensation(finalObjectKeys);
+            throw e;
+        }
+        List<String> tempObjectKeys = requestedTempUrls.stream()
+                .map(sessionsByTempUrl::get)
+                .map(ImageSession::objectKey)
+                .filter(key -> !key.isBlank())
+                .distinct()
+                .toList();
+        List<String> sessionKeys = requestedTempUrls.stream()
+                .map(uploadSessionIdsByTempUrl::get)
+                .filter(id -> id != null && !id.isBlank())
+                .map(this::imageSessionKey)
+                .toList();
+        return new SkuImageFinalizeResult(
+                replaceTempUrls(skuImageUrls, finalImagesByTempUrl),
                 tempObjectKeys,
                 finalObjectKeys,
                 sessionKeys);
@@ -748,6 +1016,52 @@ public class AdminProductSpuService {
                     HttpStatus.BAD_REQUEST);
         }
         return new ArrayList<>(ids);
+    }
+
+    private List<String> normalizeBatchSkuIds(List<String> rawIds) {
+        if (rawIds == null || rawIds.isEmpty()) {
+            throw new AdminServiceException(
+                    "ADMIN_PRODUCT_SKU_BATCH_EMPTY",
+                    "请选择需要处理的 SKU。",
+                    HttpStatus.BAD_REQUEST);
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (String rawId : rawIds) {
+            ids.add(normalizeSkuId(rawId));
+        }
+        if (ids.isEmpty()) {
+            throw new AdminServiceException(
+                    "ADMIN_PRODUCT_SKU_BATCH_EMPTY",
+                    "请选择需要处理的 SKU。",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return new ArrayList<>(ids);
+    }
+
+    private List<byte[]> skuIdBytes(List<String> skuIds) {
+        if (skuIds == null || skuIds.isEmpty()) {
+            return List.of();
+        }
+        return skuIds.stream()
+                .map(this::skuIdBytes)
+                .toList();
+    }
+
+    private byte[] skuIdBytes(String skuId) {
+        try {
+            return ProductSkuIdCodec.fromBase62(skuId);
+        } catch (IllegalArgumentException e) {
+            throw new AdminServiceException(
+                    "ADMIN_PRODUCT_SKU_ID_INVALID",
+                    "SKU ID 无效。",
+                    HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private List<String> parseSkuIdHexList(Object raw) {
+        return assembler.parseStringList(raw).stream()
+                .map(ProductSkuIdCodec::hexToBase62)
+                .toList();
     }
 
     private void validateLeafCategoryBatchResult(Map<String, Object> result) {
@@ -1336,12 +1650,13 @@ public class AdminProductSpuService {
 
     private String normalizeSkuId(String id) {
         String value = normalizeText(id);
-        if (!value.matches(SKU_ID_HEX_PATTERN)) {
+        if (!value.matches(ProductSkuIdCodec.BASE62_PATTERN)) {
             throw new AdminServiceException(
                     "ADMIN_PRODUCT_SKU_ID_INVALID",
                     "SKU ID 无效。",
                     HttpStatus.BAD_REQUEST);
         }
+        skuIdBytes(value);
         return value;
     }
 
@@ -1454,6 +1769,7 @@ public class AdminProductSpuService {
     }
 
     private record NormalizedProductDetailUpdate(Long categoryId,
+                                                 String name,
                                                  String subtitle,
                                                  String brandName,
                                                  String mainImageUrl,
@@ -1475,6 +1791,12 @@ public class AdminProductSpuService {
                                        List<String> tempObjectKeys,
                                        List<String> finalObjectKeys,
                                        List<String> sessionKeys) {
+    }
+
+    private record SkuImageFinalizeResult(JsonNode skuImageUrls,
+                                          List<String> tempObjectKeys,
+                                          List<String> finalObjectKeys,
+                                          List<String> sessionKeys) {
     }
 
     private record ImageSession(String tempUrl, String objectKey) {

@@ -18,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Manual writer for IP2Location quota keys in Redis DB 2.
@@ -73,7 +72,7 @@ public class Ip2LocationQuotaWriteInRedisMain {
 
             boolean locked = false;
             try {
-                locked = lock.tryLock(0, 1, TimeUnit.MINUTES);
+                locked = lock.tryLock();
                 if (!locked) {
                     System.out.println("Quota write failed: another quota maintenance operation is running.");
                     return;

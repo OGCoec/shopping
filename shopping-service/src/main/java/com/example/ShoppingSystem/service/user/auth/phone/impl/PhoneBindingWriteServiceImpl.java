@@ -22,7 +22,6 @@ public class PhoneBindingWriteServiceImpl implements PhoneBindingWriteService {
 
     private static final String LOCK_KEY_PREFIX = "lock:phone:bind:";
     private static final long LOCK_WAIT_SECONDS = 2L;
-    private static final long LOCK_LEASE_SECONDS = 30L;
 
     private final RedissonClient redissonClient;
     private final UserLoginIdentityMapper userLoginIdentityMapper;
@@ -49,7 +48,7 @@ public class PhoneBindingWriteServiceImpl implements PhoneBindingWriteService {
         boolean locked = false;
         boolean unlockDeferred = false;
         try {
-            locked = lock.tryLock(LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS, TimeUnit.SECONDS);
+            locked = lock.tryLock(LOCK_WAIT_SECONDS, TimeUnit.SECONDS);
             if (!locked) {
                 return failed(ERROR_PHONE_BIND_BUSY, "Phone binding is busy, please try again later.", phone);
             }

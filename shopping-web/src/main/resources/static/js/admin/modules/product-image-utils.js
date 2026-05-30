@@ -174,6 +174,66 @@
     return /^\d+(\.\d{1,2})?$/.test(text) ? text : "0";
   }
 
+  function buildSkuNumericPayload(sku) {
+    const price = parseRequiredSkuMoney(sku?.priceYuan, "SKU 价格");
+    if (!price.ok) {
+      return price;
+    }
+    const originalPrice = parseOptionalSkuMoney(sku?.originalPriceYuan, "SKU 原价");
+    if (!originalPrice.ok) {
+      return originalPrice;
+    }
+    if (originalPrice.value !== null && moneyToCents(originalPrice.value) < moneyToCents(price.value)) {
+      return { ok: false, message: "SKU 原价不能小于销售价。" };
+    }
+    const stock = parseSkuStock(sku?.stockQuantity);
+    if (!stock.ok) {
+      return stock;
+    }
+    return {
+      ok: true,
+      priceYuan: price.value,
+      originalPriceYuan: originalPrice.value,
+      stockQuantity: stock.value
+    };
+  }
+
+  function parseRequiredSkuMoney(value, label) {
+    const text = String(value ?? "").trim();
+    if (!text) {
+      return { ok: false, message: `${label}不能为空。` };
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(text)) {
+      return { ok: false, message: `${label}只能输入数字，最多两位小数。` };
+    }
+    return { ok: true, value: text };
+  }
+
+  function parseOptionalSkuMoney(value, label) {
+    const text = String(value ?? "").trim();
+    if (!text) {
+      return { ok: true, value: null };
+    }
+    return parseRequiredSkuMoney(text, label);
+  }
+
+  function parseSkuStock(value) {
+    const text = String(value ?? "").trim();
+    if (!/^\d+$/.test(text)) {
+      return { ok: false, message: "SKU 库存只能输入数字。" };
+    }
+    const stock = Number.parseInt(text, 10);
+    if (!Number.isSafeInteger(stock) || stock <= 0 || stock > 2147483647) {
+      return { ok: false, message: "SKU 库存必须大于 0。" };
+    }
+    return { ok: true, value: stock };
+  }
+
+  function moneyToCents(value) {
+    const [yuan, cents = ""] = String(value).split(".");
+    return BigInt(yuan) * 100n + BigInt((cents + "00").slice(0, 2));
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -221,6 +281,7 @@
     formatJson,
     integerOrZero,
     decimalOrZero,
+    buildSkuNumericPayload,
     escapeHtml,
     escapeAttribute,
     normalizeSearchText,

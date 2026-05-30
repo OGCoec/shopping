@@ -348,7 +348,7 @@
   }
 
   .admin-product-detail-sku-row,
-  .admin-product-detail-sku-edit-row {
+  .admin-product-sku-card-list {
     grid-template-columns: 1fr;
   }
 

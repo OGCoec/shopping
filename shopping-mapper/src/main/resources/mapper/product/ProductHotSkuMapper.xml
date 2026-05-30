@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.product.ProductHotSkuMapper">
+
+    <select id="listHotSkusBySpuId" resultType="map">
+        <![CDATA[
+SELECT encode(h.id, 'hex') AS "id",
+       h.spu_id AS "spuId",
+       encode(h.sku_id, 'hex') AS "skuId",
+       s.sku_code AS "skuCode",
+       s.sku_name AS "skuName",
+       s.stock_quantity AS "skuStockQuantity",
+       s.status AS "skuStatus",
+       h.stock_quantity AS "stockQuantity",
+       h.remaining_quantity AS "remainingQuantity",
+       h.status AS "status",
+       h.start_at AS "startAt",
+       h.end_at AS "endAt",
+       h.version AS "version",
+       h.created_at AS "createdAt",
+       h.updated_at AS "updatedAt"
+FROM product_hot_sku h
+INNER JOIN product_sku s ON s.id = h.sku_id
+WHERE h.spu_id = #{spuId}
+ORDER BY h.updated_at DESC, h.created_at DESC
+        ]]>
+    </select>
+
+    <select id="upsertHotSkus" resultType="map">
+        <![CDATA[
+WITH target_spu AS (
+    SELECT id
+    FROM product_spu
+    WHERE id = #{spuId}
+),
+incoming AS (
+    SELECT raw.sku_id AS sku_id,
+           raw.sku_id_bytes_hex AS sku_id_bytes_hex,
+           raw.hot_id_bytes_hex AS hot_id_bytes_hex,
+           raw.stock_quantity AS stock_quantity,
+           raw.status AS status,
+           raw.start_at_epoch_ms AS start_at_epoch_ms,
+           raw.end_at_epoch_ms AS end_at_epoch_ms
+    FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
+        sku_id text,
+        sku_id_bytes_hex text,
+        hot_id_bytes_hex text,
+        stock_quantity integer,
+        status text,
+        start_at_epoch_ms bigint,
+        end_at_epoch_ms bigint
+    )
+),
+normalized AS (
+    SELECT sku_id,
+           decode(sku_id_bytes_hex, 'hex') AS sku_id_bytes,
+           decode(hot_id_bytes_hex, 'hex') AS hot_id_bytes,
+           stock_quantity,
+           status,
+           CASE WHEN start_at_epoch_ms IS NULL THEN NULL ELSE to_timestamp(start_at_epoch_ms / 1000.0) END AS start_at,
+           CASE WHEN end_at_epoch_ms IS NULL THEN NULL ELSE to_timestamp(end_at_epoch_ms / 1000.0) END AS end_at
+    FROM incoming
+),
+target_sku AS (
+    SELECT n.*,
+           s.stock_quantity AS db_stock_quantity,
+           s.status AS sku_status
+    FROM normalized n
+    LEFT JOIN product_sku s
+      ON s.spu_id = #{spuId}
+     AND s.id = n.sku_id_bytes
+),
+stats AS (
+    SELECT EXISTS(SELECT 1 FROM target_spu) AS spu_exists,
+           (SELECT COUNT(*) FROM normalized) AS requested_count,
+           COUNT(db_stock_quantity) AS matched_count,
+           COUNT(*) FILTER (WHERE db_stock_quantity IS NOT NULL AND sku_status != 'ACTIVE') AS inactive_count,
+           COUNT(*) FILTER (
+               WHERE db_stock_quantity IS NOT NULL
+                 AND (stock_quantity IS NULL OR stock_quantity <= 0 OR stock_quantity > db_stock_quantity)
+           ) AS stock_invalid_count
+    FROM target_sku
+),
+upserted AS (
+    INSERT INTO product_hot_sku (
+        id,
+        spu_id,
+        sku_id,
+        stock_quantity,
+        remaining_quantity,
+        status,
+        start_at,
+        end_at
+    )
+    SELECT t.hot_id_bytes,
+           #{spuId},
+           t.sku_id_bytes,
+           t.stock_quantity,
+           t.stock_quantity,
+           t.status,
+           t.start_at,
+           t.end_at
+    FROM target_sku t
+    CROSS JOIN stats st
+    WHERE st.spu_exists = true
+      AND st.requested_count = st.matched_count
+      AND st.inactive_count = 0
+      AND st.stock_invalid_count = 0
+    ON CONFLICT (sku_id) DO UPDATE
+    SET stock_quantity = EXCLUDED.stock_quantity,
+        remaining_quantity = EXCLUDED.remaining_quantity,
+        status = EXCLUDED.status,
+        start_at = EXCLUDED.start_at,
+        end_at = EXCLUDED.end_at,
+        version = product_hot_sku.version + 1,
+        updated_at = NOW()
+    RETURNING sku_id, stock_quantity, remaining_quantity, status, start_at, end_at, version
+)
+SELECT (SELECT spu_exists FROM stats) AS "spuExists",
+       (SELECT requested_count FROM stats) AS "requestedCount",
+       (SELECT matched_count FROM stats) AS "matchedCount",
+       (SELECT inactive_count FROM stats) AS "inactiveCount",
+       (SELECT stock_invalid_count FROM stats) AS "stockInvalidCount",
+       (SELECT COUNT(*) FROM upserted) AS "affectedCount",
+       COALESCE((
+           SELECT jsonb_agg(
+                      jsonb_build_object(
+                          'skuId', encode(sku_id, 'hex'),
+                          'stockQuantity', stock_quantity,
+                          'remainingQuantity', remaining_quantity,
+                          'status', status,
+                          'startAtEpochMs', FLOOR(EXTRACT(EPOCH FROM start_at) * 1000)::bigint,
+                          'endAtEpochMs', FLOOR(EXTRACT(EPOCH FROM end_at) * 1000)::bigint,
+                          'version', version
+                      )
+                  )
+           FROM upserted
+       ), '[]'::jsonb)::text AS "redisItemsJson"
+        ]]>
+    </select>
+
+    <select id="deleteHotSkusBySkuIds" resultType="map">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="ids" item="id" separator=",">
+                (#{id})
+            </foreach>
+        ),
+        normalized_requested AS (
+            SELECT DISTINCT id
+            FROM requested
+        ),
+        target_spu AS (
+            SELECT id
+            FROM product_spu
+            WHERE id = #{spuId}
+        ),
+        target_hot AS (
+            SELECT h.sku_id
+            FROM product_hot_sku h
+            INNER JOIN normalized_requested r ON r.id = h.sku_id
+            WHERE h.spu_id = #{spuId}
+        ),
+        deleted AS (
+            DELETE FROM product_hot_sku h
+            USING target_hot t
+            WHERE h.sku_id = t.sku_id
+              AND h.spu_id = #{spuId}
+              AND EXISTS (SELECT 1 FROM target_spu)
+            RETURNING h.sku_id
+        )
+        SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
+               (SELECT COUNT(*) FROM normalized_requested) AS "requestedCount",
+               (SELECT COUNT(*) FROM target_hot) AS "matchedCount",
+               (SELECT COUNT(*) FROM deleted) AS "affectedCount",
+               COALESCE((SELECT jsonb_agg(encode(sku_id, 'hex')) FROM deleted), '[]'::jsonb)::text AS "deletedSkuIdsJson"
+    </select>
+</mapper>

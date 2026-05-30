@@ -23,15 +23,37 @@ public class AdminPageController {
         this.adminSessionService = adminSessionService;
     }
 
+    private static final String CONSOLE_BASE_PATH = "/shopping/admin/console";
+    private static final int RETURN_TO_MAX_LENGTH = 512;
+
     @GetMapping("/shopping/admin/login")
     public Object adminLoginPage(HttpServletRequest request) {
         if (!adminConfigService.isInitialized()) {
             return "redirect:/shopping/admin/firstlogin";
         }
         if (adminSessionService.isAuthenticated(request)) {
+            String returnTo = request.getParameter("returnTo");
+            if (isAllowedConsoleReturnTo(returnTo)) {
+                return "redirect:" + returnTo;
+            }
             return "redirect:/shopping/admin/console";
         }
         return htmlPage("admin-login.html");
+    }
+
+    private boolean isAllowedConsoleReturnTo(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        if (value.length() > RETURN_TO_MAX_LENGTH) {
+            return false;
+        }
+        if (!value.startsWith("/") || value.startsWith("//")) {
+            return false;
+        }
+        int queryIndex = value.indexOf('?');
+        String path = queryIndex >= 0 ? value.substring(0, queryIndex) : value;
+        return path.equals(CONSOLE_BASE_PATH) || path.startsWith(CONSOLE_BASE_PATH + "/");
     }
 
     @GetMapping("/shopping/admin/firstlogin")
@@ -56,7 +78,8 @@ public class AdminPageController {
             "/shopping/admin/console",
             "/shopping/admin/console/{section}",
             "/shopping/admin/console/{section}/{subsection}",
-            "/shopping/admin/console/{section}/{subsection}/{sub2}"
+            "/shopping/admin/console/{section}/{subsection}/{sub2}",
+            "/shopping/admin/console/{section}/{subsection}/{sub2}/{sub3}"
     })
     public ResponseEntity<Resource> adminConsolePage() {
         return htmlPage("admin-console.html");

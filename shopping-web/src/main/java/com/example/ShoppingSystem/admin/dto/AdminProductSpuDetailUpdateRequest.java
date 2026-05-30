@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 
 public record AdminProductSpuDetailUpdateRequest(Long categoryId,
+                                                 String name,
                                                  String subtitle,
                                                  String brandName,
                                                  String mainImageUrl,

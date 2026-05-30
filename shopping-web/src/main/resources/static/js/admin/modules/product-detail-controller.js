@@ -5,7 +5,8 @@
   const formUi = root.AdminProductFormUi;
   const detailModel = root.AdminProductDetailModel;
   const {
-    escapeHtml
+    escapeHtml,
+    imagePayload
   } = imageUtils;
   const {
     pickImageFile,
@@ -16,6 +17,7 @@
     const el = options.el;
     const state = {
       product: null,
+      hotSkus: [],
       draft: null,
       editing: false,
       skuSelectedKeys: new Set(),
@@ -23,7 +25,10 @@
       pendingStatus: null,
       saving: false,
       nextSkuClientKey: 1,
-      mode: "detail"
+      mode: "detail",
+      skuId: "",
+      skuDraft: null,
+      hotSkuDraft: null
     };
     const carouselController = root.AdminProductCarouselController.create({
       modulePath: options.carouselModulePath,
@@ -53,7 +58,7 @@
       skuEditor
     });
 
-  async function open(productId, mode = "detail") {
+  async function open(productId, mode = "detail", skuId = "") {
     const id = String(productId || "");
     if (!id) {
       return;
@@ -66,15 +71,23 @@
     hideUploadProgress();
     await uploadSession.cleanup();
     state.product = null;
+    state.hotSkus = [];
     state.draft = null;
     state.editing = false;
     state.skuSelectedKeys.clear();
     state.nextSkuClientKey = 1;
-    state.mode = mode === "images" ? "images" : mode === "carousel" ? "carousel" : "detail";
+    state.mode = mode === "images" ? "images" : mode === "carousel" ? "carousel" : mode === "sku" ? "sku" : mode === "hotSku" ? "hotSku" : "detail";
+    state.skuId = String(skuId || "");
+    state.skuDraft = null;
+    state.hotSkuDraft = null;
     renderLoading();
     try {
       const response = await productApi.getSpuDetail(id);
       state.product = response.data || null;
+      state.hotSkus = await loadHotSkus(id);
+      if (state.mode === "sku") {
+        await loadSkuRouteDraft();
+      }
       render();
       if (state.pendingStatus) {
         api.setStatus(detailStatus(), state.pendingStatus.message, state.pendingStatus.type);
@@ -96,10 +109,14 @@
     }
     hideUploadProgress();
     state.product = null;
+    state.hotSkus = [];
     state.draft = null;
     state.editing = false;
     state.skuSelectedKeys.clear();
     state.mode = "detail";
+    state.skuId = "";
+    state.skuDraft = null;
+    state.hotSkuDraft = null;
   }
 
   async function closeAndNavigate(cleanup) {
@@ -240,6 +257,14 @@
         renderCarouselPage();
         return;
       }
+      if (state.mode === "sku") {
+        renderSkuPage();
+        return;
+      }
+      if (state.mode === "hotSku") {
+        renderHotSkuPage();
+        return;
+      }
       if (state.editing) {
         renderEdit();
       } else {
@@ -271,14 +296,94 @@
     }
 
     function skuContext(rerender) {
+      const currentProductId = () => String(state.draft?.id || state.product?.id || "");
       return {
         selectedKeys: state.skuSelectedKeys,
         allocateSkuClientKey,
+        productApi,
+        productId: currentProductId,
+        hotSkus: () => state.hotSkus,
         isSaving: () => state.saving,
+        setSaving: (saving) => { state.saving = Boolean(saving); },
+        setStatus: (message, type) => api.setStatus(detailStatus(), message, type),
         rerender,
+        refreshAfterSkuChange,
+        refreshAfterHotSkuChange,
+        navigateToSku: (skuId) => options.navigateToProductSku(currentProductId(), skuId),
+        navigateToSkuCreate: () => options.navigateToProductSkuCreate(currentProductId()),
+        navigateToHotSku: () => options.navigateToProductHotSku?.(currentProductId()),
         uploadImages: uploadSession.uploadImages,
-        cancelSkuImages: uploadSession.cancelSkuImages
+        cancelSkuImages: uploadSession.cancelSkuImages,
+        imageUploadSessions: uploadSession.imageUploadSessions,
+        clearCommittedByUrls: uploadSession.clearCommittedByUrls
       };
+    }
+
+    function hotSkuPageContext() {
+      if (!state.hotSkuDraft) {
+        state.hotSkuDraft = {};
+      }
+      return {
+        selectedKeys: state.skuSelectedKeys,
+        productApi,
+        productId: () => String(state.product?.id || ""),
+        hotSkus: () => state.hotSkus,
+        hotSkuDraft: state.hotSkuDraft,
+        isSaving: () => state.saving,
+        setSaving: (saving) => { state.saving = Boolean(saving); },
+        setStatus: (message, type) => api.setStatus(detailStatus(), message, type),
+        rerender: renderHotSkuPage,
+        returnToDetail,
+        refreshAfterHotSkuPageChange
+      };
+    }
+
+    function skuPageContext() {
+      return {
+        allocateSkuClientKey,
+        productApi,
+        productId: () => String(state.product?.id || ""),
+        hotSkus: () => state.hotSkus,
+        isSaving: () => state.saving,
+        setStatus: (message, type) => api.setStatus(detailStatus(), message, type),
+        rerender: renderSkuPage,
+        returnToDetail,
+        saveSku: saveSkuPage,
+        deleteSku: deleteSkuPage,
+        uploadImages: uploadSession.uploadImages,
+        cancelSkuImages: uploadSession.cancelSkuImages,
+        imageUploadSessions: uploadSession.imageUploadSessions,
+        clearCommittedByUrls: uploadSession.clearCommittedByUrls
+      };
+    }
+
+    async function refreshAfterSkuChange(message, type = "ok") {
+      const productId = String(state.draft?.id || state.product?.id || "");
+      if (!productId) {
+        return;
+      }
+      const response = await productApi.getSpuDetail(productId);
+      state.product = response.data || state.product;
+      state.hotSkus = await loadHotSkus(productId);
+      state.draft = buildDraft(state.product);
+      state.hotSkuDraft = null;
+      state.skuSelectedKeys.clear();
+      state.saving = false;
+      await options.loadPage();
+      renderEdit();
+      api.setStatus(detailStatus(), message || "SKU 已更新。", type);
+    }
+
+    async function refreshAfterHotSkuChange(message, type = "ok") {
+      const productId = String(state.draft?.id || state.product?.id || "");
+      if (!productId) {
+        return;
+      }
+      state.hotSkus = await loadHotSkus(productId);
+      state.hotSkuDraft = null;
+      state.saving = false;
+      renderEdit();
+      api.setStatus(detailStatus(), message || "热点 SKU 已更新。", type);
     }
 
     function renderReadonly() {
@@ -288,8 +393,12 @@
         carouselController,
         navigateToProductCarousel: options.navigateToProductCarousel,
         navigateToProductImages: options.navigateToProductImages,
+        navigateToProductSku: options.navigateToProductSku,
+        navigateToProductSkuCreate: options.navigateToProductSkuCreate,
+        navigateToProductHotSku: options.navigateToProductHotSku,
         enterEdit,
-        closeAndNavigate
+        closeAndNavigate,
+        hotSkus: state.hotSkus
       });
       replaceDetailBody(node);
     }
@@ -348,6 +457,114 @@
       carouselController.mount(view.stage, product);
     }
 
+    function renderSkuPage() {
+      carouselController.destroy();
+      carouselController.cancelPrewarm();
+      api.setStatus(detailStatus(), "");
+      if (!state.skuDraft) {
+        renderLoading();
+        return;
+      }
+      const node = skuEditor.renderSkuPage(state.product, state.skuDraft, skuPageContext());
+      replaceDetailBody(node);
+    }
+
+    function renderHotSkuPage() {
+      carouselController.destroy();
+      carouselController.cancelPrewarm();
+      api.setStatus(detailStatus(), "");
+      const node = skuEditor.renderHotSkuPage(state.product, hotSkuPageContext());
+      replaceDetailBody(node);
+    }
+
+    async function loadSkuRouteDraft() {
+      const skuId = String(state.skuId || "").trim();
+      if (skuId === "new") {
+        state.skuDraft = skuEditor.createEmptySkuDraft();
+        return;
+      }
+      if (!skuId) {
+        throw new Error("SKU ID 不能为空。");
+      }
+      const fallback = (Array.isArray(state.product?.skus) ? state.product.skus : [])
+        .find((sku) => String(sku?.id || "") === skuId) || null;
+      const response = await productApi.getSkuDetail(state.product.id, skuId);
+      state.skuDraft = skuEditor.toEditableSku(response.data || fallback, skuPageContext(), fallback);
+    }
+
+    async function loadHotSkus(productId) {
+      if (!productId || typeof productApi.listHotSkus !== "function") {
+        return [];
+      }
+      const response = await productApi.listHotSkus(productId);
+      return Array.isArray(response.data) ? response.data : [];
+    }
+
+    async function reloadProductAfterSkuChange(productId) {
+      const response = await productApi.getSpuDetail(productId);
+      state.product = response.data || state.product;
+      state.hotSkus = await loadHotSkus(productId);
+      state.draft = null;
+      state.hotSkuDraft = null;
+      state.skuSelectedKeys.clear();
+      await options.loadPage();
+    }
+
+    async function saveSkuPage(sku, payload) {
+      const productId = String(state.product?.id || "");
+      if (state.saving || !productId || !payload) {
+        return;
+      }
+      const creating = state.skuId === "new" || !sku?.id;
+      state.saving = true;
+      renderSkuPage();
+      try {
+        const response = creating
+          ? await productApi.createSku(productId, payload)
+          : await productApi.updateSku(productId, sku.id, payload);
+        uploadSession.clearCommittedByUrls(imagePayload(sku?.skuImageUrls || []));
+        const savedSku = response.data || {};
+        state.saving = false;
+        if (creating) {
+          await options.loadPage();
+          const nextSkuId = String(savedSku.id || "");
+          if (nextSkuId) {
+            options.navigateToProductSku(productId, nextSkuId);
+            return;
+          }
+        }
+        await reloadProductAfterSkuChange(productId);
+        state.skuId = String(savedSku.id || sku.id || state.skuId || "");
+        state.skuDraft = skuEditor.toEditableSku(savedSku || sku, skuPageContext(), sku);
+        renderSkuPage();
+        api.setStatus(detailStatus(), creating ? "SKU 已添加。" : "SKU 已保存。", "ok");
+      } catch (error) {
+        state.saving = false;
+        renderSkuPage();
+        api.setStatus(detailStatus(), error.message || "SKU 保存失败。", "error");
+      }
+    }
+
+    async function deleteSkuPage(sku) {
+      const productId = String(state.product?.id || "");
+      if (state.saving || !productId || !sku?.id) {
+        return;
+      }
+      state.saving = true;
+      renderSkuPage();
+      try {
+        await productApi.deleteSku(productId, sku.id);
+        await uploadSession.cleanup();
+        await options.loadPage();
+        state.saving = false;
+        options.navigateToProductDetail(productId);
+      } catch (error) {
+        state.saving = false;
+        renderSkuPage();
+        api.setStatus(detailStatus(), error.message || "SKU 删除失败。", "error");
+      }
+    }
+
   async function enterEdit(product) {
     try {
       api.setStatus(detailStatus(), "正在加载叶子分类。");
@@ -383,9 +600,23 @@
       carouselController.cancelPrewarm();
       await uploadSession.cleanup();
       state.draft = null;
+      state.hotSkuDraft = null;
       state.skuSelectedKeys.clear();
       state.mode = "detail";
       options.navigateToProductDetail(productId);
+    }
+
+    async function refreshAfterHotSkuPageChange(message, type = "ok") {
+      const productId = String(state.product?.id || "");
+      if (!productId) {
+        return;
+      }
+      state.hotSkus = await loadHotSkus(productId);
+      state.hotSkuDraft = null;
+      state.saving = false;
+      state.skuSelectedKeys.clear();
+      renderHotSkuPage();
+      api.setStatus(detailStatus(), message || "热点 SKU 已更新。", type);
     }
 
     async function saveImages() {
@@ -430,7 +661,9 @@
         const response = await productApi.updateSpuDetail(draft.id, update.payload);
         uploadSession.clearCommitted();
         state.product = response.data || state.product;
+        state.hotSkus = await loadHotSkus(draft.id);
         state.draft = null;
+        state.hotSkuDraft = null;
         state.editing = false;
         state.skuSelectedKeys.clear();
         await options.loadPage();

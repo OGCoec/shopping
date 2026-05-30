@@ -7,10 +7,12 @@
   const WEBRTC_SIGNAL_TTL_MILLIS = 60_000;
   const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 5_000;
   const NETWORK_CHECK_FAILED_PATH = "/shopping/auth/network-check-failed";
+  const WAF_VERIFY_PATH = "/shopping/auth/waf/verify";
   const ADMIN_LOGIN_PATH = "/shopping/admin/login";
   const PASSWORD_CRYPTO_KEY_PATH = "/shopping/admin/password-crypto/key";
   const PASSWORD_CRYPTO_ERROR_MESSAGE = "Password encryption is unavailable, please refresh and try again.";
   const WEBRTC_ERROR_CODES = new Set(["WEBRTC_IP_MISMATCH", "WEBRTC_SIGNAL_REQUIRED"]);
+  const ADMIN_WAF_REQUIRED_ERROR_CODE = "ADMIN_IP_CHANGED_WAF_REQUIRED";
   const NETWORK_DEBUG_STORAGE_KEY = "shopping:admin:network-debug";
 
   let webRtcSignalTask = null;
@@ -525,6 +527,27 @@
     }
   }
 
+  function buildWafVerifyUrl() {
+    return `${WAF_VERIFY_PATH}?return=${encodeURIComponent(buildCurrentReturnPath())}`;
+  }
+
+  function sanitizeWafVerifyUrl(rawUrl) {
+    const fallbackUrl = buildWafVerifyUrl();
+    const value = String(rawUrl || "").trim();
+    if (!value) {
+      return fallbackUrl;
+    }
+    try {
+      const parsed = new URL(value, window.location.origin);
+      if (parsed.origin !== window.location.origin || parsed.pathname !== WAF_VERIFY_PATH) {
+        return fallbackUrl;
+      }
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch (_) {
+      return fallbackUrl;
+    }
+  }
+
   function scheduleNetworkCheckRedirect(response, body, headers) {
     if (!isBrowserRuntime() || window.location.pathname === NETWORK_CHECK_FAILED_PATH) {
       return;
@@ -547,6 +570,14 @@
     }
   }
 
+  function handleAdminWafRequired(response, body) {
+    const errorCode = body && (body.error || body.code) ? String(body.error || body.code) : "";
+    if (response.status !== 409 || errorCode !== ADMIN_WAF_REQUIRED_ERROR_CODE || !isBrowserRuntime()) {
+      return;
+    }
+    window.location.replace(sanitizeWafVerifyUrl(body?.verifyUrl));
+  }
+
   async function requestWithMethod(method, path, payload) {
     const headers = await buildHeaders();
     const options = {
@@ -561,6 +592,7 @@
     const body = await response.json().catch(() => null);
     logNetworkCheckDebug({ method, path, headers, response, body, phase: "response" });
     handleNetworkCheckFailure(response, body, headers);
+    handleAdminWafRequired(response, body);
     if (!response.ok || !body || body.success !== true) {
       const message = body?.message || "请求失败，请稍后重试。";
       const error = new Error(message);
@@ -585,6 +617,7 @@
     const body = await response.json().catch(() => null);
     logNetworkCheckDebug({ method: "GET", path, headers, response, body, phase: "response" });
     handleNetworkCheckFailure(response, body, headers);
+    handleAdminWafRequired(response, body);
     if (!response.ok || !body || body.success !== true) {
       const message = body?.message || "请求失败，请稍后重试。";
       const error = new Error(message);
@@ -607,6 +640,7 @@
     const body = await response.json().catch(() => null);
     logNetworkCheckDebug({ method: "POST", path, headers, response, body, phase: "response" });
     handleNetworkCheckFailure(response, body, headers);
+    handleAdminWafRequired(response, body);
     if (!response.ok || !body || body.success !== true) {
       const message = body?.message || "请求失败，请稍后重试。";
       const error = new Error(message);
@@ -687,6 +721,7 @@
         };
         logNetworkCheckDebug({ method: "POST", path, headers, response, body, phase: "response" });
         handleNetworkCheckFailure(response, body, headers);
+        handleAdminWafRequired(response, body);
         if (!response.ok || !body || body.success !== true) {
           const message = body?.message || "请求失败，请稍后重试。";
           const error = new Error(message);

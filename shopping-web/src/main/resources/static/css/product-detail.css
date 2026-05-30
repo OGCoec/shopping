@@ -11,6 +11,8 @@ body {
 body {
   --pointer-x: 0;
   --pointer-y: 0;
+  --product-detail-panel-shift-x: 8px;
+  --product-detail-panel-shift-y: 6px;
   --admin-ink: #0f172a;
   --admin-muted: #64748b;
   overflow-x: hidden;
@@ -80,6 +82,12 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  transform: translate3d(
+    calc(var(--pointer-x) * var(--product-detail-panel-shift-x)),
+    calc(var(--pointer-y) * var(--product-detail-panel-shift-y)),
+    0
+  );
+  will-change: transform;
 }
 
 .product-detail-back,
@@ -112,7 +120,13 @@ body {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.24);
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+  transform: translate3d(
+    calc(var(--pointer-x) * var(--product-detail-panel-shift-x)),
+    calc(var(--pointer-y) * var(--product-detail-panel-shift-y)),
+    0
+  );
   backdrop-filter: blur(16px);
+  will-change: transform;
 }
 
 .product-detail-status {

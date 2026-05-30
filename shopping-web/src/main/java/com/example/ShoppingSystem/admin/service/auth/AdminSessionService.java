@@ -5,6 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.admin.config.AdminSecurityProperties;
 import com.example.ShoppingSystem.admin.dto.AdminSessionMeResponse;
 import com.example.ShoppingSystem.admin.model.AdminAccount;
+import com.example.ShoppingSystem.filter.preauth.support.PreAuthRequestResolver;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,15 +24,19 @@ public class AdminSessionService {
     private static final String FIELD_USERNAME = "username";
     private static final String FIELD_EMAIL = "email";
     private static final String FIELD_PHONE = "phone";
+    private static final String FIELD_CURRENT_IP = "currentIp";
     private static final String FIELD_LAST_SEEN_AT = "lastSeenAt";
 
     private final AdminSecurityProperties properties;
     private final StringRedisTemplate stringRedisTemplate;
+    private final PreAuthRequestResolver requestResolver;
 
     public AdminSessionService(AdminSecurityProperties properties,
-                               StringRedisTemplate stringRedisTemplate) {
+                               StringRedisTemplate stringRedisTemplate,
+                               PreAuthRequestResolver requestResolver) {
         this.properties = properties;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.requestResolver = requestResolver;
     }
 
     public void authenticate(HttpServletRequest request,
@@ -44,6 +49,7 @@ public class AdminSessionService {
         session.put(FIELD_USERNAME, safe(account.getUsername()));
         session.put(FIELD_EMAIL, safe(account.getEmail()));
         session.put(FIELD_PHONE, safe(account.getPhone()));
+        session.put(FIELD_CURRENT_IP, resolveClientIp(request));
         session.put(FIELD_LAST_SEEN_AT, now.toString());
 
         String key = sessionKey(token);
@@ -90,6 +96,31 @@ public class AdminSessionService {
             stringRedisTemplate.delete(sessionKey(token));
         }
         clearSessionCookie(response);
+    }
+
+    public String resolveClientIp(HttpServletRequest request) {
+        return requestResolver.resolveClientIp(request);
+    }
+
+    public boolean isCurrentIpAllowed(HttpServletRequest request, String currentIp) {
+        String token = resolveSessionToken(request);
+        if (StrUtil.isBlank(token)) {
+            return false;
+        }
+        String key = sessionKey(token);
+        Object stored = stringRedisTemplate.opsForHash().get(key, FIELD_CURRENT_IP);
+        String storedIp = readString(stored);
+        return StrUtil.isNotBlank(storedIp) && StrUtil.equals(storedIp, safe(currentIp));
+    }
+
+    public void refreshCurrentIp(HttpServletRequest request, String currentIp) {
+        String token = resolveSessionToken(request);
+        if (StrUtil.isBlank(token)) {
+            return;
+        }
+        String key = sessionKey(token);
+        stringRedisTemplate.opsForHash().put(key, FIELD_CURRENT_IP, safe(currentIp));
+        stringRedisTemplate.expire(key, sessionTtl());
     }
 
     private void touch(String key) {

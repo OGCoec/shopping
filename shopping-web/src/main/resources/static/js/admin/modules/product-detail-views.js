@@ -80,13 +80,24 @@
     return section;
   }
 
-  function readonlySkuTable(skus) {
+  function readonlySkuTable(product, context) {
+    const skus = Array.isArray(product?.skus) ? product.skus : [];
+    const productId = String(product?.id || "").trim();
+    const hotMap = readonlyHotSkuMap(context);
     const section = document.createElement("section");
     section.className = "admin-product-detail-section";
-    section.innerHTML = `<h3>SKU</h3>`;
+    const heading = document.createElement("div");
+    heading.className = "admin-product-detail-section-heading";
+    heading.innerHTML = `<h3>SKU</h3>`;
+    const actions = document.createElement("div");
+    actions.className = "admin-product-detail-actions";
+    actions.appendChild(actionButton("设置热点", () => context.navigateToProductHotSku?.(productId), "admin-ghost-button", !productId));
+    actions.appendChild(actionButton("新增 SKU", () => context.navigateToProductSkuCreate?.(productId), "admin-ghost-button", !productId));
+    heading.appendChild(actions);
+    section.appendChild(heading);
     const table = document.createElement("div");
     table.className = "admin-product-detail-sku-table";
-    table.appendChild(skuReadonlyRow(["图片", "名称", "编码", "价格", "库存", "状态"], true));
+    table.appendChild(skuReadonlyRow(["图片", "名称", "编码", "价格", "库存", "状态", "热点"], true));
     if (!skus.length) {
       const empty = document.createElement("div");
       empty.className = "admin-product-detail-empty-row";
@@ -102,16 +113,52 @@
         sku.skuCode || "-",
         `${sku.priceYuan ?? 0}`,
         `${sku.stockQuantity ?? 0}`,
-        skuImages.length > 1 ? `${sku.status || "-"} / ${skuImages.length} 图` : sku.status || "-"
-      ], false, sku));
+        skuImages.length > 1 ? `${sku.status || "-"} / ${skuImages.length} 图` : sku.status || "-",
+        readonlyHotSkuLabel(hotMap.get(String(sku.id || "")))
+      ], false, sku, productId, context));
     });
     section.appendChild(table);
     return section;
   }
 
-  function skuReadonlyRow(values, header, sku = null) {
+  function readonlyHotSkuMap(context) {
+    const hotSkus = Array.isArray(context?.hotSkus) ? context.hotSkus : [];
+    const map = new Map();
+    hotSkus.forEach((item) => {
+      const skuId = String(item?.skuId || "").trim();
+      if (skuId) {
+        map.set(skuId, item);
+      }
+    });
+    return map;
+  }
+
+  function readonlyHotSkuLabel(item) {
+    if (!item) {
+      return "-";
+    }
+    return `${item.status || "-"} ${item.remainingQuantity ?? 0}/${item.stockQuantity ?? 0}`;
+  }
+
+  function skuReadonlyRow(values, header, sku = null, productId = "", context = {}) {
     const row = document.createElement("div");
     row.className = `admin-product-detail-sku-row${header ? " is-header" : ""}`;
+    const skuId = String(sku?.id || "").trim();
+    const clickable = !header && productId && skuId;
+    if (clickable) {
+      row.classList.add("is-clickable");
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-label", `查看 SKU ${sku?.skuName || sku?.skuCode || skuId}`);
+      row.addEventListener("click", () => context.navigateToProductSku?.(productId, skuId));
+      row.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        context.navigateToProductSku?.(productId, skuId);
+      });
+    }
     values.forEach((value, index) => {
       const cell = document.createElement("div");
       if (!header && index === 0 && value) {
@@ -204,7 +251,7 @@
     shell.appendChild(readonlyMetaGrid(product));
     shell.appendChild(readonlyImageSection("展示图片", buildDisplayImages(product), true));
     shell.appendChild(readonlyImageSection("详情图片", imageUrlsFromNode(product.detailImageUrls)));
-    shell.appendChild(readonlySkuTable(product.skus || []));
+    shell.appendChild(readonlySkuTable(product, context));
     shell.appendChild(readonlyTextPanel("商品参数", formatJson(product.attributes || {})));
     shell.appendChild(readonlyTextPanel("文字详情", product.description || "-"));
     shell.appendChild(readonlyTextPanel("售后说明", product.afterSale || "-"));
@@ -221,7 +268,7 @@
     ], draft.id));
     const grid = document.createElement("div");
     grid.className = "admin-product-detail-edit-grid";
-    grid.appendChild(detailInput("商品名称", draft.name, true, (value) => { draft.name = value; }));
+    grid.appendChild(detailInput("商品名称", draft.name, false, (value) => { draft.name = value; }, 128));
     grid.appendChild(detailCategorySelect(draft, context));
     grid.appendChild(detailInput("品牌名称", draft.brandName, false, (value) => { draft.brandName = value; }, 64));
     grid.appendChild(detailStatusSelect(draft));

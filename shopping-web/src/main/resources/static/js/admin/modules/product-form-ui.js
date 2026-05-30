@@ -21,15 +21,61 @@
     const field = document.createElement("label");
     field.className = "admin-product-detail-compact-field";
     const input = document.createElement("input");
-    input.type = type;
+    input.type = type === "money" || type === "stock" ? "text" : type;
     input.value = value || "";
+    const rawValue = input.value;
+    input.autocomplete = "off";
     if (type === "number") {
       input.min = "0";
       input.step = label.includes("价格") || label.includes("原价") ? "0.01" : "1";
     }
-    input.addEventListener("input", () => onInput(input.value.trim()));
+    if (type === "money") {
+      input.inputMode = "decimal";
+      input.pattern = "\\d+(\\.\\d{0,2})?";
+      input.value = sanitizeMoneyInput(input.value);
+    } else if (type === "stock") {
+      input.inputMode = "numeric";
+      input.pattern = "\\d*";
+      input.value = sanitizeStockInput(input.value);
+    }
+    if (input.value !== rawValue) {
+      onInput(input.value.trim());
+    }
+    input.addEventListener("input", () => {
+      if (type === "money") {
+        input.value = sanitizeMoneyInput(input.value);
+      } else if (type === "stock") {
+        input.value = sanitizeStockInput(input.value);
+      }
+      onInput(input.value.trim());
+    });
     field.append(labelSpan(label), input);
     return field;
+  }
+
+  function sanitizeMoneyInput(value) {
+    const text = String(value ?? "").replace(/[^\d.]/g, "");
+    let next = "";
+    let hasDot = false;
+    for (const ch of text) {
+      if (ch === ".") {
+        if (!hasDot) {
+          next += ch;
+          hasDot = true;
+        }
+        continue;
+      }
+      next += ch;
+    }
+    const dotIndex = next.indexOf(".");
+    if (dotIndex >= 0) {
+      return next.slice(0, dotIndex + 1) + next.slice(dotIndex + 1, dotIndex + 3);
+    }
+    return next;
+  }
+
+  function sanitizeStockInput(value) {
+    return String(value ?? "").replace(/\D/g, "");
   }
 
   function pickImageFile() {

@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.product.service;
 
+import com.example.ShoppingSystem.Utils.ProductSkuIdCodec;
 import com.example.ShoppingSystem.product.dto.PublicProductDetailResponse;
 import com.example.ShoppingSystem.product.dto.PublicProductSkuResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -46,7 +47,7 @@ public class PublicProductSpuAssembler {
         List<PublicProductSkuResponse> skus = new ArrayList<>();
         for (JsonNode skuNode : skusNode) {
             skus.add(new PublicProductSkuResponse(
-                    jsonText(skuNode, "id"),
+                    toSkuIdText(jsonText(skuNode, "id")),
                     jsonText(skuNode, "skuName"),
                     jsonNodeOrDefault(skuNode.get("specJson"), false),
                     jsonNodeOrDefault(skuNode.get("skuImageUrls"), true),
@@ -157,6 +158,10 @@ public class PublicProductSpuAssembler {
             return "";
         }
         return value.isTextual() ? toText(value.asText()) : toText(value);
+    }
+
+    private String toSkuIdText(Object raw) {
+        return ProductSkuIdCodec.toBase62FromDatabaseValue(raw);
     }
 
     private String toSnakeCase(String key) {

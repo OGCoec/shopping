@@ -10,8 +10,8 @@
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS product_sku (
-    -- 商品 SKU ID，由 HybridSemaphoreIdWorker 生成 16 字节 ID 后转 32 位 hex 字符串
-    id CHAR(32) PRIMARY KEY,
+    -- 商品 SKU ID，由 HybridSemaphoreIdWorker 生成的 16 字节 ID
+    id BYTEA PRIMARY KEY,
 
     -- 所属商品 SPU ID，对应 product_spu.id
     spu_id BIGINT NOT NULL,
@@ -50,8 +50,8 @@ CREATE TABLE IF NOT EXISTS product_sku (
 
     CONSTRAINT uq_product_sku_spu_name UNIQUE (spu_id, sku_name),
 
-    CONSTRAINT ck_product_sku_id_hybrid_hex
-        CHECK (id ~ '^[0-9a-f]{32}$'),
+    CONSTRAINT ck_product_sku_id_hybrid_bytes
+        CHECK (octet_length(id) = 16),
 
     CONSTRAINT ck_product_sku_spec_json_object
         CHECK (jsonb_typeof(spec_json) = 'object'),
@@ -83,7 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_product_sku_price_yuan
 
 COMMENT ON TABLE product_sku IS '商品 SKU 表，用于保存具体可购买规格、价格和库存';
 
-COMMENT ON COLUMN product_sku.id IS '商品 SKU ID，由 HybridSemaphoreIdWorker 生成 16 字节 ID 后转 32 位 hex 字符串';
+COMMENT ON COLUMN product_sku.id IS '商品 SKU ID，由 HybridSemaphoreIdWorker 生成的 16 字节 ID；接口和 URL 使用该字节值转出的 Base62 字符串';
 COMMENT ON COLUMN product_sku.spu_id IS '所属商品 SPU ID，对应 product_spu.id';
 COMMENT ON COLUMN product_sku.sku_code IS 'SKU 编码，用于程序识别、库存对接或幂等导入';
 COMMENT ON COLUMN product_sku.sku_name IS 'SKU 名称，用于前台展示和后台管理';

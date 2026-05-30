@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.controller.auth;
 
 import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
+import com.example.ShoppingSystem.admin.service.auth.AdminWafVerificationService;
 import com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengeSessionService;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,13 +30,16 @@ public class WafVerifyController {
     private static final Duration PASSWORD_RESET_WAF_RESUME_TTL = Duration.ofSeconds(60);
 
     private final PreAuthBindingService preAuthBindingService;
+    private final AdminWafVerificationService adminWafVerificationService;
     private final LoginChallengeSessionService loginChallengeSessionService;
     private final PasswordResetService passwordResetService;
 
     public WafVerifyController(PreAuthBindingService preAuthBindingService,
+                               AdminWafVerificationService adminWafVerificationService,
                                LoginChallengeSessionService loginChallengeSessionService,
                                PasswordResetService passwordResetService) {
         this.preAuthBindingService = preAuthBindingService;
+        this.adminWafVerificationService = adminWafVerificationService;
         this.loginChallengeSessionService = loginChallengeSessionService;
         this.passwordResetService = passwordResetService;
     }
@@ -58,6 +62,8 @@ public class WafVerifyController {
 
         boolean loginWafReturn = sanitizedReturnPath.startsWith("/shopping/user/log-in");
         boolean passwordResetWafReturn = sanitizedReturnPath.startsWith("/shopping/user/forgot-password");
+        boolean adminWafReturn = sanitizedReturnPath.equals("/shopping/admin/console")
+                || sanitizedReturnPath.startsWith("/shopping/admin/console/");
         if (token != null && !token.isBlank()) {
             preAuthBindingService.refreshBindingForCurrentIpAfterWaf(token, request);
             if (loginWafReturn) {
@@ -68,6 +74,9 @@ public class WafVerifyController {
                 passwordResetService.markWafVerified(token);
                 response.addHeader("Set-Cookie", buildPasswordResetWafResumeCookie(request).toString());
             }
+        }
+        if (adminWafReturn) {
+            response.addHeader("Set-Cookie", adminWafVerificationService.issueVerifiedCookie(request).toString());
         }
 
         response.addHeader("Set-Cookie", preAuthBindingService.buildClearWafRequiredCookie(request).toString());

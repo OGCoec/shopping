@@ -206,7 +206,7 @@ SELECT p.id AS "id",
        COALESCE((
            SELECT jsonb_agg(
                       jsonb_build_object(
-                          'id', s.id,
+                           'id', encode(s.id, 'hex'),
                           'spuId', s.spu_id,
                           'skuCode', s.sku_code,
                           'skuName', s.sku_name,
@@ -246,7 +246,7 @@ SELECT p.id AS "id",
        COALESCE((
            SELECT jsonb_agg(
                       jsonb_build_object(
-                          'id', s.id,
+                           'id', encode(s.id, 'hex'),
                           'skuName', s.sku_name,
                           'specJson', s.spec_json,
                           'skuImageUrls', COALESCE(s.sku_image_url::jsonb, '[]'::jsonb),
@@ -269,6 +269,24 @@ WHERE p.id = #{id}
         ]]>
     </select>
 
+    <select id="findSkuBySpuIdAndSkuId" resultType="map">
+        <![CDATA[
+SELECT encode(s.id, 'hex') AS "id",
+       s.spu_id AS "spuId",
+       s.sku_code AS "skuCode",
+       s.sku_name AS "skuName",
+       s.spec_json::text AS "specJson",
+       COALESCE(s.sku_image_url::jsonb, '[]'::jsonb)::text AS "skuImageUrls",
+       s.price_yuan AS "priceYuan",
+       s.original_price_yuan AS "originalPriceYuan",
+       s.stock_quantity AS "stockQuantity",
+       s.status AS "status"
+FROM product_sku s
+WHERE s.spu_id = #{spuId}
+  AND s.id = #{skuId}
+        ]]>
+    </select>
+
     <select id="updateSpuDetail" resultType="map">
         <![CDATA[
 WITH target_spu AS (
@@ -286,7 +304,9 @@ target_category AS (
 ),
 incoming_sku AS (
     SELECT NULLIF(raw.id, '') AS requested_id,
+           NULLIF(raw.id_bytes_hex, '') AS requested_id_bytes_hex,
            NULLIF(raw.generated_id, '') AS generated_id,
+           NULLIF(raw.generated_id_bytes_hex, '') AS generated_id_bytes_hex,
            raw.sku_code,
            raw.sku_name,
            COALESCE(raw.spec_json, '{}'::jsonb) AS spec_json,
@@ -297,7 +317,9 @@ incoming_sku AS (
            raw.status
     FROM jsonb_to_recordset(CAST(#{skusJson} AS jsonb)) AS raw(
         id text,
+        id_bytes_hex text,
         generated_id text,
+        generated_id_bytes_hex text,
         sku_code text,
         sku_name text,
         spec_json jsonb,
@@ -310,7 +332,12 @@ incoming_sku AS (
 ),
 normalized_sku AS (
     SELECT COALESCE(requested_id, generated_id) AS id,
+           COALESCE(
+               CASE WHEN requested_id_bytes_hex ~ '^[0-9A-Fa-f]{32}$' THEN decode(requested_id_bytes_hex, 'hex') ELSE NULL END,
+               CASE WHEN generated_id_bytes_hex ~ '^[0-9A-Fa-f]{32}$' THEN decode(generated_id_bytes_hex, 'hex') ELSE NULL END
+           ) AS id_bytes,
            requested_id,
+           requested_id_bytes_hex,
            sku_code,
            sku_name,
            spec_json,
@@ -325,13 +352,15 @@ invalid_sku AS (
     SELECT COUNT(*) AS count
     FROM normalized_sku n
     WHERE n.id IS NULL
-       OR n.id !~ '^[0-9a-f]{32}$'
+       OR n.id !~ '^[0-9A-Za-z]{1,22}$'
+       OR n.id_bytes IS NULL
+       OR octet_length(n.id_bytes) != 16
        OR (
            n.requested_id IS NOT NULL
            AND NOT EXISTS (
                SELECT 1
                FROM product_sku s
-               WHERE s.id = n.requested_id
+               WHERE s.id = n.id_bytes
                  AND s.spu_id = #{id}
            )
        )
@@ -390,6 +419,7 @@ old_image_urls AS (
 updated_spu AS (
     UPDATE product_spu p
     SET category_id = #{categoryId},
+        name = #{name},
         subtitle = #{subtitle},
         brand_name = #{brandName},
         main_image_url = #{mainImageUrl},
@@ -441,7 +471,7 @@ deleted_sku AS (
       AND NOT EXISTS (
           SELECT 1
           FROM normalized_sku n
-          WHERE n.id = s.id
+          WHERE n.id_bytes = s.id
       )
     RETURNING s.id
 ),
@@ -458,7 +488,7 @@ upserted_sku AS (
         stock_quantity,
         status
     )
-    SELECT n.id,
+    SELECT n.id_bytes,
            #{id},
            n.sku_code,
            n.sku_name,
@@ -493,13 +523,265 @@ SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
        (SELECT COUNT(*) FROM upserted_sku) AS "upsertedSkuCount",
        COALESCE((SELECT jsonb_agg(url) FROM old_image_urls), '[]'::jsonb)::text AS "oldImageUrlsJson",
        COALESCE((
-           SELECT jsonb_agg(u.id)
+           SELECT jsonb_agg(n.id)
            FROM upserted_sku u
-           INNER JOIN normalized_sku n ON n.id = u.id
-           WHERE n.requested_id IS NULL
-       ), '[]'::jsonb)::text AS "createdSkuIdsJson",
-       COALESCE((SELECT jsonb_agg(id) FROM deleted_sku), '[]'::jsonb)::text AS "deletedSkuIdsJson"
+            INNER JOIN normalized_sku n ON n.id_bytes = u.id
+            WHERE n.requested_id IS NULL
+        ), '[]'::jsonb)::text AS "createdSkuIdsJson",
+        COALESCE((SELECT jsonb_agg(encode(id, 'hex')) FROM deleted_sku), '[]'::jsonb)::text AS "deletedSkuIdsJson"
         ]]>
+    </select>
+
+    <select id="insertSku" resultType="map">
+        <![CDATA[
+WITH target_spu AS (
+    SELECT id
+    FROM product_spu
+    WHERE id = #{spuId}
+),
+inserted AS (
+    INSERT INTO product_sku (
+        id,
+        spu_id,
+        sku_code,
+        sku_name,
+        spec_json,
+        sku_image_url,
+        price_yuan,
+        original_price_yuan,
+        stock_quantity,
+        status
+    )
+    SELECT #{skuId},
+           #{spuId},
+           #{skuCode},
+           #{skuName},
+           CAST(#{specJson} AS jsonb),
+           CAST(#{skuImageUrlsJson} AS jsonb)::text,
+           #{priceYuan},
+           #{originalPriceYuan},
+           #{stockQuantity},
+           #{status}
+    WHERE EXISTS (SELECT 1 FROM target_spu)
+    RETURNING id
+)
+SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
+       (SELECT COUNT(*) FROM inserted) AS "insertedCount"
+        ]]>
+    </select>
+
+    <select id="updateSkuBySpuIdAndSkuId" resultType="map">
+        <![CDATA[
+WITH target_spu AS (
+    SELECT id
+    FROM product_spu
+    WHERE id = #{spuId}
+),
+old_sku AS (
+    SELECT s.id, s.sku_image_url
+    FROM product_sku s
+    WHERE s.spu_id = #{spuId}
+      AND s.id = #{skuId}
+    FOR UPDATE
+),
+updated AS (
+    UPDATE product_sku s
+    SET sku_code = #{skuCode},
+        sku_name = #{skuName},
+        spec_json = CAST(#{specJson} AS jsonb),
+        sku_image_url = CAST(#{skuImageUrlsJson} AS jsonb)::text,
+        price_yuan = #{priceYuan},
+        original_price_yuan = #{originalPriceYuan},
+        stock_quantity = #{stockQuantity},
+        status = #{status},
+        updated_at = NOW()
+    WHERE s.spu_id = #{spuId}
+      AND s.id = #{skuId}
+      AND EXISTS (SELECT 1 FROM old_sku)
+    RETURNING s.id
+)
+SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
+       EXISTS(SELECT 1 FROM old_sku) AS "skuExists",
+       (SELECT COUNT(*) FROM updated) AS "updatedCount",
+       COALESCE((
+           SELECT jsonb_agg(url)
+           FROM (
+               SELECT CASE
+                          WHEN jsonb_typeof(item.value) = 'string' THEN item.value #>> '{}'
+                          WHEN jsonb_typeof(item.value) = 'object' THEN item.value ->> 'url'
+                          ELSE NULL
+                      END AS url
+               FROM old_sku s
+               CROSS JOIN LATERAL jsonb_array_elements(
+                   CASE WHEN jsonb_typeof(s.sku_image_url::jsonb) = 'array' THEN s.sku_image_url::jsonb ELSE '[]'::jsonb END
+               ) AS item(value)
+           ) raw
+           WHERE url IS NOT NULL AND BTRIM(url) != ''
+       ), '[]'::jsonb)::text AS "oldImageUrlsJson"
+        ]]>
+    </select>
+
+    <select id="updateSkuStatusBySpuIdAndSkuId" resultType="map">
+        <![CDATA[
+WITH target_spu AS (
+    SELECT id
+    FROM product_spu
+    WHERE id = #{spuId}
+),
+target_sku AS (
+    SELECT s.id
+    FROM product_sku s
+    WHERE s.spu_id = #{spuId}
+      AND s.id = #{skuId}
+),
+updated AS (
+    UPDATE product_sku s
+    SET status = #{status},
+        updated_at = NOW()
+    WHERE s.spu_id = #{spuId}
+      AND s.id = #{skuId}
+      AND EXISTS (SELECT 1 FROM target_sku)
+    RETURNING s.id
+)
+SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
+       EXISTS(SELECT 1 FROM target_sku) AS "skuExists",
+       (SELECT COUNT(*) FROM updated) AS "updatedCount"
+        ]]>
+    </select>
+
+    <select id="deleteSkuBySpuIdAndSkuIdReturningImages" resultType="map">
+        <![CDATA[
+WITH target_spu AS (
+    SELECT id
+    FROM product_spu
+    WHERE id = #{spuId}
+),
+target_sku AS (
+    SELECT s.id, s.sku_image_url
+    FROM product_sku s
+    WHERE s.spu_id = #{spuId}
+      AND s.id = #{skuId}
+    FOR UPDATE
+),
+deleted AS (
+    DELETE FROM product_sku s
+    USING target_sku t
+    WHERE s.id = t.id
+      AND s.spu_id = #{spuId}
+    RETURNING s.id, t.sku_image_url
+)
+SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
+       EXISTS(SELECT 1 FROM target_sku) AS "skuExists",
+       (SELECT COUNT(*) FROM deleted) AS "deletedCount",
+       COALESCE((SELECT jsonb_agg(encode(id, 'hex')) FROM deleted), '[]'::jsonb)::text AS "deletedSkuIdsJson",
+       COALESCE((
+           SELECT jsonb_agg(url)
+           FROM (
+               SELECT CASE
+                          WHEN jsonb_typeof(item.value) = 'string' THEN item.value #>> '{}'
+                          WHEN jsonb_typeof(item.value) = 'object' THEN item.value ->> 'url'
+                          ELSE NULL
+                      END AS url
+               FROM deleted d
+               CROSS JOIN LATERAL jsonb_array_elements(
+                   CASE WHEN jsonb_typeof(d.sku_image_url::jsonb) = 'array' THEN d.sku_image_url::jsonb ELSE '[]'::jsonb END
+               ) AS item(value)
+           ) raw
+           WHERE url IS NOT NULL AND BTRIM(url) != ''
+       ), '[]'::jsonb)::text AS "imageUrlsJson"
+        ]]>
+    </select>
+
+    <select id="batchUpdateSkuStatusByIds" resultType="map">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="ids" item="id" separator=",">
+                (#{id})
+            </foreach>
+        ),
+        normalized_requested AS (
+            SELECT DISTINCT id
+            FROM requested
+        ),
+        target_spu AS (
+            SELECT id
+            FROM product_spu
+            WHERE id = #{spuId}
+        ),
+        target_sku AS (
+            SELECT s.id
+            FROM product_sku s
+            INNER JOIN normalized_requested r ON r.id = s.id
+            WHERE s.spu_id = #{spuId}
+        ),
+        updated AS (
+            UPDATE product_sku s
+            SET status = #{status},
+                updated_at = NOW()
+            FROM target_sku t
+            WHERE s.id = t.id
+              AND s.spu_id = #{spuId}
+              AND EXISTS (SELECT 1 FROM target_spu)
+              AND (SELECT COUNT(*) FROM target_sku) = (SELECT COUNT(*) FROM normalized_requested)
+            RETURNING s.id
+        )
+        SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
+               (SELECT COUNT(*) FROM normalized_requested) AS "requestedCount",
+               (SELECT COUNT(*) FROM target_sku) AS "matchedCount",
+               (SELECT COUNT(*) FROM updated) AS "affectedCount"
+    </select>
+
+    <select id="batchDeleteSkuByIdsReturningImages" resultType="map">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="ids" item="id" separator=",">
+                (#{id})
+            </foreach>
+        ),
+        normalized_requested AS (
+            SELECT DISTINCT id
+            FROM requested
+        ),
+        target_spu AS (
+            SELECT id
+            FROM product_spu
+            WHERE id = #{spuId}
+        ),
+        target_sku AS (
+            SELECT s.id, s.sku_image_url
+            FROM product_sku s
+            INNER JOIN normalized_requested r ON r.id = s.id
+            WHERE s.spu_id = #{spuId}
+        ),
+        deleted AS (
+            DELETE FROM product_sku s
+            USING target_sku t
+            WHERE s.id = t.id
+              AND s.spu_id = #{spuId}
+              AND EXISTS (SELECT 1 FROM target_spu)
+              AND (SELECT COUNT(*) FROM target_sku) = (SELECT COUNT(*) FROM normalized_requested)
+            RETURNING s.id, t.sku_image_url
+        )
+        SELECT EXISTS(SELECT 1 FROM target_spu) AS "spuExists",
+               (SELECT COUNT(*) FROM normalized_requested) AS "requestedCount",
+               (SELECT COUNT(*) FROM target_sku) AS "matchedCount",
+               (SELECT COUNT(*) FROM deleted) AS "affectedCount",
+               COALESCE((SELECT jsonb_agg(encode(id, 'hex')) FROM deleted), '[]'::jsonb)::text AS "deletedSkuIdsJson",
+               COALESCE((
+                   SELECT jsonb_agg(url)
+                   FROM (
+                       SELECT CASE
+                                  WHEN jsonb_typeof(item.value) = 'string' THEN item.value #>> '{}'
+                                  WHEN jsonb_typeof(item.value) = 'object' THEN item.value ->> 'url'
+                                  ELSE NULL
+                              END AS url
+                       FROM deleted d
+                       CROSS JOIN LATERAL jsonb_array_elements(
+                           CASE WHEN jsonb_typeof(d.sku_image_url::jsonb) = 'array' THEN d.sku_image_url::jsonb ELSE '[]'::jsonb END
+                       ) AS item(value)
+                   ) raw
+                   WHERE url IS NOT NULL AND BTRIM(url) != ''
+               ), '[]'::jsonb)::text AS "imageUrlsJson"
     </select>
 
     <select id="listAllSpuIds" resultType="long">
@@ -513,7 +795,7 @@ LIMIT #{limit} OFFSET #{offset}
 
     <select id="listAllSkuIds" resultType="string">
         <![CDATA[
-SELECT id
+SELECT encode(id, 'hex')
 FROM product_sku
 ORDER BY id ASC
 LIMIT #{limit} OFFSET #{offset}
@@ -711,7 +993,7 @@ SELECT EXISTS(SELECT 1 FROM target_category) AS "categoryExists",
                (SELECT COUNT(*) FROM deleted_sku) AS "deletedSkuCount",
                (SELECT COUNT(*) FROM deleted_detail) AS "deletedDetailCount",
                COALESCE((SELECT jsonb_agg(id) FROM deleted_spu), '[]'::jsonb)::text AS "deletedIdsJson",
-               COALESCE((SELECT jsonb_agg(id) FROM deleted_sku), '[]'::jsonb)::text AS "deletedSkuIdsJson",
+               COALESCE((SELECT jsonb_agg(encode(id, 'hex')) FROM deleted_sku), '[]'::jsonb)::text AS "deletedSkuIdsJson",
                COALESCE((SELECT jsonb_agg(url) FROM image_urls), '[]'::jsonb)::text AS "imageUrlsJson"
     </select>
 
@@ -805,7 +1087,7 @@ SELECT EXISTS(SELECT 1 FROM target_category) AS "categoryExists",
        (SELECT COUNT(*) FROM deleted_sku) AS "deletedSkuCount",
        (SELECT COUNT(*) FROM deleted_detail) AS "deletedDetailCount",
        COALESCE((SELECT jsonb_agg(id) FROM deleted_spu), '[]'::jsonb)::text AS "deletedIdsJson",
-       COALESCE((SELECT jsonb_agg(id) FROM deleted_sku), '[]'::jsonb)::text AS "deletedSkuIdsJson",
+       COALESCE((SELECT jsonb_agg(encode(id, 'hex')) FROM deleted_sku), '[]'::jsonb)::text AS "deletedSkuIdsJson",
        COALESCE((SELECT jsonb_agg(url) FROM image_urls), '[]'::jsonb)::text AS "imageUrlsJson"
         ]]>
     </select>

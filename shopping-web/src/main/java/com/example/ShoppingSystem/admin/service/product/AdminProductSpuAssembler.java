@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.admin.service.product;
 
+import com.example.ShoppingSystem.Utils.ProductSkuIdCodec;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailSkuResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuResponse;
@@ -158,8 +159,48 @@ public class AdminProductSpuAssembler {
         return "true".equalsIgnoreCase(text) || "1".equals(text);
     }
 
+    public BigDecimal toBigDecimal(Object value, BigDecimal defaultValue) {
+        BigDecimal parsed = toNullableBigDecimal(value);
+        return parsed == null ? defaultValue : parsed;
+    }
+
+    public BigDecimal toNullableBigDecimal(Object value) {
+        if (value instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        String text = toText(value);
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(text);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     public String toText(Object value) {
         return normalizeText(value);
+    }
+
+    public AdminProductSpuDetailSkuResponse toSkuResponse(Map<String, Object> row) {
+        if (row == null || row.isEmpty()) {
+            return null;
+        }
+        return new AdminProductSpuDetailSkuResponse(
+                toSkuIdText(value(row, "id")),
+                toLong(value(row, "spuId"), 0L),
+                toText(value(row, "skuCode")),
+                toText(value(row, "skuName")),
+                parseJsonNode(value(row, "specJson"), false),
+                parseJsonNode(value(row, "skuImageUrls"), true),
+                toBigDecimal(value(row, "priceYuan"), BigDecimal.ZERO),
+                toNullableBigDecimal(value(row, "originalPriceYuan")),
+                toInt(value(row, "stockQuantity"), 0),
+                toText(value(row, "status")));
     }
 
     private List<AdminProductSpuDetailSkuResponse> toSkuResponses(Object rawSkusJson) {
@@ -170,7 +211,7 @@ public class AdminProductSpuAssembler {
         List<AdminProductSpuDetailSkuResponse> skus = new ArrayList<>();
         for (JsonNode skuNode : skusNode) {
             skus.add(new AdminProductSpuDetailSkuResponse(
-                    jsonText(skuNode, "id"),
+                    toSkuIdText(jsonText(skuNode, "id")),
                     jsonLong(skuNode, "spuId", 0L),
                     jsonText(skuNode, "skuCode"),
                     jsonText(skuNode, "skuName"),
@@ -262,6 +303,10 @@ public class AdminProductSpuAssembler {
             return "";
         }
         return value.isTextual() ? normalizeText(value.asText()) : normalizeText(value);
+    }
+
+    private String toSkuIdText(Object raw) {
+        return ProductSkuIdCodec.toBase62FromDatabaseValue(raw);
     }
 
     private List<Long> normalizeLongCollection(Collection<Long> values) {

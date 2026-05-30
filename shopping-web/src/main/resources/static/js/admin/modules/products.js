@@ -111,6 +111,9 @@
       navigateToProductDetail,
       navigateToProductImages,
       navigateToProductCarousel,
+      navigateToProductSku,
+      navigateToProductSkuCreate,
+      navigateToProductHotSku,
       navigateToProductList
     });
     createController = root.AdminProductCreateController.create({
@@ -181,10 +184,26 @@
     });
   }
 
+  async function ensureDetailController() {
+    if (detailController) {
+      return;
+    }
+    if (!state.mounted) {
+      const panel = router?.getLoadedPanel?.("products");
+      if (panel) {
+        mount();
+      }
+    }
+  }
+
   async function routeProducts() {
+    await ensureDetailController();
     const productRoute = productRouteFromLocation();
     if (productRoute.id) {
-      await detailController?.open(productRoute.id, productRoute.mode);
+      if (!detailController) {
+        return;
+      }
+      await detailController.open(productRoute.id, productRoute.mode, productRoute.skuId);
       return;
     }
     await detailController?.close(true);
@@ -200,6 +219,19 @@
     }
     const parts = normalizedPath.slice(prefix.length).split("/");
     const id = decodeURIComponent(parts[0] || "").trim();
+    if (parts[1] === "sku" && parts[2] === "hot") {
+      return {
+        id,
+        mode: "hotSku"
+      };
+    }
+    if (parts[1] === "sku") {
+      return {
+        id,
+        mode: "sku",
+        skuId: decodeURIComponent(parts[2] || "").trim()
+      };
+    }
     return {
       id,
       mode: parts[1] === "images" ? "images" : parts[1] === "carousel" ? "carousel" : "detail"
@@ -252,6 +284,47 @@
       return;
     }
     detailController?.open(id, "carousel");
+  }
+
+  function navigateToProductSku(productId, skuId) {
+    const id = String(productId || "").trim();
+    const sku = String(skuId || "").trim();
+    if (!id || !sku) {
+      return;
+    }
+    if (window.history?.pushState) {
+      const url = new URL(window.location.href);
+      url.pathname = `${CONSOLE_PRODUCTS_PATH}/${encodeURIComponent(id)}/sku/${encodeURIComponent(sku)}`;
+      url.search = "";
+      window.history.pushState({ adminSection: "products", productId: id, skuId: sku }, "", url.pathname + url.search + url.hash);
+      routeProducts();
+      return;
+    }
+    detailController?.open(id, "sku", sku);
+  }
+
+  function navigateToProductSkuCreate(productId) {
+    const id = String(productId || "").trim();
+    if (!id) {
+      return;
+    }
+    navigateToProductSku(id, "new");
+  }
+
+  function navigateToProductHotSku(productId) {
+    const id = String(productId || "").trim();
+    if (!id) {
+      return;
+    }
+    if (window.history?.pushState) {
+      const url = new URL(window.location.href);
+      url.pathname = `${CONSOLE_PRODUCTS_PATH}/${encodeURIComponent(id)}/sku/hot`;
+      url.search = "";
+      window.history.pushState({ adminSection: "products", productId: id, productHotSku: true }, "", url.pathname + url.search + url.hash);
+      routeProducts();
+      return;
+    }
+    detailController?.open(id, "hotSku");
   }
 
   function navigateToProductList() {

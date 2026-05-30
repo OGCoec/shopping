@@ -15,6 +15,8 @@ import com.example.ShoppingSystem.service.captcha.tianai.generator.SliderTemplat
 import com.example.ShoppingSystem.service.captcha.tianai.resource.CaptchaRedisKeys;
 import com.google.gson.Gson;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.aop.framework.AopProxyUtils;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.SessionCallback;
@@ -30,7 +32,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -52,7 +53,6 @@ import static cloud.tianai.captcha.generator.impl.StandardSliderImageCaptchaGene
 @Service
 public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResourceInitService {
 
-    private static final Duration INIT_LOCK_TTL = Duration.ofMinutes(2);
     private static final String REDIS_RESOURCE_STORE_CLASS = "cloud.tianai.captcha.spring.plugins.RedisResourceStore";
     private static final String DEFAULT_TEMPLATE_PATH_PREFIX = "META-INF/cut-image/template";
     private static final String TEMPLATE_RESOURCE_TYPE = "classpath";
@@ -61,6 +61,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
 
     private final ImageCaptchaApplication imageCaptchaApplication;
     private final StringRedisTemplate stringRedisTemplate;
+    private final RedissonClient redissonClient;
     private final TianaiCaptchaResourceProperties resourceProperties;
     private final Gson gson = new Gson();
     private final SliderTemplateImageGenerator sliderTemplateImageGenerator = new SliderTemplateImageGenerator();
@@ -81,9 +82,11 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
      */
     public TianaiCaptchaResourceInitServiceImpl(ImageCaptchaApplication imageCaptchaApplication,
                                                 StringRedisTemplate stringRedisTemplate,
+                                                RedissonClient redissonClient,
                                                 TianaiCaptchaResourceProperties resourceProperties) {
         this.imageCaptchaApplication = imageCaptchaApplication;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.redissonClient = redissonClient;
         this.resourceProperties = resourceProperties;
     }
 
@@ -223,21 +226,23 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
                                           List<String> rotatePayloads,
                                           Map<String, List<String>> defaultResourcePayloads,
                                           Map<String, List<String>> defaultTemplatePayloads) {
-        // 锁值使用随机 UUID，释放时可以校验“是不是自己加的锁”。
-        String lockValue = UUID.randomUUID().toString();
-        Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(CaptchaRedisKeys.RESOURCE_DEFAULT_INIT_LOCK, lockValue, INIT_LOCK_TTL);
-        if (!Boolean.TRUE.equals(acquired)) {
-            log.warn("Skip Tianai resource rebuild because another node is already rebuilding the resource keys");
-            return;
-        }
-
+        // 随机后缀用于隔离本次重建的临时 key。
+        String rebuildToken = UUID.randomUUID().toString();
+        RLock lock = redissonClient.getLock(CaptchaRedisKeys.RESOURCE_DEFAULT_INIT_LOCK);
+        boolean locked = false;
         try {
+            locked = lock.tryLock();
+            if (!locked) {
+                log.warn("Skip Tianai resource rebuild because another node is already rebuilding the resource keys");
+                return;
+            }
             // 真正的重建工作统一收口到一个方法里，减少锁保护范围内的散乱逻辑。
-            writeTempKeysAndRename(types, payloads, rotatePayloads, defaultResourcePayloads, defaultTemplatePayloads, lockValue);
+            writeTempKeysAndRename(types, payloads, rotatePayloads, defaultResourcePayloads, defaultTemplatePayloads, rebuildToken);
             log.info("Tianai built-in resources and custom background resources have been rebuilt");
         } finally {
-            // 无论是否异常，都按“比对锁值”的方式安全释放锁。
-            releaseInitLock(lockValue);
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         }
     }
 
@@ -250,14 +255,14 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
      * @param rotatePayloads ROTATE 专用背景资源 JSON 列表
      * @param defaultResourcePayloads 默认资源配置
      * @param defaultTemplatePayloads 默认模板配置
-     * @param lockValue 当前锁值，同时用于构造临时 key 后缀
+     * @param rebuildToken 当前重建任务的临时 key 后缀
      */
     private void writeTempKeysAndRename(String[] types,
                                         List<String> payloads,
                                         List<String> rotatePayloads,
                                         Map<String, List<String>> defaultResourcePayloads,
                                         Map<String, List<String>> defaultTemplatePayloads,
-                                        String lockValue) {
+                                        String rebuildToken) {
         stringRedisTemplate.delete(CaptchaRedisKeys.RESOURCE_DEFAULT_PREFIX + FontCache.FONT_TYPE);
         stringRedisTemplate.executePipelined(new SessionCallback<Object>() {
             /**
@@ -271,7 +276,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
             public Object execute(RedisOperations operations) {
                 // 第 1 步：先把各验证码类型的背景资源写到对应的临时 key。
                 for (String type : types) {
-                    String tempKey = buildResourceTempKey(type, lockValue);
+                    String tempKey = buildResourceTempKey(type, rebuildToken);
                     List<String> typePayloads = payloadsForType(type, payloads, rotatePayloads);
                     operations.delete(tempKey);
                     if (!typePayloads.isEmpty()) {
@@ -280,7 +285,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
                 }
                 // 第 2 步：写入字体等默认资源，它们和业务背景图分开维护。
                 for (Map.Entry<String, List<String>> entry : defaultResourcePayloads.entrySet()) {
-                    String tempKey = buildResourceTempKey(entry.getKey(), lockValue);
+                    String tempKey = buildResourceTempKey(entry.getKey(), rebuildToken);
                     operations.delete(tempKey);
                     if (!entry.getValue().isEmpty()) {
                         operations.opsForList().rightPushAll(tempKey, entry.getValue());
@@ -288,7 +293,7 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
                 }
                 // 第 3 步：写入默认模板和本地扩展模板。
                 for (Map.Entry<String, List<String>> entry : defaultTemplatePayloads.entrySet()) {
-                    String tempKey = buildTemplateTempKey(entry.getKey(), lockValue);
+                    String tempKey = buildTemplateTempKey(entry.getKey(), rebuildToken);
                     operations.delete(tempKey);
                     if (!entry.getValue().isEmpty()) {
                         operations.opsForList().rightPushAll(tempKey, entry.getValue());
@@ -297,14 +302,14 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
                 // 第 4 步：等所有临时 key 准备好之后，再 rename 到正式 key，实现整体替换。
                 for (String type : types) {
                     if (!payloadsForType(type, payloads, rotatePayloads).isEmpty()) {
-                        operations.rename(buildResourceTempKey(type, lockValue), CaptchaRedisKeys.resourceDefaultKey(type));
+                        operations.rename(buildResourceTempKey(type, rebuildToken), CaptchaRedisKeys.resourceDefaultKey(type));
                     }
                 }
                 for (String type : defaultResourcePayloads.keySet()) {
-                    operations.rename(buildResourceTempKey(type, lockValue), CaptchaRedisKeys.resourceDefaultKey(type));
+                    operations.rename(buildResourceTempKey(type, rebuildToken), CaptchaRedisKeys.resourceDefaultKey(type));
                 }
                 for (String type : defaultTemplatePayloads.keySet()) {
-                    operations.rename(buildTemplateTempKey(type, lockValue), CaptchaRedisKeys.templateDefaultKey(type));
+                    operations.rename(buildTemplateTempKey(type, rebuildToken), CaptchaRedisKeys.templateDefaultKey(type));
                 }
                 return null;
             }
@@ -568,12 +573,12 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
      * 临时 key 写完整后会通过 rename 替换正式资源 key。
      *
      * @param type 验证码类型或资源类型
-     * @param lockValue 当前初始化锁值，用于区分不同重建任务的临时 key
+     * @param rebuildToken 当前重建任务的临时 key 后缀
      * @return 资源配置临时 Redis key
      */
-    private String buildResourceTempKey(String type, String lockValue) {
+    private String buildResourceTempKey(String type, String rebuildToken) {
         // 统一走 key 工具类，避免业务侧手拼 key 带来命名不一致。
-        return CaptchaRedisKeys.resourceDefaultTempKey(type, lockValue);
+        return CaptchaRedisKeys.resourceDefaultTempKey(type, rebuildToken);
     }
 
     /**
@@ -581,12 +586,12 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
      * 临时 key 写完整后会通过 rename 替换正式模板 key。
      *
      * @param type 验证码类型
-     * @param lockValue 当前初始化锁值，用于区分不同重建任务的临时 key
+     * @param rebuildToken 当前重建任务的临时 key 后缀
      * @return 模板配置临时 Redis key
      */
-    private String buildTemplateTempKey(String type, String lockValue) {
+    private String buildTemplateTempKey(String type, String rebuildToken) {
         // 模板 key 与资源 key 分开生成，便于分别覆盖和排查。
-        return CaptchaRedisKeys.templateDefaultTempKey(type, lockValue);
+        return CaptchaRedisKeys.templateDefaultTempKey(type, rebuildToken);
     }
 
     private File backgroundDirectory() {
@@ -711,17 +716,4 @@ public class TianaiCaptchaResourceInitServiceImpl implements TianaiCaptchaResour
         }
     }
 
-    /**
-     * 释放初始化分布式锁。
-     * 释放前先比对锁值，避免误删其它节点后来获取到的新锁。
-     *
-     * @param lockValue 当前节点持有的锁值
-     */
-    private void releaseInitLock(String lockValue) {
-        // 先校验当前锁值是不是自己加的，避免误删其它节点后来拿到的锁。
-        String currentLockValue = stringRedisTemplate.opsForValue().get(CaptchaRedisKeys.RESOURCE_DEFAULT_INIT_LOCK);
-        if (lockValue.equals(currentLockValue)) {
-            stringRedisTemplate.delete(CaptchaRedisKeys.RESOURCE_DEFAULT_INIT_LOCK);
-        }
-    }
 }

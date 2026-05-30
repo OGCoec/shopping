@@ -7,8 +7,7 @@
     syncMainImageFromDisplayImages,
     displayImagePayload,
     formatJson,
-    integerOrZero,
-    decimalOrZero
+    buildSkuNumericPayload
   } = imageUtils;
 
   function buildDraft(product, allocateSkuClientKey) {
@@ -42,6 +41,10 @@
 
   function buildUpdatePayload(draft, imageUploadSessions) {
     syncMainImageFromDisplayImages(draft);
+    const name = (draft.name || "").trim();
+    if (!name) {
+      return { ok: false, message: "商品名称不能为空。" };
+    }
     let attributes;
     try {
       attributes = JSON.parse(draft.attributesText || "{}");
@@ -56,15 +59,19 @@
       } catch (_) {
         return { ok: false, message: "SKU 规格 JSON 格式无效。" };
       }
+      const numeric = buildSkuNumericPayload(sku);
+      if (!numeric.ok) {
+        return { ok: false, message: numeric.message };
+      }
       skus.push({
         id: sku.id || null,
         skuCode: sku.skuCode.trim(),
         skuName: sku.skuName.trim(),
         specJson,
         skuImageUrls: imagePayload(sku.skuImageUrls || []),
-        priceYuan: decimalOrZero(sku.priceYuan),
-        originalPriceYuan: sku.originalPriceYuan === "" ? null : decimalOrZero(sku.originalPriceYuan),
-        stockQuantity: integerOrZero(sku.stockQuantity),
+        priceYuan: numeric.priceYuan,
+        originalPriceYuan: numeric.originalPriceYuan,
+        stockQuantity: numeric.stockQuantity,
         status: sku.status
       });
     }
@@ -72,6 +79,7 @@
       ok: true,
       payload: {
         categoryId: draft.categoryId,
+        name,
         subtitle: draft.subtitle.trim(),
         brandName: draft.brandName.trim(),
         mainImageUrl: draft.mainImageUrl.trim(),

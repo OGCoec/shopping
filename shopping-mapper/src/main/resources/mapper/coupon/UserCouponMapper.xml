@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.coupon.UserCouponMapper">
+
+    <insert id="insertClaimedCouponIgnore">
+        INSERT INTO user_coupon (
+            id,
+            user_id,
+            coupon_template_id,
+            status,
+            valid_start_at,
+            valid_end_at,
+            received_at
+        )
+        VALUES (
+            #{id},
+            #{userId},
+            #{couponTemplateId},
+            'UNUSED',
+            #{validStartAt},
+            #{validEndAt},
+            #{receivedAt}
+        )
+        ON CONFLICT (user_id, coupon_template_id) DO NOTHING
+    </insert>
+
+    <select id="listClaimedByTemplateId" resultType="map">
+        SELECT user_id AS "userId",
+               encode(id, 'hex') AS "userCouponId"
+        FROM user_coupon
+        WHERE coupon_template_id = #{couponTemplateId}
+          AND status IN ('UNUSED', 'LOCKED', 'USED')
+    </select>
+
+    <select id="listByUserIds" resultType="map">
+        WITH requested(user_id) AS (
+            VALUES
+            <foreach collection="userIds" item="userId" separator=",">
+                (#{userId})
+            </foreach>
+        )
+        SELECT encode(u.id, 'hex') AS "id",
+               u.user_id AS "userId",
+               encode(u.coupon_template_id, 'hex') AS "couponTemplateId",
+               u.status,
+               u.valid_start_at AS "validStartAt",
+               u.valid_end_at AS "validEndAt",
+               u.received_at AS "receivedAt",
+               u.locked_order_id AS "lockedOrderId",
+               u.locked_at AS "lockedAt",
+               u.used_order_id AS "usedOrderId",
+               u.used_at AS "usedAt",
+               u.version,
+               u.created_at AS "createdAt",
+               u.updated_at AS "updatedAt"
+        FROM user_coupon u
+        INNER JOIN requested r ON r.user_id = u.user_id
+        <if test="status != null and status != ''">
+            WHERE u.status = #{status}
+        </if>
+        ORDER BY u.received_at DESC, u.created_at DESC
+    </select>
+
+    <update id="expireUnusedCoupons">
+        UPDATE user_coupon
+        SET status = 'EXPIRED',
+            updated_at = NOW()
+        WHERE status = 'UNUSED'
+          AND valid_end_at &lt; NOW()
+    </update>
+</mapper>

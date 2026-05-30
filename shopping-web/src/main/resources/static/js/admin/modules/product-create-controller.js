@@ -11,8 +11,7 @@
     displayImagePayload,
     imageItemUrl,
     escapeAttribute,
-    integerOrZero,
-    decimalOrZero
+    buildSkuNumericPayload
   } = imageUtils;
   const {
     actionButton,
@@ -240,7 +239,7 @@
         skuImageUrls: [],
         priceYuan: "0",
         originalPriceYuan: "",
-        stockQuantity: "0",
+        stockQuantity: "1",
         status: "ACTIVE"
       };
     }
@@ -336,15 +335,19 @@
     }
 
     function createSkuDraftRow(sku, index) {
-      const row = document.createElement("div");
-      row.className = "admin-product-detail-sku-edit-row admin-product-spu-create-sku-row";
-      row.appendChild(skuImageList(sku, renderSkus));
-      row.appendChild(skuInput("SKU 编码", sku.skuCode, (value) => { sku.skuCode = value; }));
-      row.appendChild(skuInput("SKU 名称", sku.skuName, (value) => { sku.skuName = value; }));
-      row.appendChild(skuInput("价格(元)", sku.priceYuan, (value) => { sku.priceYuan = value; }, "number"));
-      row.appendChild(skuInput("原价(元)", sku.originalPriceYuan, (value) => { sku.originalPriceYuan = value; }, "number"));
-      row.appendChild(skuInput("库存", sku.stockQuantity, (value) => { sku.stockQuantity = value; }, "number"));
+      const row = document.createElement("article");
+      row.className = "admin-product-sku-card admin-product-spu-create-sku-row";
+      const header = document.createElement("div");
+      header.className = "admin-product-sku-card-top";
+      const preview = document.createElement("div");
+      preview.className = "admin-product-sku-card-preview";
+      const firstImage = imagePayload(sku.skuImageUrls || [])[0] || "";
+      preview.innerHTML = firstImage ? `<img src="${escapeAttribute(firstImage)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />` : "<span>-</span>";
+      const title = document.createElement("div");
+      title.className = "admin-product-sku-card-title";
+      title.innerHTML = `<strong>${escapeAttribute(sku.skuName || "新增 SKU")}</strong><span>${escapeAttribute(sku.skuCode || "未填写编码")}</span>`;
       const status = document.createElement("select");
+      status.className = "admin-product-sku-card-status";
       ["ACTIVE", "DISABLED"].forEach((value) => {
         const option = document.createElement("option");
         option.value = value;
@@ -353,14 +356,26 @@
       });
       status.value = sku.status;
       status.addEventListener("change", () => { sku.status = status.value; });
-      row.appendChild(status);
+      header.append(preview, title, status);
+      const fields = document.createElement("div");
+      fields.className = "admin-product-sku-card-form";
+      fields.append(
+        skuInput("SKU 编码", sku.skuCode, (value) => { sku.skuCode = value; }),
+        skuInput("SKU 名称", sku.skuName, (value) => { sku.skuName = value; }),
+        skuInput("价格(元)", sku.priceYuan, (value) => { sku.priceYuan = value; }, "money"),
+        skuInput("原价(元)", sku.originalPriceYuan, (value) => { sku.originalPriceYuan = value; }, "money"),
+        skuInput("库存", sku.stockQuantity, (value) => { sku.stockQuantity = value; }, "stock")
+      );
       const spec = document.createElement("textarea");
+      spec.className = "admin-product-sku-card-spec";
       spec.rows = 3;
       spec.value = sku.specJsonText || "{}";
       spec.addEventListener("input", () => { sku.specJsonText = spec.value; });
-      row.appendChild(spec);
+      const images = document.createElement("div");
+      images.className = "admin-product-sku-card-images";
+      images.appendChild(skuImageList(sku, renderSkus));
       const actions = document.createElement("div");
-      actions.className = "admin-product-detail-actions";
+      actions.className = "admin-product-detail-actions admin-product-sku-card-actions";
       actions.append(
         actionButton("批量上传图", async () => uploadSkuImages(sku, renderSkus)),
         actionButton("删除", async () => {
@@ -369,7 +384,7 @@
           renderSkus();
         }, "admin-api-back")
       );
-      row.appendChild(actions);
+      row.append(header, fields, images, spec, actions);
       return row;
     }
 
@@ -519,6 +534,7 @@
             });
             await productApi.updateSpuDetail(createdId, {
               categoryId,
+              name,
               subtitle: el.subtitle.value.trim(),
               brandName: el.brand.value.trim(),
               mainImageUrl: createdProduct.mainImageUrl || "",
@@ -581,15 +597,20 @@
           api.setStatus(el.formStatus, "SKU 规格 JSON 格式无效。", "error");
           return null;
         }
+        const numeric = buildSkuNumericPayload(sku);
+        if (!numeric.ok) {
+          api.setStatus(el.formStatus, numeric.message, "error");
+          return null;
+        }
         skus.push({
           id: null,
           skuCode,
           skuName,
           specJson,
           skuImageUrls: imagePayload(sku.skuImageUrls || []),
-          priceYuan: decimalOrZero(sku.priceYuan),
-          originalPriceYuan: sku.originalPriceYuan === "" ? null : decimalOrZero(sku.originalPriceYuan),
-          stockQuantity: integerOrZero(sku.stockQuantity),
+          priceYuan: numeric.priceYuan,
+          originalPriceYuan: numeric.originalPriceYuan,
+          stockQuantity: numeric.stockQuantity,
           status: sku.status || "ACTIVE"
         });
       }

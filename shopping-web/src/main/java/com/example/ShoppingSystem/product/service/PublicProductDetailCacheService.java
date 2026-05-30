@@ -1,7 +1,9 @@
 package com.example.ShoppingSystem.product.service;
 
+import com.example.ShoppingSystem.Utils.ProductSkuIdCodec;
 import com.example.ShoppingSystem.mapper.product.ProductSpuMapper;
 import com.example.ShoppingSystem.product.dto.PublicProductDetailResponse;
+import com.example.ShoppingSystem.product.dto.PublicProductSkuResponse;
 import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +19,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -156,7 +159,11 @@ public class PublicProductDetailCacheService {
         }
         try {
             PublicProductDetailResponse detail = objectMapper.readValue(raw, PublicProductDetailResponse.class);
-            return ProductDetailCacheEntry.found(detail, System.currentTimeMillis() + positiveTtl().toMillis());
+            PublicProductDetailResponse normalizedDetail = normalizeCachedDetail(detail);
+            if (normalizedDetail != detail) {
+                writeRedisDetailCache(spuId, normalizedDetail);
+            }
+            return ProductDetailCacheEntry.found(normalizedDetail, System.currentTimeMillis() + positiveTtl().toMillis());
         } catch (JsonProcessingException e) {
             log.warn("[Product public detail] Redis cache JSON invalid, spuId={}", spuId, e);
             invalidate(List.of(spuId));
@@ -184,6 +191,49 @@ public class PublicProductDetailCacheService {
         } catch (Exception e) {
             log.warn("[Product public detail] Redis negative write failed, spuId={}", spuId, e);
         }
+    }
+
+    private PublicProductDetailResponse normalizeCachedDetail(PublicProductDetailResponse detail) {
+        if (detail == null || detail.skus() == null || detail.skus().isEmpty()) {
+            return detail;
+        }
+        List<PublicProductSkuResponse> normalizedSkus = new ArrayList<>(detail.skus().size());
+        boolean changed = false;
+        for (PublicProductSkuResponse sku : detail.skus()) {
+            if (sku == null) {
+                changed = true;
+                continue;
+            }
+            String normalizedId = ProductSkuIdCodec.toBase62FromDatabaseValue(sku.id());
+            if (!normalizedId.equals(sku.id() == null ? "" : sku.id().trim())) {
+                changed = true;
+            }
+            normalizedSkus.add(new PublicProductSkuResponse(
+                    normalizedId,
+                    sku.skuName(),
+                    sku.specJson(),
+                    sku.skuImageUrls(),
+                    sku.priceYuan(),
+                    sku.originalPriceYuan(),
+                    sku.stockQuantity()));
+        }
+        if (!changed) {
+            return detail;
+        }
+        return new PublicProductDetailResponse(
+                detail.id(),
+                detail.categoryId(),
+                detail.categoryName(),
+                detail.name(),
+                detail.subtitle(),
+                detail.brandName(),
+                detail.mainImageUrl(),
+                detail.imageUrls(),
+                detail.detailImageUrls(),
+                detail.attributes(),
+                detail.description(),
+                detail.afterSale(),
+                List.copyOf(normalizedSkus));
     }
 
     private void invalidateByCategoryIds(List<Long> categoryIds) {

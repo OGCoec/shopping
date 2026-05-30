@@ -23,6 +23,33 @@
   identifierInput?.addEventListener("input", refreshCaptureSoon);
   passwordInput?.addEventListener("input", refreshCaptureSoon);
 
+  const CONSOLE_BASE_PATH = "/shopping/admin/console";
+  const RETURN_TO_MAX_LENGTH = 512;
+
+  function isAllowedConsoleReturnTo(value) {
+    if (typeof value !== "string" || value.length === 0) {
+      return false;
+    }
+    if (value.length > RETURN_TO_MAX_LENGTH) {
+      return false;
+    }
+    if (!value.startsWith("/") || value.startsWith("//")) {
+      return false;
+    }
+    const queryIndex = value.indexOf("?");
+    const path = queryIndex >= 0 ? value.slice(0, queryIndex) : value;
+    return path === CONSOLE_BASE_PATH || path.startsWith(CONSOLE_BASE_PATH + "/");
+  }
+
+  function resolveReturnTo() {
+    try {
+      const value = new URLSearchParams(window.location.search).get("returnTo");
+      return isAllowedConsoleReturnTo(value) ? value : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     submitButton.disabled = true;
@@ -35,7 +62,8 @@
         ...encryptedPassword
       });
       api.setStatus(statusNode, "登录成功。", "ok");
-      const redirectPath = response.data?.redirectPath || "/shopping/admin/console";
+      const returnTo = resolveReturnTo();
+      const redirectPath = returnTo || response.data?.redirectPath || "/shopping/admin/console";
       if (transition?.beginExit) {
         await transition.beginExit({ source: form, to: redirectPath });
         return;

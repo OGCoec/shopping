@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.coupon.CouponTemplateMapper">
+
+    <insert id="insertTemplate">
+        INSERT INTO coupon_template (
+            id,
+            coupon_code,
+            name,
+            discount_type,
+            threshold_amount_yuan,
+            discount_amount_yuan,
+            discount_rate,
+            max_discount_amount_yuan,
+            total_quantity,
+            remaining_quantity,
+            per_user_limit,
+            scope_type,
+            receive_start_at,
+            receive_end_at,
+            valid_start_at,
+            valid_end_at
+        )
+        VALUES (
+            #{id},
+            #{couponCode},
+            #{name},
+            #{discountType},
+            #{thresholdAmountYuan},
+            #{discountAmountYuan},
+            #{discountRate},
+            #{maxDiscountAmountYuan},
+            #{totalQuantity},
+            #{remainingQuantity},
+            #{perUserLimit},
+            #{scopeType},
+            #{receiveStartAt},
+            #{receiveEndAt},
+            #{validStartAt},
+            #{validEndAt}
+        )
+    </insert>
+
+    <update id="updateTemplate">
+        UPDATE coupon_template
+        SET coupon_code = #{couponCode},
+            name = #{name},
+            discount_type = #{discountType},
+            threshold_amount_yuan = #{thresholdAmountYuan},
+            discount_amount_yuan = #{discountAmountYuan},
+            discount_rate = #{discountRate},
+            max_discount_amount_yuan = #{maxDiscountAmountYuan},
+            total_quantity = #{totalQuantity},
+            remaining_quantity = #{remainingQuantity},
+            per_user_limit = #{perUserLimit},
+            scope_type = #{scopeType},
+            receive_start_at = #{receiveStartAt},
+            receive_end_at = #{receiveEndAt},
+            valid_start_at = #{validStartAt},
+            valid_end_at = #{validEndAt},
+            version = version + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status IN ('DRAFT', 'DISABLED')
+    </update>
+
+    <select id="findById" resultType="map">
+        SELECT encode(id, 'hex') AS "id",
+               coupon_code AS "couponCode",
+               name,
+               discount_type AS "discountType",
+               threshold_amount_yuan AS "thresholdAmountYuan",
+               discount_amount_yuan AS "discountAmountYuan",
+               discount_rate AS "discountRate",
+               max_discount_amount_yuan AS "maxDiscountAmountYuan",
+               total_quantity AS "totalQuantity",
+               remaining_quantity AS "remainingQuantity",
+               per_user_limit AS "perUserLimit",
+               scope_type AS "scopeType",
+               receive_start_at AS "receiveStartAt",
+               receive_end_at AS "receiveEndAt",
+               valid_start_at AS "validStartAt",
+               valid_end_at AS "validEndAt",
+               status,
+               version,
+               created_at AS "createdAt",
+               updated_at AS "updatedAt"
+        FROM coupon_template
+        WHERE id = #{id}
+    </select>
+
+    <select id="listTemplates" resultType="map">
+        SELECT encode(id, 'hex') AS "id",
+               coupon_code AS "couponCode",
+               name,
+               discount_type AS "discountType",
+               threshold_amount_yuan AS "thresholdAmountYuan",
+               discount_amount_yuan AS "discountAmountYuan",
+               discount_rate AS "discountRate",
+               max_discount_amount_yuan AS "maxDiscountAmountYuan",
+               total_quantity AS "totalQuantity",
+               remaining_quantity AS "remainingQuantity",
+               per_user_limit AS "perUserLimit",
+               scope_type AS "scopeType",
+               receive_start_at AS "receiveStartAt",
+               receive_end_at AS "receiveEndAt",
+               valid_start_at AS "validStartAt",
+               valid_end_at AS "validEndAt",
+               status,
+               version,
+               created_at AS "createdAt",
+               updated_at AS "updatedAt"
+        FROM coupon_template
+        WHERE status != 'DELETED'
+        <if test="name != null and name != ''">
+          AND name ILIKE CONCAT('%', #{name}, '%')
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countTemplates" resultType="long">
+        SELECT COUNT(*)
+        FROM coupon_template
+        WHERE status != 'DELETED'
+        <if test="name != null and name != ''">
+          AND name ILIKE CONCAT('%', #{name}, '%')
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+    </select>
+
+    <update id="publish">
+        UPDATE coupon_template
+        SET status = 'ACTIVE',
+            version = version + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status IN ('DRAFT', 'DISABLED')
+    </update>
+
+    <update id="disable">
+        UPDATE coupon_template
+        SET status = 'DISABLED',
+            version = version + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
+    </update>
+
+    <update id="softDelete">
+        UPDATE coupon_template
+        SET status = 'DELETED',
+            version = version + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status IN ('DRAFT', 'DISABLED', 'EXPIRED')
+    </update>
+
+    <update id="batchUpdateRemainingQuantity">
+        WITH incoming AS (
+            SELECT decode(raw.coupon_id_hex, 'hex') AS coupon_id,
+                   raw.remaining_quantity AS remaining_quantity
+            FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
+                coupon_id_hex text,
+                remaining_quantity integer
+            )
+        )
+        UPDATE coupon_template t
+        SET remaining_quantity = GREATEST(0, i.remaining_quantity),
+            updated_at = NOW()
+        FROM incoming i
+        WHERE t.id = i.coupon_id
+          AND t.status IN ('ACTIVE', 'DISABLED', 'EXPIRED')
+    </update>
+
+    <update id="expireTemplates">
+        UPDATE coupon_template
+        SET status = 'EXPIRED',
+            version = version + 1,
+            updated_at = NOW()
+        WHERE status = 'ACTIVE'
+          AND receive_end_at &lt; NOW()
+    </update>
+</mapper>

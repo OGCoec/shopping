@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.config;
 
 import com.example.ShoppingSystem.admin.interceptor.AdminSessionInterceptor;
+import com.example.ShoppingSystem.admin.interceptor.AdminIpChangeWafInterceptor;
 import com.example.ShoppingSystem.interceptor.LoginFlowGuardInterceptor;
 import com.example.ShoppingSystem.interceptor.PasswordResetTokenGuardInterceptor;
 import com.example.ShoppingSystem.interceptor.PhoneBindingRequiredInterceptor;
@@ -29,6 +30,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
     private final AccessTokenAuthenticationInterceptor accessTokenAuthenticationInterceptor;
     private final PostLoginAccountNetworkRiskInterceptor postLoginAccountNetworkRiskInterceptor;
     private final PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor;
+    private final AdminIpChangeWafInterceptor adminIpChangeWafInterceptor;
     private final AdminSessionInterceptor adminSessionInterceptor;
 
     public AuthWebMvcConfig(PreAuthInterceptor preAuthInterceptor,
@@ -39,6 +41,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                             AccessTokenAuthenticationInterceptor accessTokenAuthenticationInterceptor,
                             PostLoginAccountNetworkRiskInterceptor postLoginAccountNetworkRiskInterceptor,
                             PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor,
+                            AdminIpChangeWafInterceptor adminIpChangeWafInterceptor,
                             AdminSessionInterceptor adminSessionInterceptor) {
         this.preAuthInterceptor = preAuthInterceptor;
         this.webRtcIpConsistencyInterceptor = webRtcIpConsistencyInterceptor;
@@ -48,6 +51,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
         this.accessTokenAuthenticationInterceptor = accessTokenAuthenticationInterceptor;
         this.postLoginAccountNetworkRiskInterceptor = postLoginAccountNetworkRiskInterceptor;
         this.phoneBindingRequiredInterceptor = phoneBindingRequiredInterceptor;
+        this.adminIpChangeWafInterceptor = adminIpChangeWafInterceptor;
         this.adminSessionInterceptor = adminSessionInterceptor;
     }
 
@@ -73,6 +77,15 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(adminIpChangeWafInterceptor)
+                .addPathPatterns(
+                        "/shopping/admin/console",
+                        "/shopping/admin/console/**",
+                        "/shopping/admin/api/**",
+                        "/shopping/admin/session/me"
+                )
+                .order(-30);
+
         registry.addInterceptor(webRtcIpConsistencyInterceptor)
                 .addPathPatterns("/shopping/admin/**")
                 .excludePathPatterns(
@@ -89,7 +102,10 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/fonts/**",
                         "/shopping/favicon.ico",
                         "/shopping/auth/network-check-failed",
-                        "/webjars/**"
+                        "/webjars/**",
+                        "/shopping/admin/password-crypto/key",
+                        "/shopping/admin/console",
+                        "/shopping/admin/console/**"
                 )
                 .order(-10);
 
@@ -196,7 +212,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/api/products/**",
                         "/shopping/user/security/phone/**",
                         "/shopping/user/totp",
-                        "/shopping/user/totp/**"
+                        "/shopping/user/totp/**",
+                        "/shopping/user/api/coupons/**"
                 )
                 .order(100);
 
@@ -212,7 +229,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/api/products/**",
                         "/shopping/user/security/phone/**",
                         "/shopping/user/totp",
-                        "/shopping/user/totp/**"
+                        "/shopping/user/totp/**",
+                        "/shopping/user/api/coupons/**"
                 )
                 .order(105);
 
@@ -225,7 +243,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/api/product-categories/**",
                         "/shopping/api/products/**",
                         "/shopping/user/totp",
-                        "/shopping/user/totp/**"
+                        "/shopping/user/totp/**",
+                        "/shopping/user/api/coupons/**"
                 )
                 .order(110);
     }

@@ -94,6 +94,7 @@ spring:
     password: admin123
     # RabbitMQ 虚拟主机。
     virtual-host: /
+    publisher-confirm-type: simple
   # Servlet 容器配置。
   servlet:
     # 文件上传配置。
@@ -334,6 +335,18 @@ app:
       prefetch: 5
       # IP 风险写回最大重试次数。
       max-retry-count: 3
+    coupon-claim:
+      exchange: ${COUPON_CLAIM_EXCHANGE:coupon.claim.exchange}
+      queue: ${COUPON_CLAIM_QUEUE:coupon.claim.queue}
+      retry-queue: ${COUPON_CLAIM_RETRY_QUEUE:coupon.claim.retry.queue}
+      dead-letter-queue: ${COUPON_CLAIM_DLQ:coupon.claim.dlq}
+      routing-key: ${COUPON_CLAIM_ROUTING_KEY:coupon.claim.create}
+      retry-routing-key: ${COUPON_CLAIM_RETRY_ROUTING_KEY:coupon.claim.retry}
+      dead-routing-key: ${COUPON_CLAIM_DEAD_ROUTING_KEY:coupon.claim.dead}
+      concurrency: ${COUPON_CLAIM_CONCURRENCY:2}
+      max-concurrency: ${COUPON_CLAIM_MAX_CONCURRENCY:10}
+      prefetch: ${COUPON_CLAIM_PREFETCH:10}
+      max-retry-count: ${COUPON_CLAIM_MAX_RETRY_COUNT:3}
   # 短信验证码业务配置。
   sms-code:
     # 阿里云短信模板编号。

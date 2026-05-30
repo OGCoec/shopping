@@ -54,8 +54,48 @@
     return adminApi().get(`${API_BASE}/spu/${encodeURIComponent(id)}`);
   }
 
+  function getSkuDetail(spuId, skuId) {
+    return adminApi().get(`${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/${encodeURIComponent(skuId)}`);
+  }
+
   function updateSpuDetail(id, payload) {
     return requestWithMethod("PUT", `${API_BASE}/spu/${encodeURIComponent(id)}`, payload);
+  }
+
+  function createSku(spuId, payload) {
+    return requestWithMethod("POST", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku`, payload);
+  }
+
+  function updateSku(spuId, skuId, payload) {
+    return requestWithMethod("PUT", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/${encodeURIComponent(skuId)}`, payload);
+  }
+
+  function deleteSku(spuId, skuId) {
+    return requestWithMethod("DELETE", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/${encodeURIComponent(skuId)}`);
+  }
+
+  function changeSkuStatus(spuId, skuId, status) {
+    return requestWithMethod("PATCH", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/${encodeURIComponent(skuId)}/status`, { status });
+  }
+
+  function batchChangeSkuStatus(spuId, ids, status) {
+    return requestWithMethod("PATCH", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/batch-status`, { ids, status });
+  }
+
+  function batchDeleteSku(spuId, ids) {
+    return requestWithMethod("DELETE", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/batch`, { ids });
+  }
+
+  function listHotSkus(spuId) {
+    return adminApi().get(`${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/hot`);
+  }
+
+  function batchEnableHotSkus(spuId, items) {
+    return requestWithMethod("POST", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/hot/batch-enable`, { items });
+  }
+
+  function batchDeleteHotSkus(spuId, ids) {
+    return requestWithMethod("DELETE", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/hot/batch`, { ids });
   }
 
   function changeSpuStatus(id, status) {
@@ -85,7 +125,17 @@
     cancelPreupload,
     createSpu,
     getSpuDetail,
+    getSkuDetail,
     updateSpuDetail,
+    createSku,
+    updateSku,
+    deleteSku,
+    changeSkuStatus,
+    batchChangeSkuStatus,
+    batchDeleteSku,
+    listHotSkus,
+    batchEnableHotSkus,
+    batchDeleteHotSkus,
     changeSpuStatus,
     batchDisableSpu,
     batchDeleteSpu,

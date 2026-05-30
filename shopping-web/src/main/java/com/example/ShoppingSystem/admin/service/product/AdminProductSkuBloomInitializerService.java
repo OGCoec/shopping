@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.admin.service.product;
 
+import com.example.ShoppingSystem.Utils.ProductSkuIdCodec;
 import com.example.ShoppingSystem.mapper.product.ProductSpuMapper;
 import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import lombok.extern.slf4j.Slf4j;
@@ -58,10 +59,13 @@ public class AdminProductSkuBloomInitializerService {
         long offset = 0L;
         long loaded = 0L;
         while (true) {
-            List<String> ids = productSpuMapper.listAllSkuIds(safePageSize, offset);
-            if (ids == null || ids.isEmpty()) {
+            List<String> idHexValues = productSpuMapper.listAllSkuIds(safePageSize, offset);
+            if (idHexValues == null || idHexValues.isEmpty()) {
                 break;
             }
+            List<String> ids = idHexValues.stream()
+                    .map(ProductSkuIdCodec::hexToBase62)
+                    .toList();
             loaded += countingBloomFilter.addAllItems(filterKey, ids);
             offset += ids.size();
         }

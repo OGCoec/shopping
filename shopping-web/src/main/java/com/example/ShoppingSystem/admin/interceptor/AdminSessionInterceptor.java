@@ -10,11 +10,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class AdminSessionInterceptor implements HandlerInterceptor {
 
     private static final String ADMIN_LOGIN_PATH = "/shopping/admin/login";
+    private static final String CONSOLE_BASE_PATH = "/shopping/admin/console";
+    private static final int RETURN_TO_MAX_LENGTH = 512;
 
     private final AdminSessionService adminSessionService;
     private final ObjectMapper objectMapper;
@@ -39,8 +43,46 @@ public class AdminSessionInterceptor implements HandlerInterceptor {
             writeJsonAuthRequired(response);
             return false;
         }
-        response.sendRedirect(ADMIN_LOGIN_PATH);
+        response.sendRedirect(buildLoginRedirect(request));
         return false;
+    }
+
+    private String buildLoginRedirect(HttpServletRequest request) {
+        if (!"GET".equalsIgnoreCase(request.getMethod())) {
+            return ADMIN_LOGIN_PATH;
+        }
+        String candidate = buildReturnToCandidate(request);
+        if (!isAllowedConsoleReturnTo(candidate)) {
+            return ADMIN_LOGIN_PATH;
+        }
+        return ADMIN_LOGIN_PATH + "?returnTo=" + URLEncoder.encode(candidate, StandardCharsets.UTF_8);
+    }
+
+    private String buildReturnToCandidate(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        if (uri == null || uri.isEmpty()) {
+            return "";
+        }
+        String query = request.getQueryString();
+        if (query == null || query.isEmpty()) {
+            return uri;
+        }
+        return uri + "?" + query;
+    }
+
+    private boolean isAllowedConsoleReturnTo(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        if (value.length() > RETURN_TO_MAX_LENGTH) {
+            return false;
+        }
+        if (!value.startsWith("/") || value.startsWith("//")) {
+            return false;
+        }
+        int queryIndex = value.indexOf('?');
+        String path = queryIndex >= 0 ? value.substring(0, queryIndex) : value;
+        return path.equals(CONSOLE_BASE_PATH) || path.startsWith(CONSOLE_BASE_PATH + "/");
     }
 
     private boolean expectsJson(HttpServletRequest request) {

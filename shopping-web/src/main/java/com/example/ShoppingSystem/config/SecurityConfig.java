@@ -94,6 +94,7 @@ public class SecurityConfig {
             "/shopping/user/security/phone/**",
             "/shopping/user/totp",
             "/shopping/user/totp/**",
+            "/shopping/user/api/coupons/**",
             "/css/**",
             "/js/**",
             "/images/**",

@@ -270,6 +270,12 @@
       tempImages.clear();
     }
 
+    function clearCommittedByUrls(urls) {
+      (Array.isArray(urls) ? urls : []).forEach((url) => {
+        tempImages.delete(String(url || ""));
+      });
+    }
+
     return {
       uploadImage,
       uploadImages,
@@ -278,7 +284,8 @@
       cancelSkuImages: cancelSkuTempImages,
       cleanup: cleanupTempImages,
       imageUploadSessions,
-      clearCommitted
+      clearCommitted,
+      clearCommittedByUrls
     };
   }
 

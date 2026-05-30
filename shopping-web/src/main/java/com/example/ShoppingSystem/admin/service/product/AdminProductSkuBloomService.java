@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.admin.service.product;
 
+import com.example.ShoppingSystem.Utils.ProductSkuIdCodec;
 import com.example.ShoppingSystem.redisfilter.CountingBloomFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,8 +14,6 @@ import java.util.List;
 @Slf4j
 @Service
 public class AdminProductSkuBloomService {
-
-    private static final String SKU_ID_HEX_PATTERN = "^[0-9a-f]{32}$";
 
     private final CountingBloomFilter countingBloomFilter;
 
@@ -85,7 +84,7 @@ public class AdminProductSkuBloomService {
 
     private String normalizeSkuId(String skuId) {
         String value = skuId == null ? "" : skuId.trim();
-        return value.matches(SKU_ID_HEX_PATTERN) ? value : "";
+        return value.matches(ProductSkuIdCodec.BASE62_PATTERN) ? value : "";
     }
 
     private void runAfterCommit(Runnable runnable) {
