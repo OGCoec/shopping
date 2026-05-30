@@ -5,6 +5,7 @@ import com.example.ShoppingSystem.security.OAuth2LoginFailureHandler;
 import com.example.ShoppingSystem.security.OAuth2LoginSuccessHandler;
 import com.example.ShoppingSystem.security.OAuth2PreAuthRiskFilter;
 import com.example.ShoppingSystem.security.RedisStateAuthorizationRequestRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -157,7 +158,17 @@ public class SecurityConfig {
                                                       OAuth2LoginFailureHandler failureHandler,
                                                       RedisStateAuthorizationRequestRepository redisStateAuthorizationRequestRepository,
                                                       OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver,
-                                                      OAuth2PreAuthRiskFilter oauth2PreAuthRiskFilter) throws Exception {
+                                                      OAuth2PreAuthRiskFilter oauth2PreAuthRiskFilter,
+                                                      @Value("${app.coupon.loadtest.bypass-guards:false}") boolean couponLoadtestBypassGuards) throws Exception {
+        java.util.List<String> csrfIgnorePaths = new java.util.ArrayList<>(java.util.List.of(
+                "/shopping/auth/preauth/**",
+                "/shopping/admin/**",
+                "/shopping/user/forgot-password",
+                "/shopping/user/forgot-password/**"
+        ));
+        if (couponLoadtestBypassGuards) {
+            csrfIgnorePaths.add("/shopping/user/api/coupons/**");
+        }
         return http
                 .securityMatcher(APP_SECURITY_PATHS)
                 .authorizeHttpRequests(auth -> auth
@@ -177,12 +188,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                        .ignoringRequestMatchers(
-                                "/shopping/auth/preauth/**",
-                                "/shopping/admin/**",
-                                "/shopping/user/forgot-password",
-                                "/shopping/user/forgot-password/**"
-                        ))
+                        .ignoringRequestMatchers(csrfIgnorePaths.toArray(new String[0])))
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .build();

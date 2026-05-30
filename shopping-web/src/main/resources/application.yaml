@@ -197,6 +197,12 @@ mybatis:
 
 # 项目自定义业务配置。
 app:
+  # 优惠券业务配置。
+  coupon:
+    # 压测放行配置。
+    loadtest:
+      # 压测放行开关：开启后领券接口绕过 IP/风控/手机号绑定拦截器与 CSRF；默认关闭，仅压测环境开启。
+      bypass-guards: ${COUPON_LOADTEST_BYPASS_GUARDS:false}
   # GitHub 登录业务配置。
   github:
     # GitHub 登录回调地址。
