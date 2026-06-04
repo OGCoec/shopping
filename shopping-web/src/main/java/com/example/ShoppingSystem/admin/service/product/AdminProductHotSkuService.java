@@ -8,6 +8,7 @@ import com.example.ShoppingSystem.admin.dto.AdminProductHotSkuEnableItem;
 import com.example.ShoppingSystem.admin.dto.AdminProductHotSkuResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSkuBatchIdsRequest;
 import com.example.ShoppingSystem.admin.service.common.AdminServiceException;
+import com.example.ShoppingSystem.config.datasource.ProductReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.product.ProductHotSkuMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -50,26 +51,91 @@ public class AdminProductHotSkuService {
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
+    private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
 
     public AdminProductHotSkuService(ProductHotSkuMapper productHotSkuMapper,
                                      HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
                                      StringRedisTemplate stringRedisTemplate,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
         this.productHotSkuMapper = productHotSkuMapper;
         this.hybridSemaphoreIdWorker = hybridSemaphoreIdWorker;
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
+        this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
     }
 
     public List<AdminProductHotSkuResponse> listHotSkus(Long rawSpuId) {
         Long spuId = normalizeRequiredId(rawSpuId, "商品 ID");
-        List<Map<String, Object>> rows = productHotSkuMapper.listHotSkusBySpuId(spuId);
+        List<Map<String, Object>> rows = productReadReplicaQueryExecutor.query(() ->
+                productHotSkuMapper.listHotSkusBySpuId(spuId));
         if (rows == null || rows.isEmpty()) {
             return List.of();
         }
         return rows.stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public AdminProductHotSkuResponse getHotSku(Long rawSpuId, String rawSkuId) {
+        Long spuId = normalizeRequiredId(rawSpuId, "商品 ID");
+        String skuId = normalizeSkuId(rawSkuId);
+        Map<String, Object> row = productReadReplicaQueryExecutor.query(() ->
+                productHotSkuMapper.findHotSkuBySkuId(spuId, skuIdBytes(skuId)));
+        if (row == null || row.isEmpty()) {
+            throw new AdminServiceException(
+                    "ADMIN_PRODUCT_HOT_SKU_NOT_FOUND",
+                    "热点 SKU 不存在。",
+                    HttpStatus.NOT_FOUND);
+        }
+        AdminProductHotSkuResponse response = toResponse(row);
+        Integer redisRemaining = readRedisRemaining(skuId);
+        if (redisRemaining != null) {
+            response = withRemainingQuantity(response, redisRemaining);
+        }
+        return response;
+    }
+
+    private Integer readRedisRemaining(String skuId) {
+        String value;
+        try {
+            value = stringRedisTemplate.opsForValue().get(hotSkuStockKey(skuId));
+        } catch (Exception e) {
+            log.warn("[Product Hot SKU] Redis hot SKU remaining read failed, skuId={}", skuId, e);
+            return null;
+        }
+        if (value == null) {
+            return null;
+        }
+        String text = value.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            int remaining = Integer.parseInt(text);
+            return remaining >= 0 ? remaining : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private AdminProductHotSkuResponse withRemainingQuantity(AdminProductHotSkuResponse base, int remainingQuantity) {
+        return new AdminProductHotSkuResponse(
+                base.id(),
+                base.spuId(),
+                base.skuId(),
+                base.skuCode(),
+                base.skuName(),
+                base.skuStockQuantity(),
+                base.skuStatus(),
+                base.stockQuantity(),
+                remainingQuantity,
+                base.status(),
+                base.startAt(),
+                base.endAt(),
+                base.version(),
+                base.createdAt(),
+                base.updatedAt());
     }
 
     @Transactional

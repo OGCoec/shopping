@@ -8,13 +8,17 @@
     top: auto;
     grid-template-rows: auto auto auto;
     height: auto;
+    max-height: none;
     min-height: auto;
+    overflow: visible;
   }
 
   .admin-side-menu {
     grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
     overflow-x: auto;
-    padding-bottom: 2px;
+    overflow-y: visible;
+    padding: 0 0 2px;
+    scrollbar-gutter: auto;
   }
 
   .admin-side-item {

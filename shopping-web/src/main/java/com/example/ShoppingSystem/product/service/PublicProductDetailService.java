@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.product.service;
 
+import com.example.ShoppingSystem.config.datasource.ProductReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.product.ProductSpuMapper;
 import com.example.ShoppingSystem.product.dto.PublicProductDetailResponse;
 import org.springframework.http.HttpStatus;
@@ -14,13 +15,16 @@ public class PublicProductDetailService {
     private final ProductSpuMapper productSpuMapper;
     private final PublicProductSpuAssembler assembler;
     private final PublicProductDetailCacheService detailCacheService;
+    private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
 
     public PublicProductDetailService(ProductSpuMapper productSpuMapper,
                                       PublicProductSpuAssembler assembler,
-                                      PublicProductDetailCacheService detailCacheService) {
+                                      PublicProductDetailCacheService detailCacheService,
+                                      ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
         this.productSpuMapper = productSpuMapper;
         this.assembler = assembler;
         this.detailCacheService = detailCacheService;
+        this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
     }
 
     public PublicProductDetailResponse detail(String id) {
@@ -29,12 +33,14 @@ public class PublicProductDetailService {
     }
 
     private PublicProductDetailResponse findDetail(Long spuId) {
-        Map<String, Object> row = productSpuMapper.findActivePublicSpuDetailById(spuId);
-        if (row == null || row.isEmpty()) {
-            return null;
-        }
-        PublicProductDetailResponse detail = assembler.toDetailResponse(row);
-        return detail.id() == null || detail.id() <= 0 ? null : detail;
+        return productReadReplicaQueryExecutor.query(() -> {
+            Map<String, Object> row = productSpuMapper.findActivePublicSpuDetailById(spuId);
+            if (row == null || row.isEmpty()) {
+                return null;
+            }
+            PublicProductDetailResponse detail = assembler.toDetailResponse(row);
+            return detail.id() == null || detail.id() <= 0 ? null : detail;
+        });
     }
 
     private Long normalizeProductId(String id) {

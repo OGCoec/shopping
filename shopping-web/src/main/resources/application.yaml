@@ -161,6 +161,12 @@ spring:
       connection-timeout: 30000
       # 空闲连接保留时间，单位毫秒。
       idle-timeout: 600000
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:127.0.0.1:9092}
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 # 内置 Web 服务器配置。
 server:
@@ -203,6 +209,9 @@ app:
     loadtest:
       # 压测放行开关：开启后领券接口绕过 IP/风控/手机号绑定拦截器与 CSRF；默认关闭，仅压测环境开启。
       bypass-guards: ${COUPON_LOADTEST_BYPASS_GUARDS:false}
+  order:
+    loadtest:
+      bypass-guards: ${ORDER_LOADTEST_BYPASS_GUARDS:false}
   # GitHub 登录业务配置。
   github:
     # GitHub 登录回调地址。
@@ -353,6 +362,51 @@ app:
       max-concurrency: ${COUPON_CLAIM_MAX_CONCURRENCY:10}
       prefetch: ${COUPON_CLAIM_PREFETCH:10}
       max-retry-count: ${COUPON_CLAIM_MAX_RETRY_COUNT:3}
+    order-expire:
+      exchange: ${ORDER_EXPIRE_EXCHANGE:order.expire.exchange}
+      delay-queue: ${ORDER_EXPIRE_DELAY_QUEUE:order.expire.delay.queue}
+      dead-letter-queue: ${ORDER_EXPIRE_DLQ:order.expire.dlq}
+      delay-routing-key: ${ORDER_EXPIRE_DELAY_ROUTING_KEY:order.expire.delay}
+      dead-routing-key: ${ORDER_EXPIRE_DEAD_ROUTING_KEY:order.expire.dead}
+      ttl-millis: ${ORDER_EXPIRE_TTL_MILLIS:300000}
+      closing-grace-millis: ${ORDER_EXPIRE_CLOSING_GRACE_MILLIS:300000}
+      concurrency: ${ORDER_EXPIRE_CONCURRENCY:2}
+      max-concurrency: ${ORDER_EXPIRE_MAX_CONCURRENCY:10}
+      prefetch: ${ORDER_EXPIRE_PREFETCH:10}
+    refund:
+      exchange: ${PAYMENT_REFUND_EXCHANGE:payment.refund.exchange}
+      queue: ${PAYMENT_REFUND_QUEUE:payment.refund.dispatch.queue}
+      dead-letter-queue: ${PAYMENT_REFUND_DLQ:payment.refund.dispatch.dlq}
+      routing-key: ${PAYMENT_REFUND_ROUTING_KEY:payment.refund.dispatch}
+      dead-routing-key: ${PAYMENT_REFUND_DEAD_ROUTING_KEY:payment.refund.dead}
+      concurrency: ${PAYMENT_REFUND_CONCURRENCY:1}
+      max-concurrency: ${PAYMENT_REFUND_MAX_CONCURRENCY:4}
+      prefetch: ${PAYMENT_REFUND_PREFETCH:10}
+    payment-callback:
+      exchange: ${PAYMENT_CALLBACK_EXCHANGE:payment.callback.exchange}
+      queue: ${PAYMENT_CALLBACK_QUEUE:payment.callback.dispatch.queue}
+      dead-letter-queue: ${PAYMENT_CALLBACK_DLQ:payment.callback.dispatch.dlq}
+      routing-key: ${PAYMENT_CALLBACK_ROUTING_KEY:payment.callback.dispatch}
+      dead-routing-key: ${PAYMENT_CALLBACK_DEAD_ROUTING_KEY:payment.callback.dead}
+      concurrency: ${PAYMENT_CALLBACK_CONCURRENCY:1}
+      max-concurrency: ${PAYMENT_CALLBACK_MAX_CONCURRENCY:4}
+      prefetch: ${PAYMENT_CALLBACK_PREFETCH:10}
+  refund:
+    dispatch:
+      enabled: ${PAYMENT_REFUND_DISPATCH_ENABLED:true}
+      interval-millis: ${PAYMENT_REFUND_DISPATCH_INTERVAL_MILLIS:5000}
+      batch-size: ${PAYMENT_REFUND_DISPATCH_BATCH_SIZE:50}
+      consumer-batch-size: ${PAYMENT_REFUND_CONSUMER_BATCH_SIZE:20}
+      max-retry: ${PAYMENT_REFUND_MAX_RETRY:3}
+      retry-backoff-base-millis: ${PAYMENT_REFUND_RETRY_BACKOFF_BASE_MILLIS:5000}
+  payment-callback:
+    dispatch:
+      enabled: ${PAYMENT_CALLBACK_DISPATCH_ENABLED:true}
+      interval-millis: ${PAYMENT_CALLBACK_DISPATCH_INTERVAL_MILLIS:5000}
+      batch-size: ${PAYMENT_CALLBACK_DISPATCH_BATCH_SIZE:100}
+      consumer-batch-size: ${PAYMENT_CALLBACK_CONSUMER_BATCH_SIZE:50}
+      max-retry: ${PAYMENT_CALLBACK_MAX_RETRY:3}
+      retry-backoff-base-millis: ${PAYMENT_CALLBACK_RETRY_BACKOFF_BASE_MILLIS:5000}
   # 短信验证码业务配置。
   sms-code:
     # 阿里云短信模板编号。
@@ -775,7 +829,19 @@ pagehelper:
 
 # 用户认证 token 配置。
 shopping:
+  order:
+    redis-persist-delay-ms: ${ORDER_REDIS_PERSIST_DELAY_MS:5000}
+    redis-persist-batch-size: ${ORDER_REDIS_PERSIST_BATCH_SIZE:100}
+    redis-persist-processing-timeout-ms: ${ORDER_REDIS_PERSIST_PROCESSING_TIMEOUT_MS:60000}
+    redis-persist-lock-ttl-ms: ${ORDER_REDIS_PERSIST_LOCK_TTL_MS:30000}
   admin:
+    coupon-template-index:
+      startup-rebuild-enabled: ${SHOPPING_ADMIN_COUPON_TEMPLATE_INDEX_STARTUP_REBUILD_ENABLED:true}
+      page-size: ${SHOPPING_ADMIN_COUPON_TEMPLATE_INDEX_PAGE_SIZE:1000}
+    coupon-template-cdc:
+      enabled: ${SHOPPING_ADMIN_COUPON_TEMPLATE_CDC_ENABLED:false}
+      topic: ${SHOPPING_ADMIN_COUPON_TEMPLATE_CDC_TOPIC:shopping.public.coupon_template}
+      group-id: ${SHOPPING_ADMIN_COUPON_TEMPLATE_CDC_GROUP_ID:shopping-coupon-template-es-indexer}
     product-spu-bloom:
       enabled: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_ENABLED:true}
       key: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_KEY:shopping:admin:product:spu:id:cbf}
@@ -796,6 +862,45 @@ shopping:
         maximum-pool-size: ${SHOPPING_RISK_READ_DB_MAX_POOL_SIZE:10}
         connection-timeout: ${SHOPPING_RISK_READ_DB_CONNECTION_TIMEOUT_MS:3000}
         idle-timeout: ${SHOPPING_RISK_READ_DB_IDLE_TIMEOUT_MS:600000}
+        read-only: true
+    coupon-read:
+      enabled: ${SHOPPING_COUPON_READ_DB_ENABLED:true}
+      fallback-to-primary: ${SHOPPING_COUPON_READ_DB_FALLBACK_TO_PRIMARY:true}
+      url: ${SHOPPING_COUPON_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read}
+      username: ${SHOPPING_COUPON_READ_DB_USERNAME:shopping_readonly}
+      password: ${SHOPPING_COUPON_READ_DB_PASSWORD:change_this_readonly_password}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_COUPON_READ_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_COUPON_READ_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_COUPON_READ_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_COUPON_READ_DB_IDLE_TIMEOUT_MS:600000}
+        read-only: true
+    order-read:
+      enabled: ${SHOPPING_ORDER_READ_DB_ENABLED:true}
+      fallback-to-primary: ${SHOPPING_ORDER_READ_DB_FALLBACK_TO_PRIMARY:false}
+      url: ${SHOPPING_ORDER_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read?ApplicationName=shopping-order-read}
+      username: ${SHOPPING_ORDER_READ_DB_USERNAME:shopping_readonly}
+      password: ${SHOPPING_ORDER_READ_DB_PASSWORD:change_this_readonly_password}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_ORDER_READ_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_ORDER_READ_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_ORDER_READ_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_ORDER_READ_DB_IDLE_TIMEOUT_MS:600000}
+        read-only: true
+    product-read:
+      enabled: ${SHOPPING_PRODUCT_READ_DB_ENABLED:true}
+      fallback-to-primary: ${SHOPPING_PRODUCT_READ_DB_FALLBACK_TO_PRIMARY:false}
+      url: ${SHOPPING_PRODUCT_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read?ApplicationName=shopping-product-read}
+      username: ${SHOPPING_PRODUCT_READ_DB_USERNAME:shopping_readonly}
+      password: ${SHOPPING_PRODUCT_READ_DB_PASSWORD:change_this_readonly_password}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_PRODUCT_READ_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_PRODUCT_READ_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_PRODUCT_READ_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_PRODUCT_READ_DB_IDLE_TIMEOUT_MS:600000}
         read-only: true
   # 登录 access/refresh token 配置。
   auth-token:

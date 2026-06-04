@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.order.PaymentCallbackInboxMapper">
+
+    <sql id="CallbackColumns">
+        id,
+        callback_no AS "callbackNo",
+        order_no AS "orderNo",
+        external_trade_no AS "externalTradeNo",
+        payment_provider AS "paymentProvider",
+        paid_at AS "paidAt",
+        paid_amount_yuan AS "paidAmountYuan",
+        status,
+        retry_count AS "retryCount",
+        next_retry_at AS "nextRetryAt",
+        result_outcome AS "resultOutcome",
+        result_order_status AS "resultOrderStatus",
+        refund_no AS "refundNo",
+        last_error_code AS "lastErrorCode",
+        last_error_message AS "lastErrorMessage",
+        idempotency_key AS "idempotencyKey",
+        raw_payload_json::text AS "rawPayloadJson",
+        version,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    </sql>
+
+    <select id="insertCallbackIgnore" resultType="map">
+        <![CDATA[
+WITH inserted AS (
+    INSERT INTO payment_callback_inbox (
+        callback_no,
+        order_no,
+        external_trade_no,
+        payment_provider,
+        paid_at,
+        paid_amount_yuan,
+        status,
+        idempotency_key,
+        raw_payload_json,
+        created_at,
+        updated_at
+    )
+    VALUES (
+        #{callbackNo},
+        #{orderNo},
+        #{externalTradeNo},
+        #{paymentProvider},
+        #{paidAt},
+        #{paidAmountYuan},
+        'RECEIVED',
+        #{idempotencyKey},
+        CAST(#{rawPayloadJson} AS jsonb),
+        NOW(),
+        NOW()
+    )
+    ON CONFLICT (idempotency_key) DO NOTHING
+    RETURNING *
+)
+        ]]>
+SELECT <include refid="CallbackColumns"/>
+FROM inserted
+UNION ALL
+SELECT <include refid="CallbackColumns"/>
+FROM payment_callback_inbox
+WHERE idempotency_key = #{idempotencyKey}
+  AND NOT EXISTS (SELECT 1 FROM inserted)
+LIMIT 1
+    </select>
+
+    <select id="claimDispatchBatch" resultType="map">
+        <![CDATA[
+WITH picked AS (
+    SELECT id
+    FROM payment_callback_inbox
+    WHERE (
+        status = 'RECEIVED'
+        OR (
+            status = 'FAILED'
+            AND retry_count < #{maxRetry}
+            AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+        )
+    )
+    ORDER BY created_at ASC, id ASC
+    LIMIT #{limit}
+    FOR UPDATE SKIP LOCKED
+),
+updated AS (
+    UPDATE payment_callback_inbox c
+    SET status = 'PROCESSING',
+        last_error_code = NULL,
+        last_error_message = NULL,
+        updated_at = NOW(),
+        version = c.version + 1
+    FROM picked
+    WHERE c.id = picked.id
+    RETURNING c.*
+)
+        ]]>
+SELECT <include refid="CallbackColumns"/>
+FROM updated
+    </select>
+
+    <update id="batchWriteResults">
+        <![CDATA[
+WITH result_rows AS (
+    SELECT *
+    FROM jsonb_to_recordset(CAST(#{resultsJson} AS jsonb)) AS raw(
+        callback_no text,
+        status text,
+        result_outcome text,
+        result_order_status text,
+        refund_no text,
+        last_error_code text,
+        last_error_message text,
+        next_retry_at_epoch_ms bigint
+    )
+)
+UPDATE payment_callback_inbox c
+SET status = result_rows.status,
+    result_outcome = result_rows.result_outcome,
+    result_order_status = result_rows.result_order_status,
+    refund_no = result_rows.refund_no,
+    last_error_code = result_rows.last_error_code,
+    last_error_message = result_rows.last_error_message,
+    retry_count = CASE
+        WHEN result_rows.status = 'FAILED' THEN c.retry_count + 1
+        ELSE c.retry_count
+    END,
+    next_retry_at = CASE
+        WHEN result_rows.next_retry_at_epoch_ms IS NULL THEN NULL
+        ELSE to_timestamp(result_rows.next_retry_at_epoch_ms / 1000.0)
+    END,
+    updated_at = NOW(),
+    version = c.version + 1
+FROM result_rows
+WHERE c.callback_no = result_rows.callback_no
+  AND c.status = 'PROCESSING'
+        ]]>
+    </update>
+
+    <select id="findByCallbackNo" resultType="map">
+        SELECT <include refid="CallbackColumns"/>
+        FROM payment_callback_inbox
+        WHERE callback_no = #{callbackNo}
+    </select>
+
+    <sql id="AdminCallbackFilters">
+        <where>
+            <if test="status != null and status != ''">
+                status = #{status}
+            </if>
+            <if test="orderNo != null and orderNo != ''">
+                AND order_no = #{orderNo}
+            </if>
+            <if test="callbackNo != null and callbackNo != ''">
+                AND callback_no = #{callbackNo}
+            </if>
+            <if test="externalTradeNo != null and externalTradeNo != ''">
+                AND external_trade_no = #{externalTradeNo}
+            </if>
+            <if test="resultOutcome != null and resultOutcome != ''">
+                AND result_outcome = #{resultOutcome}
+            </if>
+        </where>
+    </sql>
+
+    <select id="pageForAdmin" resultType="map">
+        SELECT <include refid="CallbackColumns"/>
+        FROM payment_callback_inbox
+        <include refid="AdminCallbackFilters"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForAdmin" resultType="long">
+        SELECT COUNT(*)
+        FROM payment_callback_inbox
+        <include refid="AdminCallbackFilters"/>
+    </select>
+</mapper>

@@ -1,7 +1,12 @@
 package com.example.ShoppingSystem.coupon.controller;
 
 import com.example.ShoppingSystem.coupon.dto.CouponClaimResponse;
+import com.example.ShoppingSystem.coupon.dto.UserCouponMineDetailResponse;
+import com.example.ShoppingSystem.coupon.dto.UserCouponMinePageResponse;
+import com.example.ShoppingSystem.coupon.dto.UserCouponTemplateDetailResponse;
+import com.example.ShoppingSystem.coupon.dto.UserCouponTemplatePageResponse;
 import com.example.ShoppingSystem.coupon.service.CouponClaimService;
+import com.example.ShoppingSystem.coupon.service.UserCouponQueryService;
 import com.example.ShoppingSystem.security.token.AuthUserContext;
 import com.example.ShoppingSystem.security.token.AuthUserContextHolder;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,10 +14,13 @@ import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/shopping/user/api/coupons")
@@ -21,9 +29,44 @@ public class UserCouponController {
     private static final String AUTH_USER_ID_SESSION_ATTRIBUTE = "AUTH_USER_ID";
 
     private final CouponClaimService couponClaimService;
+    private final UserCouponQueryService userCouponQueryService;
 
-    public UserCouponController(CouponClaimService couponClaimService) {
+    public UserCouponController(CouponClaimService couponClaimService,
+                                UserCouponQueryService userCouponQueryService) {
         this.couponClaimService = couponClaimService;
+        this.userCouponQueryService = userCouponQueryService;
+    }
+
+    @GetMapping
+    public UserCouponTemplatePageResponse page(@RequestParam(value = "page", required = false) Integer page,
+                                               @RequestParam(value = "pageSize", required = false) Integer pageSize,
+                                               @RequestParam(value = "name", required = false) String name,
+                                               Authentication authentication,
+                                               HttpServletRequest request) {
+        return userCouponQueryService.receivablePage(requireCurrentUserId(authentication, request), page, pageSize, name);
+    }
+
+    @GetMapping("/mine")
+    public UserCouponMinePageResponse mine(@RequestParam(value = "page", required = false) Integer page,
+                                           @RequestParam(value = "pageSize", required = false) Integer pageSize,
+                                           @RequestParam(value = "status", required = false) String status,
+                                           Authentication authentication,
+                                           HttpServletRequest request) {
+        return userCouponQueryService.minePage(requireCurrentUserId(authentication, request), page, pageSize, status);
+    }
+
+    @GetMapping("/mine/{userCouponId}")
+    public UserCouponMineDetailResponse mineDetail(@PathVariable String userCouponId,
+                                                   Authentication authentication,
+                                                   HttpServletRequest request) {
+        return userCouponQueryService.mineDetail(requireCurrentUserId(authentication, request), userCouponId);
+    }
+
+    @GetMapping("/{couponTemplateId}")
+    public UserCouponTemplateDetailResponse detail(@PathVariable String couponTemplateId,
+                                                   Authentication authentication,
+                                                   HttpServletRequest request) {
+        return userCouponQueryService.receivableDetail(requireCurrentUserId(authentication, request), couponTemplateId);
     }
 
     @PostMapping("/{couponTemplateId}/claim")
@@ -37,6 +80,14 @@ public class UserCouponController {
         }
         CouponClaimResponse response = couponClaimService.claim(couponTemplateId, userId);
         return ResponseEntity.status(status(response)).body(response);
+    }
+
+    private Long requireCurrentUserId(Authentication authentication, HttpServletRequest request) {
+        Long userId = currentUserId(authentication, request);
+        if (userId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "COUPON_AUTH_REQUIRED");
+        }
+        return userId;
     }
 
     private HttpStatus status(CouponClaimResponse response) {

@@ -137,6 +137,10 @@ public class AuthTokenService {
     }
 
     public AuthUserContext authenticateAccessToken(String accessToken, String riskLevel) {
+        return authenticateAccessToken(accessToken, riskLevel, false);
+    }
+
+    public AuthUserContext authenticateAccessToken(String accessToken, String riskLevel, boolean allowCachedContextFastPath) {
         Claims claims = jwtUtils.parseToken(accessToken).join();
         if (!ACCESS_TOKEN_TYPE.equals(String.valueOf(claims.get(CLAIM_TYPE)))) {
             throw new AuthTokenException(HttpServletResponse.SC_UNAUTHORIZED,
@@ -150,7 +154,9 @@ public class AuthTokenService {
                     "ACCESS_TOKEN_INVALID",
                     "Access token payload is invalid.");
         }
-        AuthUserContext context = loadOrRebuildUserContext(userId, riskLevel);
+        AuthUserContext context = allowCachedContextFastPath
+                ? loadOrRebuildUserContext(userId, riskLevel, tokenVersion)
+                : loadOrRebuildUserContext(userId, riskLevel);
         if (!ACTIVE_STATUS.equals(context.status())) {
             throw new AuthTokenException(HttpServletResponse.SC_FORBIDDEN,
                     "USER_STATUS_ERROR",
@@ -260,11 +266,20 @@ public class AuthTokenService {
     }
 
     public AuthUserContext loadOrRebuildUserContext(Long userId, String riskLevel) {
+        return loadOrRebuildUserContext(userId, riskLevel, null);
+    }
+
+    private AuthUserContext loadOrRebuildUserContext(Long userId, String riskLevel, String expectedTokenVersion) {
         String key = userContextKey(userId);
         String cached = stringRedisTemplate.opsForValue().get(key);
         if (StrUtil.isNotBlank(cached)) {
             try {
                 AuthUserContext cachedContext = objectMapper.readValue(cached, AuthUserContext.class);
+                if (StrUtil.isNotBlank(expectedTokenVersion)
+                        && StrUtil.equals(cachedContext.tokenVersion(), expectedTokenVersion)
+                        && ACTIVE_STATUS.equals(cachedContext.status())) {
+                    return cachedContext;
+                }
                 UserLoginIdentity identity = requireActiveIdentity(userId);
                 if (StrUtil.equals(cachedContext.tokenVersion(), identity.getTokenVersion())
                         && ACTIVE_STATUS.equals(cachedContext.status())) {

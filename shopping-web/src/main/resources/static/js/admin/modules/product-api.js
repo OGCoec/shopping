@@ -78,6 +78,10 @@
     return requestWithMethod("PATCH", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/${encodeURIComponent(skuId)}/status`, { status });
   }
 
+  function importSkuCardSecrets(spuId, skuId, formData) {
+    return adminApi().form(`${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/${encodeURIComponent(skuId)}/card-secrets/import`, formData);
+  }
+
   function batchChangeSkuStatus(spuId, ids, status) {
     return requestWithMethod("PATCH", `${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/batch-status`, { ids, status });
   }
@@ -88,6 +92,10 @@
 
   function listHotSkus(spuId) {
     return adminApi().get(`${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/hot`);
+  }
+
+  function getHotSku(spuId, skuId) {
+    return adminApi().get(`${API_BASE}/spu/${encodeURIComponent(spuId)}/sku/hot/${encodeURIComponent(skuId)}`);
   }
 
   function batchEnableHotSkus(spuId, items) {
@@ -131,9 +139,11 @@
     updateSku,
     deleteSku,
     changeSkuStatus,
+    importSkuCardSecrets,
     batchChangeSkuStatus,
     batchDeleteSku,
     listHotSkus,
+    getHotSku,
     batchEnableHotSkus,
     batchDeleteHotSkus,
     changeSpuStatus,

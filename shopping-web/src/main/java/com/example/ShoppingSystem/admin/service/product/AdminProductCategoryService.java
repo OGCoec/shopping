@@ -7,6 +7,7 @@ import com.example.ShoppingSystem.admin.dto.AdminProductCategoryCreateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductCategoryStatusRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductCategoryTreeNodeResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductCategoryUpdateRequest;
+import com.example.ShoppingSystem.config.datasource.ProductReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.product.ProductCategoryMapper;
 import com.example.ShoppingSystem.product.service.ProductCategoryBloomService;
 import com.example.ShoppingSystem.product.service.PublicProductDetailCacheService;
@@ -47,6 +48,7 @@ public class AdminProductCategoryService {
     private final AdminProductSpuIndexService productIndexService;
     private final AdminProductCategoryIndexService categoryIndexService;
     private final AdminProductCategorySearchService categorySearchService;
+    private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
 
     public AdminProductCategoryService(ProductCategoryMapper productCategoryMapper,
                                        SnowflakeIdWorker snowflakeIdWorker,
@@ -56,7 +58,8 @@ public class AdminProductCategoryService {
                                        ProductCategoryBloomService categoryBloomService,
                                        AdminProductSpuIndexService productIndexService,
                                        AdminProductCategoryIndexService categoryIndexService,
-                                       AdminProductCategorySearchService categorySearchService) {
+                                       AdminProductCategorySearchService categorySearchService,
+                                       ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
         this.productCategoryMapper = productCategoryMapper;
         this.snowflakeIdWorker = snowflakeIdWorker;
         this.objectMapper = objectMapper;
@@ -66,6 +69,7 @@ public class AdminProductCategoryService {
         this.productIndexService = productIndexService;
         this.categoryIndexService = categoryIndexService;
         this.categorySearchService = categorySearchService;
+        this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
     }
 
     public List<AdminProductCategoryTreeNodeResponse> tree() {
@@ -79,7 +83,8 @@ public class AdminProductCategoryService {
             if (matchedIds.isEmpty()) {
                 return List.of();
             }
-            List<Map<String, Object>> rows = productCategoryMapper.listCategorySearchDisplayRows(matchedIds);
+            List<Map<String, Object>> rows = productReadReplicaQueryExecutor.query(() ->
+                    productCategoryMapper.listCategorySearchDisplayRows(matchedIds));
             if (rows == null || rows.isEmpty()) {
                 return List.of();
             }
@@ -91,7 +96,8 @@ public class AdminProductCategoryService {
             Map<Long, String> highlights = categorySearchService.searchNameHighlights(normalizedKeyword, displayIds);
             return buildTree(rows, highlights);
         }
-        return buildTree(productCategoryMapper.listCategoryTreeRows(), Map.of());
+        return productReadReplicaQueryExecutor.query(() ->
+                buildTree(productCategoryMapper.listCategoryTreeRows(), Map.of()));
     }
 
     private List<AdminProductCategoryTreeNodeResponse> buildTree(List<Map<String, Object>> rows,

@@ -29,6 +29,30 @@ ORDER BY h.updated_at DESC, h.created_at DESC
         ]]>
     </select>
 
+    <select id="findHotSkuBySkuId" resultType="map">
+        <![CDATA[
+SELECT encode(h.id, 'hex') AS "id",
+       h.spu_id AS "spuId",
+       encode(h.sku_id, 'hex') AS "skuId",
+       s.sku_code AS "skuCode",
+       s.sku_name AS "skuName",
+       s.stock_quantity AS "skuStockQuantity",
+       s.status AS "skuStatus",
+       h.stock_quantity AS "stockQuantity",
+       h.remaining_quantity AS "remainingQuantity",
+       h.status AS "status",
+       h.start_at AS "startAt",
+       h.end_at AS "endAt",
+       h.version AS "version",
+       h.created_at AS "createdAt",
+       h.updated_at AS "updatedAt"
+FROM product_hot_sku h
+INNER JOIN product_sku s ON s.id = h.sku_id
+WHERE h.spu_id = #{spuId}
+  AND h.sku_id = #{skuId}
+        ]]>
+    </select>
+
     <select id="upsertHotSkus" resultType="map">
         <![CDATA[
 WITH target_spu AS (

@@ -49,11 +49,35 @@ public interface CouponTemplateMapper {
 
     List<Map<String, Object>> listTemplates(@Param("offset") int offset,
                                             @Param("pageSize") int pageSize,
-                                            @Param("name") String name,
-                                            @Param("status") String status);
+                                            @Param("status") String status,
+                                            @Param("receiveStartAtFrom") OffsetDateTime receiveStartAtFrom,
+                                            @Param("receiveEndAtTo") OffsetDateTime receiveEndAtTo);
 
-    long countTemplates(@Param("name") String name,
-                        @Param("status") String status);
+    long countTemplates(@Param("status") String status,
+                        @Param("receiveStartAtFrom") OffsetDateTime receiveStartAtFrom,
+                        @Param("receiveEndAtTo") OffsetDateTime receiveEndAtTo);
+
+    List<Map<String, Object>> listTemplatesByIds(@Param("ids") List<byte[]> ids);
+
+    List<Map<String, Object>> listUserReceivableTemplates(@Param("userId") Long userId,
+                                                          @Param("now") OffsetDateTime now,
+                                                          @Param("offset") int offset,
+                                                          @Param("pageSize") int pageSize);
+
+    long countUserReceivableTemplates(@Param("now") OffsetDateTime now);
+
+    List<Map<String, Object>> listUserReceivableTemplatesByIds(@Param("ids") List<byte[]> ids,
+                                                               @Param("userId") Long userId,
+                                                               @Param("now") OffsetDateTime now);
+
+    Map<String, Object> findUserReceivableTemplateById(@Param("id") byte[] id,
+                                                       @Param("userId") Long userId,
+                                                       @Param("now") OffsetDateTime now);
+
+    List<Map<String, Object>> listCouponTemplateIndexDocuments(@Param("pageSize") int pageSize,
+                                                               @Param("offset") long offset);
+
+    List<Map<String, Object>> findCouponTemplateIndexDocumentsByIds(@Param("ids") List<byte[]> ids);
 
     int publish(@Param("id") byte[] id);
 

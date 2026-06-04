@@ -1,0 +1,71 @@
+<section class="admin-panel" data-admin-panel="orders">
+  <div class="admin-api-detail admin-order-detail">
+    <article class="admin-oauth-config-card admin-order-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Orders</span>
+          <strong>订单管理</strong>
+        </div>
+        <div class="admin-order-tools">
+          <button id="admin-order-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </div>
+
+      <form id="admin-order-filter-form" class="admin-risk-ip-filter-form admin-order-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>订单号</span>
+          <input id="admin-order-filter-order-no" type="search" autocomplete="off" placeholder="输入完整订单号直接查看详情" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>订单状态</span>
+          <select id="admin-order-filter-status">
+            <option value="">全部状态</option>
+            <option value="PENDING_PAYMENT">PENDING_PAYMENT</option>
+            <option value="CLOSING">CLOSING</option>
+            <option value="PAID">PAID</option>
+            <option value="CANCELLED">CANCELLED</option>
+            <option value="CLOSED">CLOSED</option>
+          </select>
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-order-page-size" type="number" min="1" max="100" step="1" value="20" inputmode="numeric" />
+        </label>
+        <div class="admin-risk-ip-actions">
+          <button id="admin-order-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-order-filter-reset" class="admin-api-back admin-spring-button" type="button">重置</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary admin-order-summary">
+        <div><span>订单总数</span><strong id="admin-order-total">-</strong></div>
+        <div><span>当前页</span><strong id="admin-order-page-label">1</strong></div>
+        <div><span>实时来源</span><strong>Redis / DB</strong></div>
+        <div><span>详情路径</span><strong>PathVariable</strong></div>
+      </div>
+
+      <p id="admin-order-status" class="admin-oauth-config-status"></p>
+      <div class="admin-order-table" aria-label="订单列表">
+        <div class="admin-order-row admin-order-header">
+          <span>订单</span>
+          <span>用户</span>
+          <span>状态</span>
+          <span>应付金额</span>
+          <span>首个商品</span>
+          <span>来源</span>
+          <span>操作</span>
+        </div>
+        <div id="admin-order-list" class="admin-order-list"></div>
+      </div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-order-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-order-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+
+    <article id="admin-order-detail-page" class="admin-oauth-config-card admin-product-detail-page admin-order-detail-page" hidden>
+      <p id="admin-order-detail-status" class="admin-oauth-config-status"></p>
+      <div id="admin-order-detail-body" class="admin-product-detail-body"></div>
+    </article>
+  </div>
+</section>

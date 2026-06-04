@@ -6,6 +6,7 @@ import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
+import com.example.ShoppingSystem.config.datasource.ProductReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.product.ProductCategoryMapper;
 import com.example.ShoppingSystem.product.dto.PublicProductCategoryTreeNodeResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -41,20 +42,24 @@ public class PublicProductCategoryBrowseService {
     private final ProductCategoryMapper productCategoryMapper;
     private final ObjectMapper objectMapper;
     private final ElasticsearchClient elasticsearchClient;
+    private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
 
     @Value("${shopping.public.product-category-search.max-matches:5000}")
     private int maxMatches;
 
     public PublicProductCategoryBrowseService(ProductCategoryMapper productCategoryMapper,
                                               ObjectMapper objectMapper,
-                                              ElasticsearchClient elasticsearchClient) {
+                                              ElasticsearchClient elasticsearchClient,
+                                              ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
         this.productCategoryMapper = productCategoryMapper;
         this.objectMapper = objectMapper;
         this.elasticsearchClient = elasticsearchClient;
+        this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
     }
 
     public List<PublicProductCategoryTreeNodeResponse> tree() {
-        return buildTree(productCategoryMapper.listActivePublicCategoryRows(), Map.of());
+        return productReadReplicaQueryExecutor.query(() ->
+                buildTree(productCategoryMapper.listActivePublicCategoryRows(), Map.of()));
     }
 
     public List<PublicProductCategoryTreeNodeResponse> search(String keyword) {
@@ -66,7 +71,8 @@ public class PublicProductCategoryBrowseService {
         if (matchedIds.isEmpty()) {
             return List.of();
         }
-        List<Map<String, Object>> rows = productCategoryMapper.listActiveCategorySearchDisplayRows(matchedIds);
+        List<Map<String, Object>> rows = productReadReplicaQueryExecutor.query(() ->
+                productCategoryMapper.listActiveCategorySearchDisplayRows(matchedIds));
         if (rows == null || rows.isEmpty()) {
             return List.of();
         }

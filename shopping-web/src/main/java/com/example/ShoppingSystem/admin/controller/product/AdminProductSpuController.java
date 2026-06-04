@@ -22,8 +22,12 @@ import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailUpdateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuPageResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuStatusRequest;
+import com.example.ShoppingSystem.admin.dto.AdminCardSecretImportResponse;
+import com.example.ShoppingSystem.admin.service.auth.AdminSessionService;
+import com.example.ShoppingSystem.admin.service.product.AdminCardSecretInventoryService;
 import com.example.ShoppingSystem.admin.service.product.AdminProductHotSkuService;
 import com.example.ShoppingSystem.admin.service.product.AdminProductSpuService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -44,11 +48,17 @@ public class AdminProductSpuController {
 
     private final AdminProductSpuService adminProductSpuService;
     private final AdminProductHotSkuService adminProductHotSkuService;
+    private final AdminCardSecretInventoryService adminCardSecretInventoryService;
+    private final AdminSessionService adminSessionService;
 
     public AdminProductSpuController(AdminProductSpuService adminProductSpuService,
-                                     AdminProductHotSkuService adminProductHotSkuService) {
+                                     AdminProductHotSkuService adminProductHotSkuService,
+                                     AdminCardSecretInventoryService adminCardSecretInventoryService,
+                                     AdminSessionService adminSessionService) {
         this.adminProductSpuService = adminProductSpuService;
         this.adminProductHotSkuService = adminProductHotSkuService;
+        this.adminCardSecretInventoryService = adminCardSecretInventoryService;
+        this.adminSessionService = adminSessionService;
     }
 
     @GetMapping("/spu/page")
@@ -64,6 +74,31 @@ public class AdminProductSpuController {
     public AdminApiResponse<AdminProductImagePreuploadResponse> preuploadMainImage(
             @RequestParam("file") MultipartFile file) {
         return AdminApiResponse.ok(adminProductSpuService.preuploadMainImage(file));
+    }
+
+    @PostMapping("/spu/{spuId}/sku/{skuId}/card-secrets/import")
+    public AdminApiResponse<AdminCardSecretImportResponse> importCardSecrets(
+            @PathVariable Long spuId,
+            @PathVariable String skuId,
+            @RequestParam(value = "secretText", required = false) String secretText,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "batchNo", required = false) String batchNo,
+            @RequestParam(value = "duplicatePolicy", required = false) String duplicatePolicy,
+            HttpServletRequest request) {
+        return new AdminApiResponse<>(
+                true,
+                "ADMIN_CARD_SECRET_IMPORT_OK",
+                "ok",
+                adminCardSecretInventoryService.importSecrets(
+                        spuId,
+                        skuId,
+                        secretText,
+                        file,
+                        batchNo,
+                        duplicatePolicy,
+                        adminSessionService.current(request)
+                )
+        );
     }
 
     @DeleteMapping("/images/preupload")
@@ -91,6 +126,12 @@ public class AdminProductSpuController {
     @GetMapping("/spu/{spuId}/sku/hot")
     public AdminApiResponse<List<AdminProductHotSkuResponse>> hotSkus(@PathVariable Long spuId) {
         return AdminApiResponse.ok(adminProductHotSkuService.listHotSkus(spuId));
+    }
+
+    @GetMapping("/spu/{spuId}/sku/hot/{skuId}")
+    public AdminApiResponse<AdminProductHotSkuResponse> hotSkuDetail(@PathVariable Long spuId,
+                                                                     @PathVariable String skuId) {
+        return AdminApiResponse.ok(adminProductHotSkuService.getHotSku(spuId, skuId));
     }
 
     @PostMapping("/spu/{spuId}/sku/hot/batch-enable")

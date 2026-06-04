@@ -14,7 +14,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(RiskReadReplicaProperties.class)
+@EnableConfigurationProperties({
+        RiskReadReplicaProperties.class,
+        CouponReadReplicaProperties.class,
+        OrderReadReplicaProperties.class,
+        ProductReadReplicaProperties.class
+})
 public class RoutingDataSourceConfig {
 
     @Bean
@@ -45,16 +50,70 @@ public class RoutingDataSourceConfig {
         return dataSource;
     }
 
+    @Bean(name = "couponReadReplicaDataSource", destroyMethod = "close")
+    @ConfigurationProperties("shopping.datasource.coupon-read.hikari")
+    public HikariDataSource couponReadReplicaDataSource(CouponReadReplicaProperties properties) {
+        HikariDataSource dataSource = new HikariDataSource();
+        dataSource.setJdbcUrl(properties.getUrl());
+        dataSource.setUsername(properties.getUsername());
+        dataSource.setPassword(properties.getPassword());
+        dataSource.setDriverClassName(properties.getDriverClassName());
+        dataSource.setReadOnly(true);
+        dataSource.setPoolName("coupon-read-replica");
+        return dataSource;
+    }
+
+    @Bean(name = "orderReadReplicaDataSource", destroyMethod = "close")
+    @ConfigurationProperties("shopping.datasource.order-read.hikari")
+    public HikariDataSource orderReadReplicaDataSource(OrderReadReplicaProperties properties) {
+        HikariDataSource dataSource = new HikariDataSource();
+        dataSource.setJdbcUrl(properties.getUrl());
+        dataSource.setUsername(properties.getUsername());
+        dataSource.setPassword(properties.getPassword());
+        dataSource.setDriverClassName(properties.getDriverClassName());
+        dataSource.setReadOnly(true);
+        dataSource.setPoolName("order-read-replica");
+        return dataSource;
+    }
+
+    @Bean(name = "productReadReplicaDataSource", destroyMethod = "close")
+    @ConfigurationProperties("shopping.datasource.product-read.hikari")
+    public HikariDataSource productReadReplicaDataSource(ProductReadReplicaProperties properties) {
+        HikariDataSource dataSource = new HikariDataSource();
+        dataSource.setJdbcUrl(properties.getUrl());
+        dataSource.setUsername(properties.getUsername());
+        dataSource.setPassword(properties.getPassword());
+        dataSource.setDriverClassName(properties.getDriverClassName());
+        dataSource.setReadOnly(true);
+        dataSource.setPoolName("product-read-replica");
+        return dataSource;
+    }
+
     @Primary
     @Bean(name = "dataSource")
     public DataSource dataSource(@Qualifier("primaryDataSource") DataSource primaryDataSource,
                                  @Qualifier("riskReadReplicaDataSource") DataSource riskReadReplicaDataSource,
-                                 RiskReadReplicaProperties properties) {
+                                 @Qualifier("couponReadReplicaDataSource") DataSource couponReadReplicaDataSource,
+                                 @Qualifier("orderReadReplicaDataSource") DataSource orderReadReplicaDataSource,
+                                 @Qualifier("productReadReplicaDataSource") DataSource productReadReplicaDataSource,
+                                 RiskReadReplicaProperties riskReadReplicaProperties,
+                                 CouponReadReplicaProperties couponReadReplicaProperties,
+                                 OrderReadReplicaProperties orderReadReplicaProperties,
+                                 ProductReadReplicaProperties productReadReplicaProperties) {
         Map<Object, Object> targetDataSources = new HashMap<>();
         targetDataSources.put(DataSourceRoute.PRIMARY, primaryDataSource);
         targetDataSources.put(
                 DataSourceRoute.RISK_READ,
-                properties.isEnabled() ? riskReadReplicaDataSource : primaryDataSource);
+                riskReadReplicaProperties.isEnabled() ? riskReadReplicaDataSource : primaryDataSource);
+        targetDataSources.put(
+                DataSourceRoute.COUPON_READ,
+                couponReadReplicaProperties.isEnabled() ? couponReadReplicaDataSource : primaryDataSource);
+        targetDataSources.put(
+                DataSourceRoute.ORDER_READ,
+                orderReadReplicaProperties.isEnabled() ? orderReadReplicaDataSource : primaryDataSource);
+        targetDataSources.put(
+                DataSourceRoute.PRODUCT_READ,
+                productReadReplicaProperties.isEnabled() ? productReadReplicaDataSource : primaryDataSource);
 
         RoutingDataSource routingDataSource = new RoutingDataSource();
         routingDataSource.setDefaultTargetDataSource(primaryDataSource);

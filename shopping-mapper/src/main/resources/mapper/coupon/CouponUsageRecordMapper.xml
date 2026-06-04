@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.coupon.CouponUsageRecordMapper">
+
+    <insert id="insertUsageRecordIgnore">
+        INSERT INTO coupon_usage_record (
+            id,
+            user_coupon_id,
+            coupon_template_id,
+            user_id,
+            order_no,
+            action,
+            order_amount_yuan,
+            discount_amount_yuan,
+            idempotency_key
+        )
+        VALUES (
+            #{id},
+            #{userCouponId},
+            #{couponTemplateId},
+            #{userId},
+            #{orderNo},
+            #{action},
+            #{orderAmountYuan},
+            #{discountAmountYuan},
+            #{idempotencyKey}
+        )
+        ON CONFLICT (idempotency_key) DO NOTHING
+    </insert>
+
+    <insert id="batchInsertUsageRecordsIgnore">
+        <![CDATA[
+INSERT INTO coupon_usage_record (
+    id,
+    user_coupon_id,
+    coupon_template_id,
+    user_id,
+    order_no,
+    action,
+    order_amount_yuan,
+    discount_amount_yuan,
+    idempotency_key
+)
+SELECT decode(raw.id_hex, 'hex'),
+       decode(raw.user_coupon_id_hex, 'hex'),
+       decode(raw.coupon_template_id_hex, 'hex'),
+       raw.user_id,
+       raw.order_no,
+       raw.action,
+       raw.order_amount_yuan,
+       raw.discount_amount_yuan,
+       raw.idempotency_key
+FROM jsonb_to_recordset(CAST(#{recordsJson} AS jsonb)) AS raw(
+    id_hex text,
+    user_coupon_id_hex text,
+    coupon_template_id_hex text,
+    user_id bigint,
+    order_no text,
+    action text,
+    order_amount_yuan numeric,
+    discount_amount_yuan numeric,
+    idempotency_key text
+)
+ON CONFLICT (idempotency_key) DO NOTHING
+        ]]>
+    </insert>
+</mapper>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="page-gate-pending">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>确认订单</title>
+  <link rel="stylesheet" href="/shopping/css/page-access-gate.css?v=7" />
+  <link rel="stylesheet" href="/shopping/css/orders.css?v=1" />
+</head>
+<body>
+  <div class="order-page-background" aria-hidden="true">
+    <div class="order-page-background__wash"></div>
+    <div class="order-page-background__dots"></div>
+  </div>
+
+  <main class="order-page order-page--checkout" aria-label="确认订单">
+    <header class="order-page-header">
+      <a class="order-nav-button" href="/shopping/user/console">商品列表</a>
+      <nav class="order-page-tabs" aria-label="订单导航">
+        <a href="/shopping/user/orders">我的订单</a>
+        <a href="/shopping/user/coupons/mine">我的优惠券</a>
+      </nav>
+      <a class="order-nav-button" href="/shopping/user/profile">个人资料</a>
+    </header>
+
+    <section class="order-status" id="checkout-status">正在加载订单预览</section>
+
+    <section class="order-panel checkout-layout" id="checkout-view" hidden>
+      <div class="order-panel-heading">
+        <div>
+          <h1>确认订单</h1>
+          <p id="checkout-summary">选择数量和优惠券后提交订单</p>
+        </div>
+      </div>
+
+      <section class="checkout-product" id="checkout-product"></section>
+
+      <form class="checkout-form" id="checkout-form">
+        <label class="checkout-quantity-field">
+          <span>购买数量</span>
+          <input id="checkout-quantity" type="number" min="1" max="999" step="1" value="1" inputmode="numeric" />
+        </label>
+
+        <section class="checkout-coupons" aria-label="订单优惠券">
+          <div class="checkout-section-heading">
+            <h2>优惠券</h2>
+            <p id="checkout-coupon-summary">正在加载可用优惠券</p>
+          </div>
+          <div id="checkout-coupon-list" class="checkout-coupon-list"></div>
+        </section>
+
+        <section class="checkout-amounts" id="checkout-amounts"></section>
+
+        <div class="checkout-actions">
+          <button class="order-primary-button" id="checkout-submit" type="submit" data-action="create-order">提交订单</button>
+          <a class="order-ghost-button" href="/shopping/user/orders">查看订单</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="/shopping/js/user/auth/shared/preauth-client.js?v=2"></script>
+  <script src="/shopping/js/user/auth/shared/auth-client.js"></script>
+  <script src="/shopping/js/user/auth/shared/page-access-gate.js?v=8"></script>
+  <script src="/shopping/js/vendor/gsap.min.js"></script>
+  <script src="/shopping/js/user/auth/console/console-noomo-background.js?v=3"></script>
+  <script src="/shopping/js/user/orders/order-api.js?v=1"></script>
+  <script src="/shopping/js/user/orders/checkout-page.js?v=1"></script>
+</body>
+</html>

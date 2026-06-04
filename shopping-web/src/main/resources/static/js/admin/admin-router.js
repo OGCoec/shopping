@@ -123,6 +123,12 @@
       if (routeValue === "products" || routeValue.startsWith("products/")) {
         return "products";
       }
+      if (routeValue === "coupons" || routeValue.startsWith("coupons/")) {
+        return "coupons";
+      }
+      if (routeValue === "orders" || routeValue.startsWith("orders/")) {
+        return "orders";
+      }
       return registry?.routeSectionMap?.[routeValue] || defaultSection;
     }
     const params = new URLSearchParams(window.location.search);
@@ -139,6 +145,12 @@
       return;
     }
     if (sectionName === "products" && replace && window.location.pathname.startsWith(`${consoleBasePath}/products/`)) {
+      return;
+    }
+    if (sectionName === "coupons" && replace && window.location.pathname.startsWith(`${consoleBasePath}/coupons/`)) {
+      return;
+    }
+    if (sectionName === "orders" && replace && window.location.pathname.startsWith(`${consoleBasePath}/orders/`)) {
       return;
     }
     const url = new URL(window.location.href);

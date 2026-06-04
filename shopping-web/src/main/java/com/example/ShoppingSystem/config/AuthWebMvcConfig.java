@@ -23,6 +23,10 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class AuthWebMvcConfig implements WebMvcConfigurer {
 
+    private static final String COUPON_API_PATTERN = "/shopping/user/api/coupons/**";
+    private static final String ORDER_API_PATTERN = "/shopping/user/api/orders/**";
+    private static final String PAYMENT_CALLBACK_PATTERN = "/shopping/api/payments/callback/**";
+
     private final PreAuthInterceptor preAuthInterceptor;
     private final WebRtcIpConsistencyInterceptor webRtcIpConsistencyInterceptor;
     private final RegisterFlowGuardInterceptor registerFlowGuardInterceptor;
@@ -34,6 +38,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
     private final AdminIpChangeWafInterceptor adminIpChangeWafInterceptor;
     private final AdminSessionInterceptor adminSessionInterceptor;
     private final boolean couponLoadtestBypassGuards;
+    private final boolean orderLoadtestBypassGuards;
 
     public AuthWebMvcConfig(PreAuthInterceptor preAuthInterceptor,
                             WebRtcIpConsistencyInterceptor webRtcIpConsistencyInterceptor,
@@ -45,7 +50,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                             PhoneBindingRequiredInterceptor phoneBindingRequiredInterceptor,
                             AdminIpChangeWafInterceptor adminIpChangeWafInterceptor,
                             AdminSessionInterceptor adminSessionInterceptor,
-                            @Value("${app.coupon.loadtest.bypass-guards:false}") boolean couponLoadtestBypassGuards) {
+                            @Value("${app.coupon.loadtest.bypass-guards:false}") boolean couponLoadtestBypassGuards,
+                            @Value("${app.order.loadtest.bypass-guards:false}") boolean orderLoadtestBypassGuards) {
         this.preAuthInterceptor = preAuthInterceptor;
         this.webRtcIpConsistencyInterceptor = webRtcIpConsistencyInterceptor;
         this.registerFlowGuardInterceptor = registerFlowGuardInterceptor;
@@ -57,6 +63,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
         this.adminIpChangeWafInterceptor = adminIpChangeWafInterceptor;
         this.adminSessionInterceptor = adminSessionInterceptor;
         this.couponLoadtestBypassGuards = couponLoadtestBypassGuards;
+        this.orderLoadtestBypassGuards = orderLoadtestBypassGuards;
     }
 
     @Override
@@ -79,13 +86,18 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/static/");
     }
 
-    private String[] excludeWithCouponBypass(String... basePatterns) {
-        if (!couponLoadtestBypassGuards) {
+    private String[] excludeWithLoadtestBypass(String... basePatterns) {
+        if (!couponLoadtestBypassGuards && !orderLoadtestBypassGuards) {
             return basePatterns;
         }
-        String[] merged = java.util.Arrays.copyOf(basePatterns, basePatterns.length + 1);
-        merged[basePatterns.length] = "/shopping/user/api/coupons/**";
-        return merged;
+        java.util.List<String> merged = new java.util.ArrayList<>(java.util.Arrays.asList(basePatterns));
+        if (couponLoadtestBypassGuards) {
+            merged.add(COUPON_API_PATTERN);
+        }
+        if (orderLoadtestBypassGuards) {
+            merged.add(ORDER_API_PATTERN);
+        }
+        return merged.toArray(String[]::new);
     }
 
     @Override
@@ -124,7 +136,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
 
         registry.addInterceptor(webRtcIpConsistencyInterceptor)
                 .addPathPatterns("/shopping/**")
-                .excludePathPatterns(excludeWithCouponBypass(
+                .excludePathPatterns(excludeWithLoadtestBypass(
                         "/shopping/admin/**",
                         "/shopping/auth/waf/verify",
                         "/shopping/auth/network-check-failed",
@@ -139,13 +151,14 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/error/**",
                         "/shopping/fonts/**",
                         "/shopping/favicon.ico",
+                        PAYMENT_CALLBACK_PATTERN,
                         "/webjars/**"
                 ))
                 .order(-10);
 
         registry.addInterceptor(preAuthInterceptor)
                 .addPathPatterns("/shopping/**")
-                .excludePathPatterns(excludeWithCouponBypass(
+                .excludePathPatterns(excludeWithLoadtestBypass(
                         "/shopping/auth/preauth/bootstrap",
                         "/shopping/auth/preauth/phone-country",
                         "/shopping/auth/waf/verify",
@@ -177,6 +190,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/error/**",
                         "/shopping/fonts/**",
                         "/shopping/favicon.ico",
+                        PAYMENT_CALLBACK_PATTERN,
                         "/webjars/**"
                 ))
                 .order(-20);
@@ -226,7 +240,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/security/phone/**",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**",
-                        "/shopping/user/api/coupons/**"
+                        COUPON_API_PATTERN,
+                        ORDER_API_PATTERN
                 )
                 .order(100);
 
@@ -243,9 +258,10 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/security/phone/**",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**",
-                        "/shopping/user/api/coupons/**"
+                        COUPON_API_PATTERN,
+                        ORDER_API_PATTERN
                 )
-                .excludePathPatterns(excludeWithCouponBypass())
+                .excludePathPatterns(excludeWithLoadtestBypass())
                 .order(105);
 
         registry.addInterceptor(phoneBindingRequiredInterceptor)
@@ -258,9 +274,10 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/api/products/**",
                         "/shopping/user/totp",
                         "/shopping/user/totp/**",
-                        "/shopping/user/api/coupons/**"
+                        COUPON_API_PATTERN,
+                        ORDER_API_PATTERN
                 )
-                .excludePathPatterns(excludeWithCouponBypass())
+                .excludePathPatterns(excludeWithLoadtestBypass())
                 .order(110);
     }
 }

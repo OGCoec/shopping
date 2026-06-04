@@ -30,14 +30,14 @@ CREATE TABLE IF NOT EXISTS user_coupon (
     -- 领取时间
     received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    -- 锁定该优惠券的订单 ID，下单锁券时写入
-    locked_order_id BIGINT,
+    -- 锁定该优惠券的订单号，下单锁券时写入
+    locked_order_no VARCHAR(64),
 
     -- 锁定时间
     locked_at TIMESTAMPTZ,
 
-    -- 使用该优惠券的订单 ID，支付成功确认核销时写入
-    used_order_id BIGINT,
+    -- 使用该优惠券的订单号，支付成功确认核销时写入
+    used_order_no VARCHAR(64),
 
     -- 使用时间
     used_at TIMESTAMPTZ,
@@ -56,6 +56,12 @@ CREATE TABLE IF NOT EXISTS user_coupon (
 
     CONSTRAINT ck_user_coupon_template_id_hybridworker
         CHECK (octet_length(coupon_template_id) = 16),
+
+    CONSTRAINT ck_user_coupon_locked_order_no_not_blank
+        CHECK (locked_order_no IS NULL OR btrim(locked_order_no) <> ''),
+
+    CONSTRAINT ck_user_coupon_used_order_no_not_blank
+        CHECK (used_order_no IS NULL OR btrim(used_order_no) <> ''),
 
     CONSTRAINT ck_user_coupon_status
         CHECK (status IN ('UNUSED', 'LOCKED', 'USED', 'EXPIRED', 'REVOKED')),
@@ -76,6 +82,10 @@ CREATE INDEX IF NOT EXISTS idx_user_coupon_template_user
 CREATE UNIQUE INDEX IF NOT EXISTS uq_user_coupon_user_template
     ON user_coupon (user_id, coupon_template_id);
 
+CREATE INDEX IF NOT EXISTS idx_user_coupon_locked_order_no
+    ON user_coupon (locked_order_no)
+    WHERE locked_order_no IS NOT NULL;
+
 COMMENT ON TABLE user_coupon IS '用户优惠券表：保存用户实际领取到的优惠券，以及未使用、锁定、已使用、过期等状态';
 
 COMMENT ON COLUMN user_coupon.id IS '用户优惠券 ID，由 HybridSemaphoreIdWorker 生成的 16 字节 ID';
@@ -85,9 +95,9 @@ COMMENT ON COLUMN user_coupon.status IS '用户优惠券状态：UNUSED 未使�
 COMMENT ON COLUMN user_coupon.valid_start_at IS '用户优惠券有效期开始时间';
 COMMENT ON COLUMN user_coupon.valid_end_at IS '用户优惠券有效期结束时间';
 COMMENT ON COLUMN user_coupon.received_at IS '领取时间';
-COMMENT ON COLUMN user_coupon.locked_order_id IS '锁定该优惠券的订单 ID，下单锁券时写入';
+COMMENT ON COLUMN user_coupon.locked_order_no IS '锁定该优惠券的订单号，对应 trade_order.order_no，下单锁券时写入';
 COMMENT ON COLUMN user_coupon.locked_at IS '锁定时间';
-COMMENT ON COLUMN user_coupon.used_order_id IS '使用该优惠券的订单 ID，支付成功确认核销时写入';
+COMMENT ON COLUMN user_coupon.used_order_no IS '使用该优惠券的订单号，对应 trade_order.order_no，支付成功确认核销时写入';
 COMMENT ON COLUMN user_coupon.used_at IS '使用时间';
 COMMENT ON COLUMN user_coupon.version IS '数据版本号，用于并发锁券、核销、释放时做乐观锁';
 COMMENT ON COLUMN user_coupon.created_at IS '创建时间';

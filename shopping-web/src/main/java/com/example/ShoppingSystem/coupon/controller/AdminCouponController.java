@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.coupon.controller;
 
 import com.example.ShoppingSystem.admin.dto.AdminApiResponse;
+import com.example.ShoppingSystem.coupon.dto.AdminCouponClaimPageResponse;
 import com.example.ShoppingSystem.coupon.dto.AdminCouponTemplatePageResponse;
 import com.example.ShoppingSystem.coupon.dto.AdminCouponTemplateRequest;
 import com.example.ShoppingSystem.coupon.dto.AdminCouponTemplateResponse;
@@ -31,13 +32,30 @@ public class AdminCouponController {
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "pageSize", required = false) Integer pageSize,
             @RequestParam(value = "name", required = false) String name,
-            @RequestParam(value = "status", required = false) String status) {
-        return AdminApiResponse.ok(adminCouponService.page(page, pageSize, name, status));
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "receiveStartAtFrom", required = false) String receiveStartAtFrom,
+            @RequestParam(value = "receiveEndAtTo", required = false) String receiveEndAtTo) {
+        return AdminApiResponse.ok(adminCouponService.page(
+                page,
+                pageSize,
+                name,
+                status,
+                receiveStartAtFrom,
+                receiveEndAtTo));
     }
 
     @GetMapping("/{id}")
     public AdminApiResponse<AdminCouponTemplateResponse> detail(@PathVariable String id) {
         return AdminApiResponse.ok(adminCouponService.detail(id));
+    }
+
+    @GetMapping("/{id}/claims")
+    public AdminApiResponse<AdminCouponClaimPageResponse> claims(@PathVariable String id,
+                                                                 @RequestParam(value = "page", required = false) Integer page,
+                                                                 @RequestParam(value = "pageSize", required = false) Integer pageSize,
+                                                                 @RequestParam(value = "status", required = false) String status,
+                                                                 @RequestParam(value = "email", required = false) String email) {
+        return AdminApiResponse.ok(adminCouponService.claimPage(id, page, pageSize, status, email));
     }
 
     @PostMapping

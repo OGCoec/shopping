@@ -264,11 +264,17 @@
     price.textContent = formatPrice(sku?.priceYuan);
     const stock = document.createElement("span");
     stock.textContent = `库存 ${Number(sku?.stockQuantity || 0)}`;
+    const buyLink = document.createElement("a");
+    buyLink.className = "product-detail-buy-link";
+    buyLink.href = checkoutPath(sku?.id);
+    buyLink.dataset.action = "buy-sku";
+    buyLink.dataset.skuId = String(sku?.id || "");
+    buyLink.textContent = "立即购买";
     const spec = document.createElement("div");
     spec.className = "product-detail-sku-spec";
     spec.textContent = formatSpec(sku?.specJson);
 
-    item.append(name, price, stock, spec);
+    item.append(name, price, stock, buyLink, spec);
     return item;
   }
 
@@ -381,6 +387,14 @@
       return "价格待定";
     }
     return `¥${number.toFixed(2)}`;
+  }
+
+  function checkoutPath(skuId) {
+    const id = String(skuId || "").trim();
+    if (!id) {
+      return "/shopping/user/console";
+    }
+    return `/shopping/user/checkout/${encodeURIComponent(id)}?quantity=1`;
   }
 
   async function startPage() {

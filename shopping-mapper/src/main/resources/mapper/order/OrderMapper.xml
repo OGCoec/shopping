@@ -1,0 +1,740 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.order.OrderMapper">
+
+    <select id="findSkuForOrder" resultType="map">
+        <![CDATA[
+SELECT encode(s.id, 'hex') AS "skuId",
+       s.spu_id AS "spuId",
+       p.category_id AS "categoryId",
+       s.sku_code AS "skuCode",
+       s.sku_name AS "skuName",
+       s.spec_json::text AS "specJson",
+       COALESCE(s.sku_image_url::jsonb, '[]'::jsonb)::text AS "skuImageUrl",
+       s.price_yuan AS "priceYuan",
+       s.stock_quantity AS "stockQuantity",
+       s.status AS "skuStatus",
+       p.status AS "spuStatus",
+       c.status AS "categoryStatus"
+FROM product_sku s
+INNER JOIN product_spu p ON p.id = s.spu_id
+INNER JOIN product_category c ON c.id = p.category_id
+WHERE s.id = #{skuId}
+        ]]>
+    </select>
+
+    <select id="findHotSkuForOrder" resultType="map">
+        <![CDATA[
+SELECT encode(h.sku_id, 'hex') AS "skuId",
+       h.status AS "status",
+       h.stock_quantity AS "stockQuantity",
+       h.remaining_quantity AS "remainingQuantity",
+       h.start_at AS "startAt",
+       h.end_at AS "endAt",
+       h.version AS "version"
+FROM product_hot_sku h
+WHERE h.sku_id = #{skuId}
+  AND h.status = 'ENABLED'
+  AND (h.start_at IS NULL OR h.start_at <= #{now})
+  AND (h.end_at IS NULL OR h.end_at > #{now})
+        ]]>
+    </select>
+
+    <update id="deductNormalSkuStock">
+        UPDATE product_sku
+        SET stock_quantity = stock_quantity - #{quantity},
+            updated_at = NOW()
+        WHERE id = #{skuId}
+          AND status = 'ACTIVE'
+          AND stock_quantity >= #{quantity}
+    </update>
+
+    <update id="increaseNormalSkuStock">
+        UPDATE product_sku
+        SET stock_quantity = stock_quantity + #{quantity},
+            updated_at = NOW()
+        WHERE id = #{skuId}
+    </update>
+
+    <update id="increaseNormalSkuStocks">
+        <![CDATA[
+WITH raw AS (
+    SELECT decode(item.sku_id_hex, 'hex') AS sku_id,
+           item.quantity AS quantity
+    FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS item(
+        sku_id_hex text,
+        quantity integer
+    )
+),
+target AS (
+    SELECT sku_id,
+           SUM(quantity)::integer AS quantity
+    FROM raw
+    WHERE quantity > 0
+    GROUP BY sku_id
+)
+UPDATE product_sku s
+SET stock_quantity = stock_quantity + target.quantity,
+    updated_at = NOW()
+FROM target
+WHERE s.id = target.sku_id
+        ]]>
+    </update>
+
+    <insert id="insertOrder">
+        INSERT INTO trade_order (
+            order_no,
+            user_id,
+            status,
+            total_amount_yuan,
+            discount_amount_yuan,
+            pay_amount_yuan,
+            user_coupon_id,
+            idempotency_key,
+            expire_at,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            #{orderNo},
+            #{userId},
+            #{status},
+            #{totalAmountYuan},
+            #{discountAmountYuan},
+            #{payAmountYuan},
+            #{userCouponId},
+            #{idempotencyKey},
+            #{expireAt},
+            #{createdAt},
+            #{createdAt}
+        )
+    </insert>
+
+    <insert id="insertOrderItems">
+        <![CDATA[
+INSERT INTO trade_order_item (
+    order_no,
+    user_id,
+    spu_id,
+    sku_id,
+    sku_code,
+    sku_name,
+    spec_json,
+    sku_image_url,
+    quantity,
+    sale_price_yuan,
+    line_amount_yuan,
+    is_hot_sku,
+    created_at
+)
+SELECT raw.order_no,
+       raw.user_id,
+       raw.spu_id,
+       decode(raw.sku_id_hex, 'hex'),
+       raw.sku_code,
+       raw.sku_name,
+       CAST(raw.spec_json AS jsonb),
+       raw.sku_image_url,
+       raw.quantity,
+       raw.sale_price_yuan,
+       raw.line_amount_yuan,
+       raw.is_hot_sku,
+       to_timestamp(raw.created_at_epoch_ms / 1000.0)
+FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
+    order_no text,
+    user_id bigint,
+    spu_id bigint,
+    sku_id_hex text,
+    sku_code text,
+    sku_name text,
+    spec_json text,
+    sku_image_url text,
+    quantity integer,
+    sale_price_yuan numeric,
+    line_amount_yuan numeric,
+    is_hot_sku boolean,
+    created_at_epoch_ms bigint
+)
+ON CONFLICT (order_no, sku_id) DO NOTHING
+        ]]>
+    </insert>
+
+    <insert id="batchUpsertOrders">
+        <![CDATA[
+INSERT INTO trade_order (
+    order_no,
+    user_id,
+    status,
+    total_amount_yuan,
+    discount_amount_yuan,
+    pay_amount_yuan,
+    user_coupon_id,
+    idempotency_key,
+    expire_at,
+    paid_at,
+    closing_at,
+    closing_deadline_at,
+    cancelled_at,
+    closed_at,
+    created_at,
+    updated_at,
+    version
+)
+SELECT raw.order_no,
+       raw.user_id,
+       raw.status,
+       raw.total_amount_yuan,
+       raw.discount_amount_yuan,
+       raw.pay_amount_yuan,
+       CASE
+           WHEN raw.user_coupon_id_hex IS NULL OR btrim(raw.user_coupon_id_hex) = '' THEN NULL
+           ELSE decode(raw.user_coupon_id_hex, 'hex')
+       END,
+       raw.idempotency_key,
+       to_timestamp(raw.expire_at_epoch_ms / 1000.0),
+       CASE WHEN raw.paid_at_epoch_ms IS NULL THEN NULL ELSE to_timestamp(raw.paid_at_epoch_ms / 1000.0) END,
+       CASE WHEN raw.closing_at_epoch_ms IS NULL THEN NULL ELSE to_timestamp(raw.closing_at_epoch_ms / 1000.0) END,
+       CASE WHEN raw.closing_deadline_at_epoch_ms IS NULL THEN NULL ELSE to_timestamp(raw.closing_deadline_at_epoch_ms / 1000.0) END,
+       CASE WHEN raw.cancelled_at_epoch_ms IS NULL THEN NULL ELSE to_timestamp(raw.cancelled_at_epoch_ms / 1000.0) END,
+       CASE WHEN raw.closed_at_epoch_ms IS NULL THEN NULL ELSE to_timestamp(raw.closed_at_epoch_ms / 1000.0) END,
+       to_timestamp(raw.created_at_epoch_ms / 1000.0),
+       to_timestamp(raw.updated_at_epoch_ms / 1000.0),
+       GREATEST(raw.version, 1)
+FROM jsonb_to_recordset(CAST(#{ordersJson} AS jsonb)) AS raw(
+    order_no text,
+    user_id bigint,
+    status text,
+    total_amount_yuan numeric,
+    discount_amount_yuan numeric,
+    pay_amount_yuan numeric,
+    user_coupon_id_hex text,
+    idempotency_key text,
+    expire_at_epoch_ms bigint,
+    paid_at_epoch_ms bigint,
+    closing_at_epoch_ms bigint,
+    closing_deadline_at_epoch_ms bigint,
+    cancelled_at_epoch_ms bigint,
+    closed_at_epoch_ms bigint,
+    created_at_epoch_ms bigint,
+    updated_at_epoch_ms bigint,
+    version bigint
+)
+ORDER BY raw.created_at_epoch_ms, raw.order_no
+ON CONFLICT (order_no) DO UPDATE
+SET status = EXCLUDED.status,
+    total_amount_yuan = EXCLUDED.total_amount_yuan,
+    discount_amount_yuan = EXCLUDED.discount_amount_yuan,
+    pay_amount_yuan = EXCLUDED.pay_amount_yuan,
+    user_coupon_id = EXCLUDED.user_coupon_id,
+    idempotency_key = EXCLUDED.idempotency_key,
+    expire_at = EXCLUDED.expire_at,
+    paid_at = EXCLUDED.paid_at,
+    closing_at = EXCLUDED.closing_at,
+    closing_deadline_at = EXCLUDED.closing_deadline_at,
+    cancelled_at = EXCLUDED.cancelled_at,
+    closed_at = EXCLUDED.closed_at,
+    updated_at = EXCLUDED.updated_at,
+    version = GREATEST(trade_order.version, EXCLUDED.version)
+WHERE trade_order.status <> 'PAID'
+   OR EXCLUDED.status = 'PAID'
+        ]]>
+    </insert>
+
+    <insert id="batchInsertOrderItems">
+        <![CDATA[
+INSERT INTO trade_order_item (
+    order_no,
+    user_id,
+    spu_id,
+    sku_id,
+    sku_code,
+    sku_name,
+    spec_json,
+    sku_image_url,
+    quantity,
+    sale_price_yuan,
+    line_amount_yuan,
+    is_hot_sku,
+    created_at
+)
+SELECT raw.order_no,
+       raw.user_id,
+       raw.spu_id,
+       decode(raw.sku_id_hex, 'hex'),
+       raw.sku_code,
+       raw.sku_name,
+       CAST(raw.spec_json AS jsonb),
+       raw.sku_image_url,
+       raw.quantity,
+       raw.sale_price_yuan,
+       raw.line_amount_yuan,
+       raw.is_hot_sku,
+       to_timestamp(raw.created_at_epoch_ms / 1000.0)
+FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
+    order_no text,
+    user_id bigint,
+    spu_id bigint,
+    sku_id_hex text,
+    sku_code text,
+    sku_name text,
+    spec_json text,
+    sku_image_url text,
+    quantity integer,
+    sale_price_yuan numeric,
+    line_amount_yuan numeric,
+    is_hot_sku boolean,
+    created_at_epoch_ms bigint
+)
+ORDER BY raw.created_at_epoch_ms, raw.order_no, raw.sku_id_hex
+ON CONFLICT (order_no, sku_id) DO NOTHING
+        ]]>
+    </insert>
+
+    <sql id="OrderSelectColumns">
+        id AS "id",
+        order_no AS "orderNo",
+        user_id AS "userId",
+        status,
+        total_amount_yuan AS "totalAmountYuan",
+        discount_amount_yuan AS "discountAmountYuan",
+        pay_amount_yuan AS "payAmountYuan",
+        encode(user_coupon_id, 'hex') AS "userCouponId",
+        idempotency_key AS "idempotencyKey",
+        expire_at AS "expireAt",
+        paid_at AS "paidAt",
+        closing_at AS "closingAt",
+        closing_deadline_at AS "closingDeadlineAt",
+        cancelled_at AS "cancelledAt",
+        closed_at AS "closedAt",
+        version,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    </sql>
+
+    <select id="findOrderByOrderNoForUser" resultType="map">
+        SELECT <include refid="OrderSelectColumns"/>
+        FROM trade_order
+        WHERE order_no = #{orderNo}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="findOrderByOrderNo" resultType="map">
+        SELECT <include refid="OrderSelectColumns"/>
+        FROM trade_order
+        WHERE order_no = #{orderNo}
+    </select>
+
+    <select id="findOrderByIdempotencyKey" resultType="map">
+        SELECT <include refid="OrderSelectColumns"/>
+        FROM trade_order
+        WHERE idempotency_key = #{idempotencyKey}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="listOrderItems" resultType="map">
+        SELECT id AS "id",
+               order_no AS "orderNo",
+               user_id AS "userId",
+               spu_id AS "spuId",
+               encode(sku_id, 'hex') AS "skuId",
+               sku_code AS "skuCode",
+               sku_name AS "skuName",
+               spec_json::text AS "specJson",
+               sku_image_url AS "skuImageUrl",
+               quantity,
+               sale_price_yuan AS "salePriceYuan",
+               line_amount_yuan AS "lineAmountYuan",
+               is_hot_sku AS "hotSku",
+               created_at AS "createdAt"
+        FROM trade_order_item
+        WHERE order_no = #{orderNo}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="pageOrdersByUser" resultType="map">
+        <![CDATA[
+SELECT o.id AS "id",
+       o.order_no AS "orderNo",
+       o.user_id AS "userId",
+       o.status,
+       o.total_amount_yuan AS "totalAmountYuan",
+       o.discount_amount_yuan AS "discountAmountYuan",
+       o.pay_amount_yuan AS "payAmountYuan",
+       encode(o.user_coupon_id, 'hex') AS "userCouponId",
+       o.expire_at AS "expireAt",
+       o.paid_at AS "paidAt",
+       o.closing_at AS "closingAt",
+       o.closing_deadline_at AS "closingDeadlineAt",
+       o.cancelled_at AS "cancelledAt",
+       o.closed_at AS "closedAt",
+       o.created_at AS "createdAt",
+       first_item.sku_name AS "firstSkuName",
+       first_item.sku_image_url AS "firstSkuImageUrl",
+       COALESCE(item_count.item_count, 0) AS "itemCount"
+FROM trade_order o
+LEFT JOIN LATERAL (
+    SELECT i.sku_name, i.sku_image_url
+    FROM trade_order_item i
+    WHERE i.order_no = o.order_no
+    ORDER BY i.created_at ASC, i.id ASC
+    LIMIT 1
+) first_item ON TRUE
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS item_count
+    FROM trade_order_item i
+    WHERE i.order_no = o.order_no
+) item_count ON TRUE
+WHERE o.user_id = #{userId}
+  AND (#{status,jdbcType=VARCHAR} IS NULL OR #{status,jdbcType=VARCHAR} = '' OR o.status = #{status,jdbcType=VARCHAR})
+ORDER BY o.created_at DESC, o.id DESC
+LIMIT #{limit} OFFSET #{offset}
+        ]]>
+    </select>
+
+    <select id="countOrdersByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM trade_order
+        WHERE user_id = #{userId}
+          AND (#{status,jdbcType=VARCHAR} IS NULL OR #{status,jdbcType=VARCHAR} = '' OR status = #{status,jdbcType=VARCHAR})
+    </select>
+
+    <select id="pageOrdersForAdmin" resultType="map">
+        <![CDATA[
+SELECT o.id AS "id",
+       o.order_no AS "orderNo",
+       o.user_id AS "userId",
+       o.status,
+       o.total_amount_yuan AS "totalAmountYuan",
+       o.discount_amount_yuan AS "discountAmountYuan",
+       o.pay_amount_yuan AS "payAmountYuan",
+       encode(o.user_coupon_id, 'hex') AS "userCouponId",
+       o.expire_at AS "expireAt",
+       o.paid_at AS "paidAt",
+       o.closing_at AS "closingAt",
+       o.closing_deadline_at AS "closingDeadlineAt",
+       o.cancelled_at AS "cancelledAt",
+       o.closed_at AS "closedAt",
+       o.created_at AS "createdAt",
+       o.updated_at AS "updatedAt",
+       first_item.sku_name AS "firstSkuName",
+       first_item.sku_image_url AS "firstSkuImageUrl",
+       COALESCE(item_count.item_count, 0) AS "itemCount"
+FROM trade_order o
+LEFT JOIN LATERAL (
+    SELECT i.sku_name, i.sku_image_url
+    FROM trade_order_item i
+    WHERE i.order_no = o.order_no
+    ORDER BY i.created_at ASC, i.id ASC
+    LIMIT 1
+) first_item ON TRUE
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS item_count
+    FROM trade_order_item i
+    WHERE i.order_no = o.order_no
+) item_count ON TRUE
+WHERE (#{status,jdbcType=VARCHAR} IS NULL OR #{status,jdbcType=VARCHAR} = '' OR o.status = #{status,jdbcType=VARCHAR})
+  AND (#{orderNo,jdbcType=VARCHAR} IS NULL OR #{orderNo,jdbcType=VARCHAR} = '' OR o.order_no = #{orderNo,jdbcType=VARCHAR})
+ORDER BY o.created_at DESC, o.id DESC
+LIMIT #{limit} OFFSET #{offset}
+        ]]>
+    </select>
+
+    <select id="countOrdersForAdmin" resultType="long">
+        SELECT COUNT(*)
+        FROM trade_order
+        WHERE (#{status,jdbcType=VARCHAR} IS NULL OR #{status,jdbcType=VARCHAR} = '' OR status = #{status,jdbcType=VARCHAR})
+          AND (#{orderNo,jdbcType=VARCHAR} IS NULL OR #{orderNo,jdbcType=VARCHAR} = '' OR order_no = #{orderNo,jdbcType=VARCHAR})
+    </select>
+
+    <select id="cancelPendingOrder" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE trade_order
+    SET status = 'CANCELLED',
+        cancelled_at = #{now},
+        updated_at = NOW(),
+        version = version + 1
+    WHERE order_no = #{orderNo}
+      AND user_id = #{userId}
+      AND status = 'PENDING_PAYMENT'
+    RETURNING id, order_no, user_id, status, user_coupon_id
+)
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId"
+FROM updated
+        ]]>
+    </select>
+
+    <select id="startClosingExpiredOrder" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE trade_order
+    SET status = 'CLOSING',
+        closing_at = #{now},
+        closing_deadline_at = #{closingDeadline},
+        updated_at = NOW(),
+        version = version + 1
+    WHERE order_no = #{orderNo}
+      AND status = 'PENDING_PAYMENT'
+      AND expire_at <= #{now}
+    RETURNING id, order_no, user_id, status, user_coupon_id
+)
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId"
+FROM updated
+        ]]>
+    </select>
+
+    <select id="closeClosingOrder" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE trade_order
+    SET status = 'CLOSED',
+        closed_at = #{now},
+        updated_at = NOW(),
+        version = version + 1
+    WHERE order_no = #{orderNo}
+      AND status = 'CLOSING'
+      AND closing_deadline_at <= #{now}
+    RETURNING id, order_no, user_id, status, user_coupon_id
+)
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId"
+FROM updated
+        ]]>
+    </select>
+
+    <select id="markPaidOrder" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE trade_order
+    SET status = 'PAID',
+        paid_at = COALESCE(paid_at, #{paidAt}),
+        updated_at = NOW(),
+        version = version + 1
+    WHERE order_no = #{orderNo}
+      AND status IN ('PENDING_PAYMENT', 'CLOSING')
+    RETURNING id,
+              order_no,
+              user_id,
+              status,
+              user_coupon_id,
+              total_amount_yuan,
+              discount_amount_yuan,
+              true AS changed
+)
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId",
+       total_amount_yuan AS "totalAmountYuan",
+       discount_amount_yuan AS "discountAmountYuan",
+       changed AS "changed"
+FROM updated
+UNION ALL
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId",
+       total_amount_yuan AS "totalAmountYuan",
+       discount_amount_yuan AS "discountAmountYuan",
+       false AS "changed"
+FROM trade_order
+WHERE order_no = #{orderNo}
+  AND status = 'PAID'
+  AND NOT EXISTS (SELECT 1 FROM updated)
+LIMIT 1
+        ]]>
+    </select>
+
+    <select id="batchMarkPaidAndClassify" resultType="map">
+        <![CDATA[
+WITH raw AS (
+    SELECT row_number() OVER () AS rn,
+           callback_no,
+           order_no,
+           external_trade_no,
+           payment_provider,
+           paid_at_epoch_ms,
+           paid_amount_yuan
+    FROM jsonb_to_recordset(CAST(#{callbacksJson} AS jsonb)) AS callback(
+        callback_no text,
+        order_no text,
+        external_trade_no text,
+        payment_provider text,
+        paid_at_epoch_ms bigint,
+        paid_amount_yuan numeric
+    )
+),
+updated AS (
+    UPDATE trade_order o
+    SET status = 'PAID',
+        paid_at = COALESCE(o.paid_at, to_timestamp(raw.paid_at_epoch_ms / 1000.0)),
+        updated_at = NOW(),
+        version = o.version + 1
+    FROM raw
+    WHERE o.order_no = raw.order_no
+      AND o.status IN ('PENDING_PAYMENT', 'CLOSING')
+    RETURNING raw.rn,
+              raw.callback_no,
+              raw.external_trade_no,
+              raw.payment_provider,
+              raw.paid_at_epoch_ms,
+              raw.paid_amount_yuan,
+              o.order_no,
+              o.user_id,
+              o.status,
+              encode(o.user_coupon_id, 'hex') AS user_coupon_id,
+              o.total_amount_yuan,
+              o.discount_amount_yuan,
+              o.pay_amount_yuan,
+              true AS changed
+),
+existing AS (
+    SELECT raw.rn,
+           raw.callback_no,
+           raw.external_trade_no,
+           raw.payment_provider,
+           raw.paid_at_epoch_ms,
+           raw.paid_amount_yuan,
+           raw.order_no,
+           o.user_id,
+           COALESCE(o.status, 'NOT_FOUND') AS status,
+           encode(o.user_coupon_id, 'hex') AS user_coupon_id,
+           o.total_amount_yuan,
+           o.discount_amount_yuan,
+           o.pay_amount_yuan
+    FROM raw
+    LEFT JOIN trade_order o ON o.order_no = raw.order_no
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM updated u
+        WHERE u.callback_no = raw.callback_no
+    )
+),
+classified AS (
+    SELECT rn,
+           callback_no,
+           order_no,
+           external_trade_no,
+           payment_provider,
+           paid_at_epoch_ms,
+           paid_amount_yuan,
+           user_id,
+           status AS order_status,
+           user_coupon_id,
+           total_amount_yuan,
+           discount_amount_yuan,
+           pay_amount_yuan,
+           true AS changed,
+           'PAID' AS outcome,
+           NULL::text AS reason_code
+    FROM updated
+    UNION ALL
+    SELECT rn,
+           callback_no,
+           order_no,
+           external_trade_no,
+           payment_provider,
+           paid_at_epoch_ms,
+           paid_amount_yuan,
+           user_id,
+           status AS order_status,
+           user_coupon_id,
+           total_amount_yuan,
+           discount_amount_yuan,
+           pay_amount_yuan,
+           false AS changed,
+           CASE
+               WHEN status = 'PAID' THEN 'PAID_IDEMPOTENT'
+               ELSE 'REFUND_PENDING'
+           END AS outcome,
+           CASE
+               WHEN status = 'CLOSED' THEN 'PAID_AFTER_ORDER_CLOSED'
+               WHEN status = 'CANCELLED' THEN 'PAID_AFTER_ORDER_CANCELLED'
+               WHEN status = 'NOT_FOUND' THEN 'ORDER_NOT_FOUND_AFTER_PAID'
+               ELSE 'OTHER'
+           END AS reason_code
+    FROM existing
+)
+SELECT callback_no AS "callbackNo",
+       order_no AS "orderNo",
+       external_trade_no AS "externalTradeNo",
+       payment_provider AS "paymentProvider",
+       paid_at_epoch_ms AS "paidAtEpochMs",
+       paid_amount_yuan AS "paidAmountYuan",
+       user_id AS "userId",
+       order_status AS "orderStatus",
+       user_coupon_id AS "userCouponId",
+       total_amount_yuan AS "totalAmountYuan",
+       discount_amount_yuan AS "discountAmountYuan",
+       pay_amount_yuan AS "payAmountYuan",
+       changed AS "changed",
+       outcome AS "outcome",
+       reason_code AS "reasonCode"
+FROM classified
+ORDER BY rn
+        ]]>
+    </select>
+
+    <select id="markPendingPaidOrderForUser" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE trade_order
+    SET status = 'PAID',
+        paid_at = COALESCE(paid_at, #{paidAt}),
+        updated_at = NOW(),
+        version = version + 1
+    WHERE order_no = #{orderNo}
+      AND user_id = #{userId}
+      AND status = 'PENDING_PAYMENT'
+    RETURNING id,
+              order_no,
+              user_id,
+              status,
+              user_coupon_id,
+              total_amount_yuan,
+              discount_amount_yuan,
+              true AS changed
+)
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId",
+       total_amount_yuan AS "totalAmountYuan",
+       discount_amount_yuan AS "discountAmountYuan",
+       changed AS "changed"
+FROM updated
+UNION ALL
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId",
+       total_amount_yuan AS "totalAmountYuan",
+       discount_amount_yuan AS "discountAmountYuan",
+       false AS "changed"
+FROM trade_order
+WHERE order_no = #{orderNo}
+  AND user_id = #{userId}
+  AND status = 'PAID'
+  AND NOT EXISTS (SELECT 1 FROM updated)
+LIMIT 1
+        ]]>
+    </select>
+</mapper>

@@ -3,11 +3,15 @@ package com.example.ShoppingSystem.coupon.service;
 import com.example.ShoppingSystem.Utils.HybridIdCodec;
 import com.example.ShoppingSystem.Utils.HybridSemaphoreIdWorker;
 import com.example.ShoppingSystem.admin.service.common.AdminServiceException;
+import com.example.ShoppingSystem.coupon.dto.AdminCouponClaimPageResponse;
+import com.example.ShoppingSystem.coupon.dto.AdminCouponClaimResponse;
 import com.example.ShoppingSystem.coupon.dto.AdminCouponTemplatePageResponse;
 import com.example.ShoppingSystem.coupon.dto.AdminCouponTemplateRequest;
 import com.example.ShoppingSystem.coupon.dto.AdminCouponTemplateResponse;
+import com.example.ShoppingSystem.config.datasource.CouponReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.coupon.CouponScopeMapper;
 import com.example.ShoppingSystem.mapper.coupon.CouponTemplateMapper;
+import com.example.ShoppingSystem.mapper.coupon.UserCouponMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -36,46 +40,119 @@ public class AdminCouponService {
     private static final Set<String> SUPPORTED_DISCOUNT_TYPES = Set.of("AMOUNT", "PERCENT");
     private static final Set<String> SUPPORTED_SCOPE_TYPES = Set.of("ALL", "CATEGORY", "SPU", "SKU");
     private static final Set<String> SUPPORTED_STATUS_FILTERS = Set.of("DRAFT", "ACTIVE", "DISABLED", "EXPIRED", "DELETED");
+    private static final Set<String> SUPPORTED_USER_COUPON_STATUS_FILTERS = Set.of("UNUSED", "LOCKED", "USED", "EXPIRED", "REVOKED");
 
     private final CouponTemplateMapper couponTemplateMapper;
     private final CouponScopeMapper couponScopeMapper;
+    private final UserCouponMapper userCouponMapper;
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker;
     private final CouponRedisCacheService couponRedisCacheService;
+    private final CouponTemplateSearchService couponTemplateSearchService;
+    private final AdminCouponTemplateIndexService couponTemplateIndexService;
+    private final CouponReadReplicaQueryExecutor couponReadReplicaQueryExecutor;
     private final ObjectMapper objectMapper;
 
     public AdminCouponService(CouponTemplateMapper couponTemplateMapper,
                               CouponScopeMapper couponScopeMapper,
+                              UserCouponMapper userCouponMapper,
                               HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
                               CouponRedisCacheService couponRedisCacheService,
+                              CouponTemplateSearchService couponTemplateSearchService,
+                              AdminCouponTemplateIndexService couponTemplateIndexService,
+                              CouponReadReplicaQueryExecutor couponReadReplicaQueryExecutor,
                               ObjectMapper objectMapper) {
         this.couponTemplateMapper = couponTemplateMapper;
         this.couponScopeMapper = couponScopeMapper;
+        this.userCouponMapper = userCouponMapper;
         this.hybridSemaphoreIdWorker = hybridSemaphoreIdWorker;
         this.couponRedisCacheService = couponRedisCacheService;
+        this.couponTemplateSearchService = couponTemplateSearchService;
+        this.couponTemplateIndexService = couponTemplateIndexService;
+        this.couponReadReplicaQueryExecutor = couponReadReplicaQueryExecutor;
         this.objectMapper = objectMapper;
     }
 
     public AdminCouponTemplatePageResponse page(Integer rawPage,
                                                 Integer rawPageSize,
                                                 String name,
-                                                String rawStatus) {
+                                                String rawStatus,
+                                                String rawReceiveStartAtFrom,
+                                                String rawReceiveEndAtTo) {
         int page = rawPage == null || rawPage <= 0 ? 1 : rawPage;
         int pageSize = rawPageSize == null || rawPageSize <= 0 ? 20 : Math.min(rawPageSize, 100);
         String status = normalizeOptionalStatus(rawStatus);
         String keyword = normalizeText(name);
-        int offset = (page - 1) * pageSize;
-        long total = couponTemplateMapper.countTemplates(keyword, status);
-        List<AdminCouponTemplateResponse> records = couponTemplateMapper.listTemplates(offset, pageSize, keyword, status)
-                .stream()
-                .map(row -> toResponse(row, List.of()))
-                .toList();
-        return new AdminCouponTemplatePageResponse(page, pageSize, total, records);
+        OffsetDateTime receiveStartAtFrom = parseOptionalDateTime(
+                rawReceiveStartAtFrom,
+                "ADMIN_COUPON_RECEIVE_START_FROM_INVALID",
+                "Coupon receive start time filter is invalid.");
+        OffsetDateTime receiveEndAtTo = parseOptionalDateTime(
+                rawReceiveEndAtTo,
+                "ADMIN_COUPON_RECEIVE_END_TO_INVALID",
+                "Coupon receive end time filter is invalid.");
+        if (receiveStartAtFrom != null
+                && receiveEndAtTo != null
+                && receiveStartAtFrom.toInstant().isAfter(receiveEndAtTo.toInstant())) {
+            throw badRequest("ADMIN_COUPON_RECEIVE_TIME_FILTER_INVALID", "Coupon receive time filter range is invalid.");
+        }
+        if (!keyword.isBlank()) {
+            return searchPage(page, pageSize, keyword, status, receiveStartAtFrom, receiveEndAtTo);
+        }
+        return couponReadReplicaQueryExecutor.query(() -> {
+            int offset = (page - 1) * pageSize;
+            long total = couponTemplateMapper.countTemplates(status, receiveStartAtFrom, receiveEndAtTo);
+            List<AdminCouponTemplateResponse> records = couponTemplateMapper.listTemplates(
+                            offset,
+                            pageSize,
+                            status,
+                            receiveStartAtFrom,
+                            receiveEndAtTo)
+                    .stream()
+                    .map(row -> toResponse(row, List.of()))
+                    .toList();
+            return new AdminCouponTemplatePageResponse(page, pageSize, total, records);
+        });
     }
 
     public AdminCouponTemplateResponse detail(String rawId) {
         byte[] id = couponIdBytes(rawId);
-        Map<String, Object> row = requireTemplate(id);
-        return toResponse(row, couponScopeMapper.listByTemplateId(id));
+        return couponReadReplicaQueryExecutor.query(() -> {
+            Map<String, Object> row = readTemplate(id);
+            return toResponse(row, couponScopeMapper.listByTemplateId(id));
+        });
+    }
+
+    public AdminCouponClaimPageResponse claimPage(String rawId,
+                                                  Integer rawPage,
+                                                  Integer rawPageSize,
+                                                  String rawStatus,
+                                                  String rawEmail) {
+        byte[] couponTemplateId = couponIdBytes(rawId);
+        int page = rawPage == null || rawPage <= 0 ? 1 : rawPage;
+        int pageSize = rawPageSize == null || rawPageSize <= 0 ? 20 : Math.min(rawPageSize, 100);
+        int offset = (page - 1) * pageSize;
+        String status = normalizeOptionalUserCouponStatus(rawStatus);
+        String email = normalizeOptionalEmail(rawEmail);
+        return couponReadReplicaQueryExecutor.query(() -> {
+            List<Map<String, Object>> rows = userCouponMapper.listAdminClaimsByTemplateId(
+                    couponTemplateId,
+                    status,
+                    email,
+                    offset,
+                    pageSize);
+            if (rows.isEmpty() || !toBoolean(rows.get(0).get("templateExists"))) {
+            throw new AdminServiceException("ADMIN_COUPON_NOT_FOUND", "优惠券不存在。", HttpStatus.NOT_FOUND);
+            }
+            long total = toLong(rows.get(0).get("total"));
+            List<AdminCouponClaimResponse> records = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                if (HybridIdCodec.toBase62FromDatabaseValue(row.get("userCouponId")).isBlank()) {
+                    continue;
+                }
+                records.add(toClaimResponse(row));
+            }
+            return new AdminCouponClaimPageResponse(page, pageSize, total, records);
+        });
     }
 
     @Transactional
@@ -101,6 +178,7 @@ public class AdminCouponService {
                 normalized.validEndAt()
         );
         replaceScopes(id, normalized);
+        couponTemplateIndexService.syncCouponTemplatesAfterCommit(List.of(HybridIdCodec.toBase62(id)));
         return toResponse(requireTemplate(id), couponScopeMapper.listByTemplateId(id));
     }
 
@@ -134,6 +212,7 @@ public class AdminCouponService {
                     HttpStatus.CONFLICT);
         }
         replaceScopes(id, normalized);
+        couponTemplateIndexService.syncCouponTemplatesAfterCommit(List.of(HybridIdCodec.toBase62(id)));
         return toResponse(requireTemplate(id), couponScopeMapper.listByTemplateId(id));
     }
 
@@ -149,6 +228,7 @@ public class AdminCouponService {
                     HttpStatus.CONFLICT);
         }
         runAfterCommit(() -> couponRedisCacheService.writeCouponToRedis(id));
+        couponTemplateIndexService.syncCouponTemplatesAfterCommit(List.of(HybridIdCodec.toBase62(id)));
         return toResponse(requireTemplate(id), couponScopeMapper.listByTemplateId(id));
     }
 
@@ -165,6 +245,7 @@ public class AdminCouponService {
         }
         String couponId = HybridIdCodec.toBase62(id);
         runAfterCommit(() -> couponRedisCacheService.markDisabled(couponId));
+        couponTemplateIndexService.syncCouponTemplatesAfterCommit(List.of(couponId));
         return toResponse(requireTemplate(id), couponScopeMapper.listByTemplateId(id));
     }
 
@@ -181,6 +262,54 @@ public class AdminCouponService {
         }
         String couponId = HybridIdCodec.toBase62(id);
         runAfterCommit(() -> couponRedisCacheService.deleteCouponRuntime(couponId));
+        couponTemplateIndexService.deleteCouponTemplatesAfterCommit(List.of(couponId));
+    }
+
+    private AdminCouponTemplatePageResponse searchPage(int page,
+                                                       int pageSize,
+                                                       String keyword,
+                                                       String status,
+                                                       OffsetDateTime receiveStartAtFrom,
+                                                       OffsetDateTime receiveEndAtTo) {
+        CouponTemplateSearchService.SearchResult searchResult;
+        try {
+            searchResult = couponTemplateSearchService.searchAdminTemplateIds(
+                    keyword,
+                    status,
+                    receiveStartAtFrom,
+                    receiveEndAtTo,
+                    page,
+                    pageSize);
+        } catch (CouponTemplateSearchException e) {
+            throw new AdminServiceException(
+                    "ADMIN_COUPON_ES_SEARCH_FAILED",
+                    "Coupon search service is temporarily unavailable. Please try again later.",
+                    HttpStatus.BAD_GATEWAY);
+        }
+        if (searchResult.ids().isEmpty()) {
+            return new AdminCouponTemplatePageResponse(page, pageSize, searchResult.total(), List.of());
+        }
+        List<byte[]> ids = searchResult.ids().stream()
+                .map(this::couponIdBytesFromSearch)
+                .toList();
+        List<Map<String, Object>> rows = couponReadReplicaQueryExecutor.query(
+                () -> couponTemplateMapper.listTemplatesByIds(ids));
+        Map<String, Map<String, Object>> rowsById = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            String id = HybridIdCodec.toBase62FromDatabaseValue(row.get("id"));
+            if (!id.isBlank()) {
+                rowsById.put(id, row);
+            }
+        }
+        Map<String, String> highlightedNames = searchResult.highlightedNames();
+        List<AdminCouponTemplateResponse> records = new ArrayList<>(searchResult.ids().size());
+        for (String id : searchResult.ids()) {
+            Map<String, Object> row = rowsById.get(id);
+            if (row != null) {
+                records.add(toResponse(row, List.of(), highlightedNames.get(id)));
+            }
+        }
+        return new AdminCouponTemplatePageResponse(page, pageSize, searchResult.total(), records);
     }
 
     private void replaceScopes(byte[] templateId, NormalizedCouponRequest request) {
@@ -312,10 +441,19 @@ public class AdminCouponService {
     }
 
     private AdminCouponTemplateResponse toResponse(Map<String, Object> row, List<Map<String, Object>> scopes) {
+        return toResponse(row, scopes, null);
+    }
+
+    private AdminCouponTemplateResponse toResponse(Map<String, Object> row,
+                                                   List<Map<String, Object>> scopes,
+                                                   String highlightedName) {
+        String name = highlightedName != null && !highlightedName.isBlank()
+                ? highlightedName
+                : normalizeText(row.get("name"));
         return new AdminCouponTemplateResponse(
                 HybridIdCodec.toBase62FromDatabaseValue(row.get("id")),
                 normalizeText(row.get("couponCode")),
-                normalizeText(row.get("name")),
+                name,
                 normalizeText(row.get("discountType")),
                 toBigDecimal(row.get("thresholdAmountYuan")),
                 toBigDecimal(row.get("discountAmountYuan")),
@@ -334,6 +472,23 @@ public class AdminCouponService {
                 toLong(row.get("version")),
                 toOffsetDateTime(row.get("createdAt")),
                 toOffsetDateTime(row.get("updatedAt"))
+        );
+    }
+
+    private AdminCouponClaimResponse toClaimResponse(Map<String, Object> row) {
+        return new AdminCouponClaimResponse(
+                HybridIdCodec.toBase62FromDatabaseValue(row.get("userCouponId")),
+                HybridIdCodec.toBase62FromDatabaseValue(row.get("couponTemplateId")),
+                toLong(row.get("userId")),
+                normalizeText(row.get("email")),
+                normalizeText(row.get("status")),
+                toOffsetDateTime(row.get("receivedAt")),
+                toOffsetDateTime(row.get("validStartAt")),
+                toOffsetDateTime(row.get("validEndAt")),
+                normalizeText(row.get("lockedOrderNo")),
+                toOffsetDateTime(row.get("lockedAt")),
+                normalizeText(row.get("usedOrderNo")),
+                toOffsetDateTime(row.get("usedAt"))
         );
     }
 
@@ -363,6 +518,10 @@ public class AdminCouponService {
         return row;
     }
 
+    private Map<String, Object> readTemplate(byte[] id) {
+        return requireTemplate(id);
+    }
+
     private String normalizeOptionalStatus(String rawStatus) {
         String status = normalizeText(rawStatus);
         if (status.isEmpty()) {
@@ -375,12 +534,55 @@ public class AdminCouponService {
         return status;
     }
 
+    private String normalizeOptionalUserCouponStatus(String rawStatus) {
+        String status = normalizeText(rawStatus);
+        if (status.isEmpty()) {
+            return "";
+        }
+        status = status.toUpperCase(Locale.ROOT);
+        if (!SUPPORTED_USER_COUPON_STATUS_FILTERS.contains(status)) {
+            throw badRequest("ADMIN_USER_COUPON_STATUS_INVALID", "用户优惠券状态无效。");
+        }
+        return status;
+    }
+
+    private String normalizeOptionalEmail(String rawEmail) {
+        return normalizeText(rawEmail).toLowerCase(Locale.ROOT);
+    }
+
+    private OffsetDateTime parseOptionalDateTime(String value, String code, String message) {
+        String text = normalizeText(value);
+        if (text.isEmpty()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(text);
+        } catch (DateTimeParseException ignored) {
+            try {
+                return LocalDateTime.parse(text).atZone(ZoneId.systemDefault()).toOffsetDateTime();
+            } catch (DateTimeParseException e) {
+                throw badRequest(code, message);
+            }
+        }
+    }
+
     private byte[] couponIdBytes(String rawId) {
         String id = normalizeText(rawId);
         try {
             return HybridIdCodec.fromBase62(id);
         } catch (IllegalArgumentException e) {
             throw badRequest("ADMIN_COUPON_ID_INVALID", "优惠券 ID 无效。");
+        }
+    }
+
+    private byte[] couponIdBytesFromSearch(String rawId) {
+        try {
+            return HybridIdCodec.fromBase62(rawId);
+        } catch (IllegalArgumentException e) {
+            throw new AdminServiceException(
+                    "ADMIN_COUPON_ES_RESULT_INVALID",
+                    "Coupon search result is invalid. Please rebuild coupon index.",
+                    HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -469,6 +671,13 @@ public class AdminCouponService {
         }
         String text = normalizeText(value);
         return text.isEmpty() ? null : Long.parseLong(text);
+    }
+
+    private boolean toBoolean(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(normalizeText(value));
     }
 
     private OffsetDateTime toOffsetDateTime(Object raw) {

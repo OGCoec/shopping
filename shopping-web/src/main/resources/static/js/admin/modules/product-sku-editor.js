@@ -225,6 +225,170 @@
       return Array.isArray(context.hotSkus) ? context.hotSkus : [];
     }
 
+    function renderCardSecretImportSection(product, sku, context, setPageStatus) {
+      const section = document.createElement("section");
+      section.className = "admin-product-detail-section admin-product-card-secret-import";
+      const heading = document.createElement("div");
+      heading.className = "admin-product-detail-section-heading";
+      heading.innerHTML = `<h3>卡密导入</h3>`;
+
+      const status = document.createElement("p");
+      status.className = "admin-product-sku-page-status admin-product-card-secret-import-status";
+      const body = document.createElement("div");
+      body.className = "admin-product-card-secret-import-body";
+
+      const textField = document.createElement("label");
+      textField.className = "admin-product-detail-compact-field admin-product-card-secret-import-wide";
+      const textLabel = document.createElement("span");
+      textLabel.textContent = "手动输入";
+      const textArea = document.createElement("textarea");
+      textArea.rows = 8;
+      textArea.placeholder = "一行一个卡密";
+      textField.append(textLabel, textArea);
+
+      const fileField = document.createElement("div");
+      fileField.className = "admin-product-detail-compact-field admin-product-card-secret-file-field";
+      const fileLabel = document.createElement("span");
+      fileLabel.textContent = "TXT 文件";
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = ".txt,text/plain";
+      fileInput.className = "admin-product-card-secret-file-input";
+      fileInput.hidden = true;
+      const filePicker = document.createElement("div");
+      filePicker.className = "admin-product-card-secret-file-picker";
+      const chooseFileButton = actionButton("选择 TXT 文件", () => fileInput.click(), "admin-ghost-button", !sku?.id || isSaving(context));
+      const clearFileButton = actionButton("清除", () => {
+        fileInput.value = "";
+        updateFileState();
+      }, "admin-ghost-button admin-product-card-secret-file-clear", true);
+      const fileName = document.createElement("strong");
+      fileName.className = "admin-product-card-secret-file-name";
+      const fileHint = document.createElement("small");
+      fileHint.className = "admin-product-card-secret-file-hint";
+      fileHint.textContent = "仅支持 .txt，一行一个卡密";
+      filePicker.append(chooseFileButton, clearFileButton, fileName);
+      fileField.append(fileLabel, fileInput, filePicker, fileHint);
+
+      const batchField = document.createElement("label");
+      batchField.className = "admin-product-detail-compact-field";
+      const batchLabel = document.createElement("span");
+      batchLabel.textContent = "批次号";
+      const batchInput = document.createElement("input");
+      batchInput.type = "text";
+      batchInput.maxLength = 64;
+      batchInput.autocomplete = "off";
+      batchInput.placeholder = "留空由后端生成";
+      batchField.append(batchLabel, batchInput);
+
+      body.append(textField, fileField, batchField);
+
+      const result = document.createElement("div");
+      result.className = "admin-product-sku-card-metrics admin-product-card-secret-import-result";
+      result.hidden = true;
+
+      const actions = document.createElement("div");
+      actions.className = "admin-product-detail-actions admin-product-card-secret-import-actions";
+      const submitButton = actionButton("导入卡密", () => importCardSecrets(), "admin-nav-button", !sku?.id || isSaving(context));
+      actions.appendChild(submitButton);
+      heading.appendChild(actions);
+
+      function setImportStatus(message, type = "") {
+        status.textContent = message || "";
+        status.dataset.type = type || "";
+        if (message) {
+          setPageStatus(message, type);
+        }
+      }
+
+      function updateFileState(disabled = !sku?.id || isSaving(context)) {
+        const file = fileInput.files && fileInput.files.length > 0 ? fileInput.files[0] : null;
+        fileName.textContent = file ? file.name : "未选择文件";
+        fileName.title = file ? file.name : "未选择文件";
+        fileField.classList.toggle("has-file", Boolean(file));
+        fileInput.disabled = Boolean(disabled);
+        chooseFileButton.disabled = Boolean(disabled);
+        clearFileButton.disabled = Boolean(disabled) || !file;
+      }
+
+      function setImportBusy(busy) {
+        const disabled = Boolean(busy) || !sku?.id;
+        [textArea, batchInput, submitButton].forEach((node) => {
+          if (node) {
+            node.disabled = disabled;
+          }
+        });
+        updateFileState(disabled);
+      }
+
+      fileInput.addEventListener("change", () => updateFileState());
+
+      function renderImportResult(data) {
+        result.replaceChildren(
+          metric("接收行数", data?.receivedLineCount ?? 0),
+          metric("空行", data?.blankLineCount ?? 0),
+          metric("请求内重复", data?.duplicateInRequestCount ?? 0),
+          metric("候选卡密", data?.uniqueCandidateCount ?? 0),
+          metric("已插入", data?.insertedCount ?? 0),
+          metric("库内重复", data?.duplicateInDbCount ?? 0),
+          metric("库存增加", data?.stockIncrementCount ?? 0),
+          metric("当前库存", data?.skuStockQuantity ?? "-"),
+          metric("失败", data?.failedCount ?? 0),
+          metric("批次号", data?.batchNo || "-")
+        );
+        result.hidden = false;
+      }
+
+      async function importCardSecrets() {
+        if (!sku?.id || isSaving(context)) {
+          return;
+        }
+        const secretText = String(textArea.value || "");
+        const file = fileInput.files && fileInput.files.length > 0 ? fileInput.files[0] : null;
+        if (!secretText.trim() && !file) {
+          setImportStatus("请填写卡密文本或选择 TXT 文件。", "error");
+          return;
+        }
+        const formData = new FormData();
+        if (secretText) {
+          formData.append("secretText", secretText);
+        }
+        if (file) {
+          formData.append("file", file);
+        }
+        const batchNo = String(batchInput.value || "").trim();
+        if (batchNo) {
+          formData.append("batchNo", batchNo);
+        }
+        formData.append("duplicatePolicy", "SKIP_DUPLICATE");
+        setImportBusy(true);
+        setImportStatus("正在导入卡密...");
+        try {
+          const response = await context.productApi.importSkuCardSecrets(productId(context), sku.id, formData);
+          const data = response.data || {};
+          if (data.skuStockQuantity != null) {
+            sku.stockQuantity = String(data.skuStockQuantity);
+          }
+          renderImportResult(data);
+          textArea.value = "";
+          fileInput.value = "";
+          updateFileState(true);
+          setImportStatus(`卡密导入完成，新增 ${data.insertedCount ?? 0} 条。`, "ok");
+        } catch (error) {
+          setImportStatus(error.message || "卡密导入失败。", "error");
+        } finally {
+          setImportBusy(false);
+        }
+      }
+
+      if (!sku?.id) {
+        setImportStatus("保存 SKU 后才能导入卡密。");
+      }
+      updateFileState();
+      section.append(heading, status, body, result);
+      return section;
+    }
+
     function hotSkuMap(context) {
       const map = new Map();
       currentHotSkus(context).forEach((item) => {
@@ -754,7 +918,7 @@
       );
       section.appendChild(body);
 
-      form.append(toolbar, pageStatus, section);
+      form.append(toolbar, pageStatus, section, renderCardSecretImportSection(product, sku, context, setPageStatus));
       if (busy) {
         form.querySelectorAll("input, select, textarea, button").forEach((node) => {
           node.disabled = true;
@@ -912,7 +1076,14 @@
         if (stockInput) {
           stockInput.disabled = busy || !selected;
         }
-        card.append(top, metrics, stockField);
+        const cardActions = document.createElement("div");
+        cardActions.className = "admin-product-detail-actions admin-product-sku-card-actions";
+        cardActions.appendChild(actionButton(
+          "查看详情",
+          () => context.navigateToHotSkuDetail?.(skuId),
+          "admin-ghost-button",
+          busy || !hotItem));
+        card.append(top, metrics, stockField, cardActions);
         list.appendChild(card);
       });
 
@@ -928,6 +1099,70 @@
         await saveHotSkuPage(product, context, setPageStatus);
       });
       return form;
+    }
+
+    function renderHotSkuDetailPage(product, hotSku, context) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "admin-product-detail-content admin-product-hot-sku-detail-page";
+
+      const toolbar = document.createElement("div");
+      toolbar.className = "admin-product-detail-toolbar";
+      const heading = document.createElement("div");
+      heading.className = "admin-product-detail-title";
+      const small = document.createElement("small");
+      small.textContent = product?.name ? `商品 / ${product.name}` : "商品热点 SKU";
+      const title = document.createElement("strong");
+      title.textContent = "热点 SKU 详情";
+      heading.append(small, title);
+      const actions = document.createElement("div");
+      actions.className = "admin-product-detail-actions";
+      actions.append(actionButton("返回热点列表", () => context.returnToHotSku?.(), "admin-ghost-button", false));
+      toolbar.append(heading, actions);
+
+      const section = document.createElement("section");
+      section.className = "admin-product-detail-section";
+
+      if (!hotSku) {
+        const empty = document.createElement("div");
+        empty.className = "admin-product-detail-empty-row";
+        empty.textContent = "热点 SKU 不存在。";
+        section.appendChild(empty);
+        wrapper.append(toolbar, section);
+        return wrapper;
+      }
+
+      const metrics = document.createElement("div");
+      metrics.className = "admin-product-sku-card-metrics";
+      metrics.append(
+        metric("SKU 名称", hotSku.skuName || "-"),
+        metric("SKU 编码", hotSku.skuCode || "-"),
+        metric("热点状态", hotSku.status || "-"),
+        metric("热点库存", hotSku.stockQuantity ?? "-"),
+        metric("剩余库存", hotSku.remainingQuantity ?? "-"),
+        metric("SKU 库存", hotSku.skuStockQuantity ?? "-"),
+        metric("SKU 状态", hotSku.skuStatus || "-"),
+        metric("开始时间", formatDateTimeText(hotSku.startAt)),
+        metric("结束时间", formatDateTimeText(hotSku.endAt)),
+        metric("版本", hotSku.version ?? "-"),
+        metric("创建时间", formatDateTimeText(hotSku.createdAt)),
+        metric("更新时间", formatDateTimeText(hotSku.updatedAt))
+      );
+      section.appendChild(metrics);
+      wrapper.append(toolbar, section);
+      return wrapper;
+    }
+
+    function formatDateTimeText(value) {
+      const text = String(value || "").trim();
+      if (!text) {
+        return "-";
+      }
+      const date = new Date(text);
+      if (Number.isNaN(date.getTime())) {
+        return text;
+      }
+      const pad = (number) => String(number).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
     function render(draft, context) {
@@ -1066,6 +1301,7 @@
       render,
       renderSkuPage,
       renderHotSkuPage,
+      renderHotSkuDetailPage,
       createEmptySkuDraft,
       toEditableSku,
       ensureSelectionState

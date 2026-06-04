@@ -114,6 +114,7 @@
       navigateToProductSku,
       navigateToProductSkuCreate,
       navigateToProductHotSku,
+      navigateToProductHotSkuDetail,
       navigateToProductList
     });
     createController = root.AdminProductCreateController.create({
@@ -220,6 +221,14 @@
     const parts = normalizedPath.slice(prefix.length).split("/");
     const id = decodeURIComponent(parts[0] || "").trim();
     if (parts[1] === "sku" && parts[2] === "hot") {
+      const hotSkuId = decodeURIComponent(parts[3] || "").trim();
+      if (hotSkuId) {
+        return {
+          id,
+          mode: "hotSkuDetail",
+          skuId: hotSkuId
+        };
+      }
       return {
         id,
         mode: "hotSku"
@@ -325,6 +334,23 @@
       return;
     }
     detailController?.open(id, "hotSku");
+  }
+
+  function navigateToProductHotSkuDetail(productId, skuId) {
+    const id = String(productId || "").trim();
+    const hotSkuId = String(skuId || "").trim();
+    if (!id || !hotSkuId) {
+      return;
+    }
+    if (window.history?.pushState) {
+      const url = new URL(window.location.href);
+      url.pathname = `${CONSOLE_PRODUCTS_PATH}/${encodeURIComponent(id)}/sku/hot/${encodeURIComponent(hotSkuId)}`;
+      url.search = "";
+      window.history.pushState({ adminSection: "products", productId: id, productHotSku: true, hotSkuId }, "", url.pathname + url.search + url.hash);
+      routeProducts();
+      return;
+    }
+    detailController?.open(id, "hotSkuDetail", hotSkuId);
   }
 
   function navigateToProductList() {

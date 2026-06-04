@@ -17,6 +17,7 @@ import java.time.Duration;
 public final class MicrosoftImapAccessTokenClient {
 
     private static final Logger log = LoggerFactory.getLogger(MicrosoftImapAccessTokenClient.class);
+    public static final String REASON_MICROSOFT_ACCOUNT_ABUSE = "microsoft_account_abuse";
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -55,7 +56,7 @@ public final class MicrosoftImapAccessTokenClient {
                 String errorDescription = text(payload, "error_description");
                 log.warn("IMAP token refresh failed, httpStatus={}, error={}, errorDescription={}",
                         statusCode, error, errorDescription);
-                return AccessTokenResult.failed("token_http_status_" + statusCode);
+                return AccessTokenResult.failed(resolveFailureReason(statusCode, error, errorDescription));
             }
 
             String accessToken = text(payload, "access_token");
@@ -97,6 +98,23 @@ public final class MicrosoftImapAccessTokenClient {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String resolveFailureReason(int statusCode, String error, String errorDescription) {
+        if (isMicrosoftAccountAbuse(error, errorDescription)) {
+            return REASON_MICROSOFT_ACCOUNT_ABUSE;
+        }
+        return "token_http_status_" + statusCode;
+    }
+
+    private boolean isMicrosoftAccountAbuse(String error, String errorDescription) {
+        String normalized = ((error == null ? "" : error) + " " + (errorDescription == null ? "" : errorDescription))
+                .toLowerCase();
+        return normalized.contains("aadsts70000")
+                || normalized.contains("service abuse mode")
+                || normalized.contains("found to be in service abuse")
+                || normalized.contains("account is found to be in service abuse")
+                || normalized.contains("abuse mode");
     }
 
     public record AccessTokenResult(boolean success, String reason, String accessToken) {

@@ -28,7 +28,8 @@
       mode: "detail",
       skuId: "",
       skuDraft: null,
-      hotSkuDraft: null
+      hotSkuDraft: null,
+      hotSkuDetail: null
     };
     const carouselController = root.AdminProductCarouselController.create({
       modulePath: options.carouselModulePath,
@@ -76,10 +77,11 @@
     state.editing = false;
     state.skuSelectedKeys.clear();
     state.nextSkuClientKey = 1;
-    state.mode = mode === "images" ? "images" : mode === "carousel" ? "carousel" : mode === "sku" ? "sku" : mode === "hotSku" ? "hotSku" : "detail";
+    state.mode = mode === "images" ? "images" : mode === "carousel" ? "carousel" : mode === "sku" ? "sku" : mode === "hotSku" ? "hotSku" : mode === "hotSkuDetail" ? "hotSkuDetail" : "detail";
     state.skuId = String(skuId || "");
     state.skuDraft = null;
     state.hotSkuDraft = null;
+    state.hotSkuDetail = null;
     renderLoading();
     try {
       const response = await productApi.getSpuDetail(id);
@@ -87,6 +89,9 @@
       state.hotSkus = await loadHotSkus(id);
       if (state.mode === "sku") {
         await loadSkuRouteDraft();
+      }
+      if (state.mode === "hotSkuDetail") {
+        await loadHotSkuDetail();
       }
       render();
       if (state.pendingStatus) {
@@ -117,6 +122,7 @@
     state.skuId = "";
     state.skuDraft = null;
     state.hotSkuDraft = null;
+    state.hotSkuDetail = null;
   }
 
   async function closeAndNavigate(cleanup) {
@@ -261,6 +267,10 @@
         renderSkuPage();
         return;
       }
+      if (state.mode === "hotSkuDetail") {
+        renderHotSkuDetailPage();
+        return;
+      }
       if (state.mode === "hotSku") {
         renderHotSkuPage();
         return;
@@ -334,7 +344,8 @@
         setStatus: (message, type) => api.setStatus(detailStatus(), message, type),
         rerender: renderHotSkuPage,
         returnToDetail,
-        refreshAfterHotSkuPageChange
+        refreshAfterHotSkuPageChange,
+        navigateToHotSkuDetail: (skuId) => options.navigateToProductHotSkuDetail?.(String(state.product?.id || ""), skuId)
       };
     }
 
@@ -477,6 +488,24 @@
       replaceDetailBody(node);
     }
 
+    function renderHotSkuDetailPage() {
+      carouselController.destroy();
+      carouselController.cancelPrewarm();
+      api.setStatus(detailStatus(), "");
+      const node = skuEditor.renderHotSkuDetailPage(state.product, state.hotSkuDetail, hotSkuDetailContext());
+      replaceDetailBody(node);
+    }
+
+    function hotSkuDetailContext() {
+      return {
+        productId: () => String(state.product?.id || ""),
+        skuId: () => String(state.skuId || ""),
+        hotSku: () => state.hotSkuDetail,
+        setStatus: (message, type) => api.setStatus(detailStatus(), message, type),
+        returnToHotSku: () => options.navigateToProductHotSku?.(String(state.product?.id || ""))
+      };
+    }
+
     async function loadSkuRouteDraft() {
       const skuId = String(state.skuId || "").trim();
       if (skuId === "new") {
@@ -498,6 +527,19 @@
       }
       const response = await productApi.listHotSkus(productId);
       return Array.isArray(response.data) ? response.data : [];
+    }
+
+    async function loadHotSkuDetail() {
+      const productId = String(state.product?.id || "").trim();
+      const skuId = String(state.skuId || "").trim();
+      if (!skuId) {
+        throw new Error("SKU ID 不能为空。");
+      }
+      const response = await productApi.getHotSku(productId, skuId);
+      state.hotSkuDetail = response.data || null;
+      if (!state.hotSkuDetail) {
+        throw new Error("热点 SKU 不存在。");
+      }
     }
 
     async function reloadProductAfterSkuChange(productId) {

@@ -1,0 +1,790 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Order Soft Close Payment Flow" enabled="true">
+      <stringProp name="TestPlan.comments">Create hot SKU orders with random quantity, then verify pay-now, soft-close callback, and closed callback behavior.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Order Soft Close Users" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(THREADS,500)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(RAMP_UP,1)}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Access Token SKU CSV" enabled="true">
+          <stringProp name="delimiter">,</stringProp>
+          <stringProp name="fileEncoding">UTF-8</stringProp>
+          <stringProp name="filename">${__P(TOKEN_SKU_CSV,loadtest-output/order-create-single-hot-token-sku.csv)}</stringProp>
+          <boolProp name="ignoreFirstLine">true</boolProp>
+          <boolProp name="quotedData">true</boolProp>
+          <boolProp name="recycle">false</boolProp>
+          <stringProp name="shareMode">shareMode.all</stringProp>
+          <boolProp name="stopThread">true</boolProp>
+          <stringProp name="variableNames">userId,accessToken,skuId</stringProp>
+        </CSVDataSet>
+        <hashTree/>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Headers" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Authorization</stringProp>
+              <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Accept</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST Create Order" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">{
+  "skuId": "${skuId}",
+  "quantity": ${quantity},
+  "idempotencyKey": "order-soft-close-${__P(RUN_ID,local)}-${userId}-${__threadNum}"
+}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/user/api/orders</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+          <stringProp name="HTTPSampler.response_timeout"></stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Prepare Random Quantity" enabled="true">
+            <stringProp name="cacheKey">order-soft-close-prepare-quantity</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import java.util.concurrent.ThreadLocalRandom
+
+vars.put('createStartedAtMs', String.valueOf(System.currentTimeMillis()))
+vars.put('quantity', String.valueOf(ThreadLocalRandom.current().nextInt(1, 6)))
+vars.put('businessCode', '')
+vars.put('orderNo', '')
+vars.put('orderStatus', '')
+vars.put('expireAt', '')
+vars.put('expireAtEpochMs', '')
+vars.put('payAmountYuan', '0')
+vars.put('callbackPaidAmountYuan', '1.00')
+vars.put('successIndex', '')
+vars.put('paymentScenario', 'NO_ORDER')
+vars.put('payNowDelayMs', '0')
+vars.put('closingCallbackTargetMs', '')
+vars.put('boundaryRecordTargetMs', '')
+vars.put('closedCallbackTargetMs', '')
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Create Result And Assign Scenario" enabled="true">
+            <stringProp name="cacheKey">order-soft-close-capture-create</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+import java.time.OffsetDateTime
+import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.atomic.AtomicInteger
+
+def intProp = { String name, int fallback ->
+    try {
+        return Integer.parseInt(props.getProperty(name, String.valueOf(fallback)))
+    } catch (Throwable ignored) {
+        return fallback
+    }
+}
+
+def longProp = { String name, long fallback ->
+    try {
+        return Long.parseLong(props.getProperty(name, String.valueOf(fallback)))
+    } catch (Throwable ignored) {
+        return fallback
+    }
+}
+
+def successCounter = props.get('ORDER_SOFT_CLOSE_SUCCESS_COUNTER')
+if (successCounter == null) {
+    synchronized (props) {
+        successCounter = props.get('ORDER_SOFT_CLOSE_SUCCESS_COUNTER')
+        if (successCounter == null) {
+            successCounter = new AtomicInteger(0)
+            props.put('ORDER_SOFT_CLOSE_SUCCESS_COUNTER', successCounter)
+        }
+    }
+}
+
+def businessCode = ''
+def orderNo = ''
+def orderStatus = ''
+def expireAt = ''
+def expireAtEpochMs = ''
+def payAmountYuan = '0'
+def callbackPaidAmountYuan = '1.00'
+try {
+    def body = prev.getResponseDataAsString()
+    if (body != null && !body.isBlank()) {
+        def json = new JsonSlurper().parseText(body)
+        businessCode = (json.code ?: '').toString()
+        if (json.data != null) {
+            orderNo = (json.data.orderNo ?: '').toString()
+            orderStatus = (json.data.status ?: '').toString()
+            expireAt = (json.data.expireAt ?: '').toString()
+            payAmountYuan = (json.data.payAmountYuan ?: '0').toString()
+            try {
+                def parsedAmount = new BigDecimal(payAmountYuan)
+                if (parsedAmount.compareTo(BigDecimal.ZERO) > 0) {
+                    callbackPaidAmountYuan = payAmountYuan
+                }
+            } catch (Throwable ignored) {
+            }
+            if (expireAt) {
+                try {
+                    expireAtEpochMs = String.valueOf(OffsetDateTime.parse(expireAt).toInstant().toEpochMilli())
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+} catch (Throwable ignored) {
+}
+
+vars.put('businessCode', businessCode)
+vars.put('orderNo', orderNo)
+vars.put('orderStatus', orderStatus)
+vars.put('expireAt', expireAt)
+vars.put('expireAtEpochMs', expireAtEpochMs)
+vars.put('payAmountYuan', payAmountYuan)
+vars.put('callbackPaidAmountYuan', callbackPaidAmountYuan)
+
+def paymentScenario = 'NO_ORDER'
+def successIndex = ''
+if (businessCode == 'ORDER_CREATE_OK' && orderNo) {
+    def index = successCounter.incrementAndGet()
+    successIndex = String.valueOf(index)
+    def payNowCount = intProp('PAY_NOW_COUNT', 4)
+    def closingCallbackCount = intProp('CLOSING_CALLBACK_COUNT', 4)
+    def closingUserPayNegativeCount = intProp('CLOSING_USER_PAY_NEGATIVE_COUNT', 4)
+    def closedCallbackNegativeCount = intProp('CLOSED_CALLBACK_NEGATIVE_COUNT', 4)
+    if (index <= payNowCount) {
+        paymentScenario = 'PAY_NOW'
+    } else if (index <= payNowCount + closingCallbackCount) {
+        paymentScenario = 'CLOSING_CALLBACK'
+    } else if (index <= payNowCount + closingCallbackCount + closingUserPayNegativeCount) {
+        paymentScenario = 'CLOSING_USER_PAY_NEGATIVE'
+    } else if (index <= payNowCount + closingCallbackCount + closingUserPayNegativeCount + closedCallbackNegativeCount) {
+        paymentScenario = 'CLOSED_CALLBACK_NEGATIVE'
+    } else {
+        paymentScenario = 'BOUNDARY_DELAYED_CALLBACK'
+    }
+
+    def minDelay = Math.max(0, intProp('PAY_NOW_MIN_DELAY_SECONDS', 5))
+    def maxDelay = Math.max(minDelay, intProp('PAY_NOW_MAX_DELAY_SECONDS', 30))
+    vars.put('payNowDelayMs', String.valueOf(ThreadLocalRandom.current().nextLong(minDelay, maxDelay + 1L) * 1000L))
+
+    def paymentExpireTtlSeconds = longProp('PAYMENT_EXPIRE_TTL_SECONDS', 300L)
+    def boundaryRecordDelaySeconds = longProp('BOUNDARY_RECORD_DELAY_SECONDS', 299L)
+    def closingCallbackDelaySeconds = longProp('CLOSING_CALLBACK_DELAY_SECONDS', 305L)
+    def closedCallbackDelaySeconds = longProp('CLOSED_CALLBACK_DELAY_SECONDS', 610L)
+    def expireBaseMs = 0L
+    try {
+        expireBaseMs = expireAtEpochMs ? Long.parseLong(expireAtEpochMs) : 0L
+    } catch (Throwable ignored) {
+    }
+    if (expireBaseMs <= 0L) {
+        expireBaseMs = Long.parseLong(vars.get('createStartedAtMs')) + paymentExpireTtlSeconds * 1000L
+    }
+    def boundaryBeforeExpireSeconds = Math.max(0L, paymentExpireTtlSeconds - boundaryRecordDelaySeconds)
+    def closingAfterExpireSeconds = Math.max(0L, closingCallbackDelaySeconds - paymentExpireTtlSeconds)
+    def closedAfterExpireSeconds = Math.max(0L, closedCallbackDelaySeconds - paymentExpireTtlSeconds)
+    vars.put('boundaryRecordTargetMs', String.valueOf(Math.max(0L, expireBaseMs - boundaryBeforeExpireSeconds * 1000L)))
+    vars.put('closingCallbackTargetMs', String.valueOf(expireBaseMs + closingAfterExpireSeconds * 1000L))
+    vars.put('closedCallbackTargetMs', String.valueOf(expireBaseMs + closedAfterExpireSeconds * 1000L))
+}
+
+vars.put('successIndex', successIndex)
+vars.put('paymentScenario', paymentScenario)
+
+def message = prev.getResponseMessage() ?: ''
+if (businessCode) {
+    message += ' businessCode=' + businessCode
+}
+if (orderNo) {
+    message += ' orderNo=' + orderNo
+}
+if (orderStatus) {
+    message += ' orderStatus=' + orderStatus
+}
+if (expireAt) {
+    message += ' expireAt=' + expireAt
+}
+if (successIndex) {
+    message += ' successIndex=' + successIndex
+}
+if (paymentScenario) {
+    message += ' paymentScenario=' + paymentScenario
+}
+message += ' quantity=' + vars.get('quantity')
+prev.setResponseMessage(message)
+
+def expectedCodes = ['ORDER_CREATE_OK', 'ORDER_STOCK_NOT_ENOUGH', 'ORDER_ALREADY_CREATED'] as Set
+prev.setSuccessful(expectedCodes.contains(businessCode))
+
+if (businessCode == 'ORDER_CREATE_OK' && orderNo) {
+    def csvPath = (props.getProperty('ORDER_SUCCESS_CSV', '') ?: '').trim()
+    if (csvPath) {
+        synchronized (props) {
+            def path = Path.of(csvPath)
+            def parent = path.getParent()
+            if (parent != null) {
+                Files.createDirectories(parent)
+            }
+            if (!Files.exists(path) || Files.size(path) == 0L) {
+                Files.writeString(path, 'runId,userId,skuId,quantity,orderNo,orderStatus,successIndex,paymentScenario,businessCode,createStartedAtMs,expireAt,expireAtEpochMs,boundaryRecordTargetMs,closingCallbackTargetMs,closedCallbackTargetMs' + System.lineSeparator(), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+            }
+            def line = [
+                    props.getProperty('RUN_ID', 'local'),
+                    vars.get('userId'),
+                    vars.get('skuId'),
+                    vars.get('quantity'),
+                    orderNo,
+                    orderStatus,
+                    successIndex,
+                    paymentScenario,
+                    businessCode,
+                    vars.get('createStartedAtMs'),
+                    vars.get('expireAt'),
+                    vars.get('expireAtEpochMs'),
+                    vars.get('boundaryRecordTargetMs'),
+                    vars.get('closingCallbackTargetMs'),
+                    vars.get('closedCallbackTargetMs')
+            ].join(',') + System.lineSeparator()
+            Files.writeString(path, line, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+        }
+    }
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PostProcessor>
+          <hashTree/>
+        </hashTree>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Scenario Pay Now" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('paymentScenario') == 'PAY_NOW')}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST Pay Now" enabled="true">
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value">{
+  "externalTradeNo": "JMETER-PAY-${__P(RUN_ID,local)}-${orderNo}"
+}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/user/api/orders/${orderNo}/pay</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+            <stringProp name="HTTPSampler.response_timeout"></stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Pay Now Delay" enabled="true">
+              <stringProp name="ConstantTimer.delay">${payNowDelayMs}</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Assert Pay Now" enabled="true">
+              <stringProp name="cacheKey">order-soft-close-assert-pay-now</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+def businessCode = ''
+try {
+    def body = prev.getResponseDataAsString()
+    if (body != null && !body.isBlank()) {
+        businessCode = (new groovy.json.JsonSlurper().parseText(body).code ?: '').toString()
+    }
+} catch (Throwable ignored) {
+}
+def message = prev.getResponseMessage() ?: ''
+message += ' businessCode=' + businessCode + ' orderNo=' + vars.get('orderNo') + ' paymentScenario=' + vars.get('paymentScenario')
+prev.setResponseMessage(message)
+prev.setSuccessful(businessCode == 'ORDER_PAY_OK')
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Scenario Closing Callback" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('paymentScenario') == 'CLOSING_CALLBACK')}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST Closing Callback Success" enabled="true">
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value">{
+  "orderNo": "${orderNo}",
+  "externalTradeNo": "JMETER-CLOSING-CALLBACK-${__P(RUN_ID,local)}-${orderNo}",
+  "paidAmountYuan": ${callbackPaidAmountYuan}
+}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/api/payments/callback/success</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+            <stringProp name="HTTPSampler.response_timeout"></stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait Until Closing" enabled="true">
+              <stringProp name="ConstantTimer.delay">${__groovy(def raw = vars.get('closingCallbackTargetMs'); def target = raw ? Long.parseLong(raw) : 0L; def delay = target - System.currentTimeMillis(); delay > 0L ? delay : 0L)}</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Assert Closing Callback" enabled="true">
+              <stringProp name="cacheKey">order-soft-close-assert-closing-callback</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+def businessCode = ''
+try {
+    def body = prev.getResponseDataAsString()
+    if (body != null && !body.isBlank()) {
+        businessCode = (new groovy.json.JsonSlurper().parseText(body).code ?: '').toString()
+    }
+} catch (Throwable ignored) {
+}
+def message = prev.getResponseMessage() ?: ''
+message += ' businessCode=' + businessCode + ' orderNo=' + vars.get('orderNo') + ' paymentScenario=' + vars.get('paymentScenario')
+prev.setResponseMessage(message)
+prev.setSuccessful(businessCode == 'ORDER_PAYMENT_CALLBACK_RECEIVED')
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Scenario Closing User Pay Negative" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('paymentScenario') == 'CLOSING_USER_PAY_NEGATIVE')}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST Closing User Pay Should Fail" enabled="true">
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value">{
+  "externalTradeNo": "JMETER-CLOSING-USER-PAY-${__P(RUN_ID,local)}-${orderNo}"
+}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/user/api/orders/${orderNo}/pay</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+            <stringProp name="HTTPSampler.response_timeout"></stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait Until Closing For User Pay Negative" enabled="true">
+              <stringProp name="ConstantTimer.delay">${__groovy(def raw = vars.get('closingCallbackTargetMs'); def target = raw ? Long.parseLong(raw) : 0L; def delay = target - System.currentTimeMillis(); delay > 0L ? delay : 0L)}</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Assert Closing User Pay Negative" enabled="true">
+              <stringProp name="cacheKey">order-soft-close-assert-closing-user-pay-negative</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+def businessCode = ''
+try {
+    def body = prev.getResponseDataAsString()
+    if (body != null && !body.isBlank()) {
+        businessCode = (new groovy.json.JsonSlurper().parseText(body).code ?: '').toString()
+    }
+} catch (Throwable ignored) {
+}
+def message = prev.getResponseMessage() ?: ''
+message += ' businessCode=' + businessCode + ' orderNo=' + vars.get('orderNo') + ' paymentScenario=' + vars.get('paymentScenario')
+prev.setResponseMessage(message)
+prev.setSuccessful(businessCode == 'ORDER_PAY_UNAVAILABLE')
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Scenario Closed Callback Negative" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('paymentScenario') == 'CLOSED_CALLBACK_NEGATIVE')}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST Closed Callback Should Fail" enabled="true">
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value">{
+  "orderNo": "${orderNo}",
+  "externalTradeNo": "JMETER-CLOSED-CALLBACK-${__P(RUN_ID,local)}-${orderNo}",
+  "paidAmountYuan": ${callbackPaidAmountYuan}
+}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/api/payments/callback/success</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+            <stringProp name="HTTPSampler.response_timeout"></stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait Until Closed" enabled="true">
+              <stringProp name="ConstantTimer.delay">${__groovy(def raw = vars.get('closedCallbackTargetMs'); def target = raw ? Long.parseLong(raw) : 0L; def delay = target - System.currentTimeMillis(); delay > 0L ? delay : 0L)}</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Assert Closed Callback Received" enabled="true">
+              <stringProp name="cacheKey">order-soft-close-assert-closed-callback-negative</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+def businessCode = ''
+try {
+    def body = prev.getResponseDataAsString()
+    if (body != null && !body.isBlank()) {
+        businessCode = (new groovy.json.JsonSlurper().parseText(body).code ?: '').toString()
+    }
+} catch (Throwable ignored) {
+}
+def message = prev.getResponseMessage() ?: ''
+message += ' businessCode=' + businessCode + ' orderNo=' + vars.get('orderNo') + ' paymentScenario=' + vars.get('paymentScenario')
+prev.setResponseMessage(message)
+prev.setSuccessful(businessCode == 'ORDER_PAYMENT_CALLBACK_RECEIVED')
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Scenario Boundary Delayed Callback" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('paymentScenario') == 'BOUNDARY_DELAYED_CALLBACK')}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Record Third Party Paid Before Expire" enabled="true">
+            <stringProp name="cacheKey">order-soft-close-record-third-party-paid</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+SampleResult.setResponseCode('200')
+SampleResult.setResponseMessage('businessCode=ORDER_BOUNDARY_THIRD_PARTY_PAID_PENDING_CALLBACK orderNo=' + vars.get('orderNo') + ' paymentScenario=' + vars.get('paymentScenario'))
+SampleResult.setResponseData(('Third party payment accepted before expire; callback is intentionally delayed. orderNo=' + vars.get('orderNo')).getBytes('UTF-8'))
+SampleResult.setSuccessful(true)
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223Sampler>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait Until Boundary Record" enabled="true">
+              <stringProp name="ConstantTimer.delay">${__groovy(def raw = vars.get('boundaryRecordTargetMs'); def target = raw ? Long.parseLong(raw) : 0L; def delay = target - System.currentTimeMillis(); delay > 0L ? delay : 0L)}</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST Boundary Delayed Callback Success" enabled="true">
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value">{
+  "orderNo": "${orderNo}",
+  "externalTradeNo": "JMETER-BOUNDARY-CALLBACK-${__P(RUN_ID,local)}-${orderNo}",
+  "paidAmountYuan": ${callbackPaidAmountYuan}
+}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/api/payments/callback/success</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+            <stringProp name="HTTPSampler.response_timeout"></stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait Until Boundary Callback" enabled="true">
+              <stringProp name="ConstantTimer.delay">${__groovy(def raw = vars.get('closingCallbackTargetMs'); def target = raw ? Long.parseLong(raw) : 0L; def delay = target - System.currentTimeMillis(); delay > 0L ? delay : 0L)}</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Assert Boundary Delayed Callback" enabled="true">
+              <stringProp name="cacheKey">order-soft-close-assert-boundary-delayed-callback</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+def businessCode = ''
+try {
+    def body = prev.getResponseDataAsString()
+    if (body != null && !body.isBlank()) {
+        businessCode = (new groovy.json.JsonSlurper().parseText(body).code ?: '').toString()
+    }
+} catch (Throwable ignored) {
+}
+def message = prev.getResponseMessage() ?: ''
+message += ' businessCode=' + businessCode + ' orderNo=' + vars.get('orderNo') + ' paymentScenario=' + vars.get('paymentScenario')
+prev.setResponseMessage(message)
+prev.setSuccessful(businessCode == 'ORDER_PAYMENT_CALLBACK_RECEIVED')
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Query Order Card Secrets" enabled="true">
+          <stringProp name="IfController.condition">${__groovy(vars.get('businessCode') == 'ORDER_CREATE_OK' &amp;&amp; (vars.get('orderNo') ?: '').trim().length() &gt; 0)}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET Order Card Secrets" enabled="true">
+            <boolProp name="HTTPSampler.postBodyRaw">false</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments"/>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/user/api/orders/${orderNo}/card-secrets</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+            <stringProp name="HTTPSampler.response_timeout"></stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Wait Before Card Secret Query" enabled="true">
+              <stringProp name="ConstantTimer.delay">${__groovy(def raw = props.getProperty('CARD_SECRET_QUERY_SETTLE_SECONDS'); if (!raw) { raw = '15' }; try { def millis = Long.parseLong(raw) * 1000L; millis &gt; 0L ? millis : 0L } catch (Throwable ignored) { 15000L })}</stringProp>
+            </ConstantTimer>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Assert And Record Card Secrets" enabled="true">
+              <stringProp name="cacheKey">order-soft-close-assert-card-secrets</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+
+def intValue = { Object value, int fallback ->
+    if (value == null) {
+        return fallback
+    }
+    try {
+        return Integer.parseInt(value.toString())
+    } catch (Throwable ignored) {
+        return fallback
+    }
+}
+
+def csvValue = { Object value ->
+    def text = value == null ? '' : value.toString()
+    if (text.contains('"') || text.contains(',') || text.contains('\n') || text.contains('\r')) {
+        return '"' + text.replace('"', '""') + '"'
+    }
+    return text
+}
+
+def expectedPaidScenarios = ['PAY_NOW', 'CLOSING_CALLBACK', 'BOUNDARY_DELAYED_CALLBACK'] as Set
+def scenario = vars.get('paymentScenario') ?: ''
+def expectedPaid = expectedPaidScenarios.contains(scenario)
+def expectedQuantity = intValue(vars.get('quantity'), 0)
+
+def businessCode = ''
+def deliveryStatus = ''
+def requiredCount = 0
+def deliveredCount = 0
+def secretCount = 0
+try {
+    def body = prev.getResponseDataAsString()
+    if (body != null && !body.isBlank()) {
+        def json = new JsonSlurper().parseText(body)
+        businessCode = (json.code ?: '').toString()
+        if (json.data != null) {
+            deliveryStatus = (json.data.deliveryStatus ?: '').toString()
+            requiredCount = intValue(json.data.requiredCount, 0)
+            deliveredCount = intValue(json.data.deliveredCount, 0)
+            def items = json.data.items
+            if (items instanceof Collection) {
+                items.each { item ->
+                    def secrets = item?.secrets
+                    if (secrets instanceof Collection) {
+                        secretCount += secrets.size()
+                    }
+                }
+            }
+        }
+    }
+} catch (Throwable ignored) {
+}
+
+def headers = (prev.getResponseHeaders() ?: '').toLowerCase()
+def cacheControlNoStore = headers.readLines().any { line ->
+    line.startsWith('cache-control:') && line.contains('no-store')
+}
+
+def ok = expectedPaid
+        ? (businessCode == 'ORDER_CARD_SECRET_LIST_OK'
+                && deliveredCount == expectedQuantity
+                && secretCount == expectedQuantity
+                && cacheControlNoStore)
+        : (businessCode != 'ORDER_CARD_SECRET_LIST_OK' && secretCount == 0)
+
+def message = prev.getResponseMessage() ?: ''
+message += ' businessCode=' + businessCode
+message += ' orderNo=' + vars.get('orderNo')
+message += ' paymentScenario=' + scenario
+message += ' expectedPaid=' + expectedPaid
+message += ' requiredCount=' + requiredCount
+message += ' deliveredCount=' + deliveredCount
+message += ' secretCount=' + secretCount
+message += ' cacheControlNoStore=' + cacheControlNoStore
+prev.setResponseMessage(message)
+prev.setSuccessful(ok)
+
+def output = (props.getProperty('ORDER_CARD_SECRET_RESULT_CSV', '') ?: '').trim()
+if (output) {
+    synchronized (props) {
+        def path = Path.of(output)
+        def parent = path.getParent()
+        if (parent != null) {
+            Files.createDirectories(parent)
+        }
+        if (!Files.exists(path) || Files.size(path) == 0L) {
+            Files.writeString(path, 'run_id,user_id,sku_id,quantity,order_no,success_index,payment_scenario,expected_paid,http_code,business_code,delivery_status,required_count,delivered_count,secret_count,cache_control_no_store,query_started_at_ms,elapsed_ms,success' + System.lineSeparator(), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+        }
+        def line = [
+                props.getProperty('RUN_ID', 'local'),
+                vars.get('userId'),
+                vars.get('skuId'),
+                vars.get('quantity'),
+                vars.get('orderNo'),
+                vars.get('successIndex'),
+                scenario,
+                expectedPaid,
+                prev.getResponseCode(),
+                businessCode,
+                deliveryStatus,
+                requiredCount,
+                deliveredCount,
+                secretCount,
+                cacheControlNoStore,
+                prev.getStartTime(),
+                prev.getTime(),
+                ok
+        ].collect(csvValue).join(',') + System.lineSeparator()
+        Files.writeString(path, line, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+    }
+}
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

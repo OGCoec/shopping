@@ -5,6 +5,59 @@
 
 <mapper namespace="com.example.ShoppingSystem.mapper.coupon.CouponTemplateMapper">
 
+    <sql id="CouponTemplateSelectColumns">
+        encode(id, 'hex') AS "id",
+        coupon_code AS "couponCode",
+        name,
+        discount_type AS "discountType",
+        threshold_amount_yuan AS "thresholdAmountYuan",
+        discount_amount_yuan AS "discountAmountYuan",
+        discount_rate AS "discountRate",
+        max_discount_amount_yuan AS "maxDiscountAmountYuan",
+        total_quantity AS "totalQuantity",
+        remaining_quantity AS "remainingQuantity",
+        per_user_limit AS "perUserLimit",
+        scope_type AS "scopeType",
+        receive_start_at AS "receiveStartAt",
+        receive_end_at AS "receiveEndAt",
+        valid_start_at AS "validStartAt",
+        valid_end_at AS "validEndAt",
+        status,
+        version,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    </sql>
+
+    <sql id="CouponTemplateSelectColumnsWithAlias">
+        encode(ct.id, 'hex') AS "id",
+        ct.coupon_code AS "couponCode",
+        ct.name,
+        ct.discount_type AS "discountType",
+        ct.threshold_amount_yuan AS "thresholdAmountYuan",
+        ct.discount_amount_yuan AS "discountAmountYuan",
+        ct.discount_rate AS "discountRate",
+        ct.max_discount_amount_yuan AS "maxDiscountAmountYuan",
+        ct.total_quantity AS "totalQuantity",
+        ct.remaining_quantity AS "remainingQuantity",
+        ct.per_user_limit AS "perUserLimit",
+        ct.scope_type AS "scopeType",
+        ct.receive_start_at AS "receiveStartAt",
+        ct.receive_end_at AS "receiveEndAt",
+        ct.valid_start_at AS "validStartAt",
+        ct.valid_end_at AS "validEndAt",
+        ct.status,
+        ct.version,
+        ct.created_at AS "createdAt",
+        ct.updated_at AS "updatedAt"
+    </sql>
+
+    <sql id="UserCouponTemplateSelectColumns">
+        <include refid="CouponTemplateSelectColumnsWithAlias"/>,
+        (uc.id IS NOT NULL) AS "claimed",
+        encode(uc.id, 'hex') AS "userCouponId",
+        uc.status AS "userCouponStatus"
+    </sql>
+
     <insert id="insertTemplate">
         INSERT INTO coupon_template (
             id,
@@ -68,58 +121,23 @@
     </update>
 
     <select id="findById" resultType="map">
-        SELECT encode(id, 'hex') AS "id",
-               coupon_code AS "couponCode",
-               name,
-               discount_type AS "discountType",
-               threshold_amount_yuan AS "thresholdAmountYuan",
-               discount_amount_yuan AS "discountAmountYuan",
-               discount_rate AS "discountRate",
-               max_discount_amount_yuan AS "maxDiscountAmountYuan",
-               total_quantity AS "totalQuantity",
-               remaining_quantity AS "remainingQuantity",
-               per_user_limit AS "perUserLimit",
-               scope_type AS "scopeType",
-               receive_start_at AS "receiveStartAt",
-               receive_end_at AS "receiveEndAt",
-               valid_start_at AS "validStartAt",
-               valid_end_at AS "validEndAt",
-               status,
-               version,
-               created_at AS "createdAt",
-               updated_at AS "updatedAt"
+        SELECT <include refid="CouponTemplateSelectColumns"/>
         FROM coupon_template
         WHERE id = #{id}
     </select>
 
     <select id="listTemplates" resultType="map">
-        SELECT encode(id, 'hex') AS "id",
-               coupon_code AS "couponCode",
-               name,
-               discount_type AS "discountType",
-               threshold_amount_yuan AS "thresholdAmountYuan",
-               discount_amount_yuan AS "discountAmountYuan",
-               discount_rate AS "discountRate",
-               max_discount_amount_yuan AS "maxDiscountAmountYuan",
-               total_quantity AS "totalQuantity",
-               remaining_quantity AS "remainingQuantity",
-               per_user_limit AS "perUserLimit",
-               scope_type AS "scopeType",
-               receive_start_at AS "receiveStartAt",
-               receive_end_at AS "receiveEndAt",
-               valid_start_at AS "validStartAt",
-               valid_end_at AS "validEndAt",
-               status,
-               version,
-               created_at AS "createdAt",
-               updated_at AS "updatedAt"
+        SELECT <include refid="CouponTemplateSelectColumns"/>
         FROM coupon_template
         WHERE status != 'DELETED'
-        <if test="name != null and name != ''">
-          AND name ILIKE CONCAT('%', #{name}, '%')
-        </if>
         <if test="status != null and status != ''">
           AND status = #{status}
+        </if>
+        <if test="receiveStartAtFrom != null">
+          AND receive_start_at &gt;= #{receiveStartAtFrom}
+        </if>
+        <if test="receiveEndAtTo != null">
+          AND receive_end_at &lt;= #{receiveEndAtTo}
         </if>
         ORDER BY updated_at DESC, created_at DESC
         LIMIT #{pageSize} OFFSET #{offset}
@@ -129,12 +147,91 @@
         SELECT COUNT(*)
         FROM coupon_template
         WHERE status != 'DELETED'
-        <if test="name != null and name != ''">
-          AND name ILIKE CONCAT('%', #{name}, '%')
-        </if>
         <if test="status != null and status != ''">
           AND status = #{status}
         </if>
+        <if test="receiveStartAtFrom != null">
+          AND receive_start_at &gt;= #{receiveStartAtFrom}
+        </if>
+        <if test="receiveEndAtTo != null">
+          AND receive_end_at &lt;= #{receiveEndAtTo}
+        </if>
+    </select>
+
+    <select id="listTemplatesByIds" resultType="map">
+        SELECT <include refid="CouponTemplateSelectColumns"/>
+        FROM coupon_template
+        WHERE status != 'DELETED'
+          AND id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+    </select>
+
+    <select id="listUserReceivableTemplates" resultType="map">
+        SELECT <include refid="UserCouponTemplateSelectColumns"/>
+        FROM coupon_template ct
+        LEFT JOIN user_coupon uc
+               ON uc.coupon_template_id = ct.id
+              AND uc.user_id = #{userId}
+        WHERE ct.status = 'ACTIVE'
+          AND ct.receive_start_at &lt;= #{now}
+          AND ct.receive_end_at &gt;= #{now}
+        ORDER BY ct.updated_at DESC, ct.created_at DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countUserReceivableTemplates" resultType="long">
+        SELECT COUNT(*)
+        FROM coupon_template ct
+        WHERE ct.status = 'ACTIVE'
+          AND ct.receive_start_at &lt;= #{now}
+          AND ct.receive_end_at &gt;= #{now}
+    </select>
+
+    <select id="listUserReceivableTemplatesByIds" resultType="map">
+        SELECT <include refid="UserCouponTemplateSelectColumns"/>
+        FROM coupon_template ct
+        LEFT JOIN user_coupon uc
+               ON uc.coupon_template_id = ct.id
+              AND uc.user_id = #{userId}
+        WHERE ct.status = 'ACTIVE'
+          AND ct.receive_start_at &lt;= #{now}
+          AND ct.receive_end_at &gt;= #{now}
+          AND ct.id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+    </select>
+
+    <select id="findUserReceivableTemplateById" resultType="map">
+        SELECT <include refid="UserCouponTemplateSelectColumns"/>
+        FROM coupon_template ct
+        LEFT JOIN user_coupon uc
+               ON uc.coupon_template_id = ct.id
+              AND uc.user_id = #{userId}
+        WHERE ct.id = #{id}
+          AND ct.status = 'ACTIVE'
+          AND ct.receive_start_at &lt;= #{now}
+          AND ct.receive_end_at &gt;= #{now}
+    </select>
+
+    <select id="listCouponTemplateIndexDocuments" resultType="map">
+        SELECT <include refid="CouponTemplateSelectColumns"/>
+        FROM coupon_template
+        WHERE status != 'DELETED'
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="findCouponTemplateIndexDocumentsByIds" resultType="map">
+        SELECT <include refid="CouponTemplateSelectColumns"/>
+        FROM coupon_template
+        WHERE status != 'DELETED'
+          AND id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
     </select>
 
     <update id="publish">

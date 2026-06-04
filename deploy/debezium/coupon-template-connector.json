@@ -1,0 +1,24 @@
+{
+  "name": "shopping-coupon-template-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "plugin.name": "pgoutput",
+    "database.hostname": "127.0.0.1",
+    "database.port": "5432",
+    "database.user": "postgres",
+    "database.password": "123456",
+    "database.dbname": "shopping",
+    "topic.prefix": "shopping",
+    "table.include.list": "public.coupon_template",
+    "slot.name": "shopping_coupon_template_slot",
+    "publication.name": "shopping_coupon_template_pub",
+    "publication.autocreate.mode": "filtered",
+    "tombstones.on.delete": "false",
+    "include.schema.changes": "false",
+    "binary.handling.mode": "base64",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false"
+  }
+}

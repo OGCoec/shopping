@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="page-gate-pending">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>优惠券</title>
+  <link rel="stylesheet" href="/shopping/css/page-access-gate.css?v=7" />
+  <link rel="stylesheet" href="/shopping/css/coupons.css?v=1" />
+</head>
+<body>
+  <div class="coupon-page-background" aria-hidden="true">
+    <div class="coupon-page-background__wash"></div>
+    <div class="coupon-page-background__dots"></div>
+  </div>
+
+  <main class="coupon-page" aria-label="优惠券">
+    <header class="coupon-page-header">
+      <a class="coupon-back" href="/shopping/user/console">返回商品列表</a>
+      <nav class="coupon-page-tabs" aria-label="优惠券导航">
+        <a href="/shopping/user/coupons" data-coupon-tab="available">可领取优惠券</a>
+        <a href="/shopping/user/coupons/mine" data-coupon-tab="mine">我的优惠券</a>
+      </nav>
+      <a class="coupon-profile" href="/shopping/user/profile">个人资料</a>
+    </header>
+
+    <section class="coupon-status" id="coupon-page-status">正在加载优惠券</section>
+
+    <section id="coupon-available-view" class="coupon-panel" hidden>
+      <div class="coupon-panel-heading">
+        <div>
+          <h1>可领取优惠券</h1>
+          <p id="coupon-available-summary">-</p>
+        </div>
+      </div>
+      <form id="coupon-available-form" class="coupon-filter-form">
+        <label>
+          <span>优惠券名称</span>
+          <input id="coupon-available-name" type="search" autocomplete="off" placeholder="搜索优惠券名称" />
+        </label>
+        <button class="coupon-primary-button" type="submit">搜索</button>
+        <button id="coupon-available-clear" class="coupon-ghost-button" type="button">清空</button>
+      </form>
+      <div id="coupon-available-list" class="coupon-grid"></div>
+      <div class="coupon-pager">
+        <button id="coupon-available-prev" class="coupon-ghost-button" type="button">上一页</button>
+        <span id="coupon-available-page">1 / 1</span>
+        <button id="coupon-available-next" class="coupon-ghost-button" type="button">下一页</button>
+      </div>
+    </section>
+
+    <section id="coupon-template-detail-view" class="coupon-panel" hidden></section>
+
+    <section id="coupon-mine-view" class="coupon-panel" hidden>
+      <div class="coupon-panel-heading">
+        <div>
+          <h1>我的优惠券</h1>
+          <p id="coupon-mine-summary">-</p>
+        </div>
+      </div>
+      <form id="coupon-mine-form" class="coupon-filter-form">
+        <label>
+          <span>状态</span>
+          <select id="coupon-mine-status">
+            <option value="">全部状态</option>
+            <option value="UNUSED">UNUSED</option>
+            <option value="LOCKED">LOCKED</option>
+            <option value="USED">USED</option>
+            <option value="EXPIRED">EXPIRED</option>
+            <option value="REVOKED">REVOKED</option>
+          </select>
+        </label>
+        <button class="coupon-primary-button" type="submit">筛选</button>
+        <button id="coupon-mine-clear" class="coupon-ghost-button" type="button">清空</button>
+      </form>
+      <div id="coupon-mine-list" class="coupon-grid"></div>
+      <div class="coupon-pager">
+        <button id="coupon-mine-prev" class="coupon-ghost-button" type="button">上一页</button>
+        <span id="coupon-mine-page">1 / 1</span>
+        <button id="coupon-mine-next" class="coupon-ghost-button" type="button">下一页</button>
+      </div>
+    </section>
+
+    <section id="coupon-mine-detail-view" class="coupon-panel" hidden></section>
+  </main>
+
+  <script src="/shopping/js/user/auth/shared/preauth-client.js?v=2"></script>
+  <script src="/shopping/js/user/auth/shared/auth-client.js"></script>
+  <script src="/shopping/js/user/auth/shared/page-access-gate.js?v=8"></script>
+  <script src="/shopping/js/vendor/gsap.min.js"></script>
+  <script src="/shopping/js/user/auth/console/console-noomo-background.js?v=3"></script>
+  <script src="/shopping/js/user/coupons.js?v=1"></script>
+</body>
+</html>

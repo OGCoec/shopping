@@ -54,6 +54,11 @@ public class AdminOAuth2WindowsEnvPostProcessor implements EnvironmentPostProces
             "EMAIL_SMTP_USERNAME",
             "EMAIL_SMTP_PASSWORD"
     );
+    public static final List<String> CARD_SECRET_ENV_NAMES = List.of(
+            "CARD_SECRET_ACTIVE_KEY_VERSION",
+            "CARD_SECRET_AES_KEY_V1",
+            "CARD_SECRET_HMAC_KEY_V1"
+    );
     public static final List<String> MANAGED_ENV_NAMES = List.of(
             "GITHUB_CLIENT_ID",
             "GITHUB_CLIENT_SECRET",
@@ -73,7 +78,10 @@ public class AdminOAuth2WindowsEnvPostProcessor implements EnvironmentPostProces
             "RECAPTCHA_SITE_KEY",
             "RECAPTCHA_SECRET_KEY",
             "EMAIL_SMTP_USERNAME",
-            "EMAIL_SMTP_PASSWORD"
+            "EMAIL_SMTP_PASSWORD",
+            "CARD_SECRET_ACTIVE_KEY_VERSION",
+            "CARD_SECRET_AES_KEY_V1",
+            "CARD_SECRET_HMAC_KEY_V1"
     );
 
     @Override

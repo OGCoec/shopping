@@ -44,6 +44,7 @@
   <script defer src="/shopping/js/admin/modules/risk-api-config.js"></script>
   <script defer src="/shopping/js/admin/modules/ip2location-quota-keys.js"></script>
   <script defer src="/shopping/js/admin/modules/ip2location-mail-tool.js"></script>
+  <script defer src="/shopping/js/admin/modules/openai-mail-status.js?v=1"></script>
   <script defer src="/shopping/js/admin/modules/risk-ip-score.js?v=2"></script>
   <script defer src="/shopping/js/admin/modules/risk-device-score.js?v=1"></script>
   <script defer src="/shopping/js/admin/modules/account-credit.js?v=1"></script>
@@ -61,6 +62,11 @@
   <script defer src="/shopping/js/admin/modules/product-detail-views.js?v=1"></script>
   <script defer src="/shopping/js/admin/modules/product-detail-controller.js?v=4"></script>
   <script defer src="/shopping/js/admin/modules/products.js?v=13"></script>
+  <script defer src="/shopping/js/admin/modules/coupon-api.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/coupons.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/order-api.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/orders.js?v=1"></script>
+  <script defer src="/shopping/js/admin/modules/card-secrets.js?v=1"></script>
   <script defer src="/shopping/js/admin/admin-console.js?v=32"></script>
 </head>
 <body class="admin-console-body">
@@ -98,6 +104,18 @@
         <button class="admin-side-item" type="button" data-section-target="products">
           <span>商品管理</span>
           <small>Products</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="coupons">
+          <span>优惠券管理</span>
+          <small>Coupons</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="orders">
+          <span>订单管理</span>
+          <small>Orders</small>
+        </button>
+        <button class="admin-side-item" type="button" data-section-target="cardSecrets">
+          <span>卡密管理</span>
+          <small>Card Secrets</small>
         </button>
       </nav>
 

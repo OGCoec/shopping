@@ -26,6 +26,7 @@ import com.example.ShoppingSystem.admin.dto.AdminProductSpuResponse;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuStatusRequest;
 import com.example.ShoppingSystem.admin.service.common.AdminPaginationValidator;
 import com.example.ShoppingSystem.admin.service.product.AdminProductSkuService.NormalizedSkuUpdate;
+import com.example.ShoppingSystem.config.datasource.ProductReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.product.ProductCategoryMapper;
 import com.example.ShoppingSystem.mapper.product.ProductSpuMapper;
 import com.example.ShoppingSystem.product.service.PublicProductDetailCacheService;
@@ -97,6 +98,7 @@ public class AdminProductSpuService {
     private final PublicProductDetailCacheService publicDetailCacheService;
     private final AdminProductSpuSearchService productSearchService;
     private final AdminProductSpuIndexService productIndexService;
+    private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
 
     public AdminProductSpuService(ProductSpuMapper productSpuMapper,
                                   ProductCategoryMapper productCategoryMapper,
@@ -111,7 +113,8 @@ public class AdminProductSpuService {
                                   AdminProductDetailCacheService detailCacheService,
                                   PublicProductDetailCacheService publicDetailCacheService,
                                   AdminProductSpuSearchService productSearchService,
-                                  AdminProductSpuIndexService productIndexService) {
+                                  AdminProductSpuIndexService productIndexService,
+                                  ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
         this.productSpuMapper = productSpuMapper;
         this.productCategoryMapper = productCategoryMapper;
         this.snowflakeIdWorker = snowflakeIdWorker;
@@ -126,6 +129,7 @@ public class AdminProductSpuService {
         this.publicDetailCacheService = publicDetailCacheService;
         this.productSearchService = productSearchService;
         this.productIndexService = productIndexService;
+        this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
     }
 
     public AdminProductSpuPageResponse page(Integer page, Integer pageSize, String name, Long categoryId, String status) {
@@ -201,7 +205,8 @@ public class AdminProductSpuService {
 
     public AdminProductSpuDetailResponse getDetail(Long id) {
         Long spuId = normalizeRequiredId(id, "商品 ID");
-        return detailCacheService.getDetail(spuId, () -> findSpuDetailResponse(spuId));
+        return detailCacheService.getDetail(spuId, () ->
+                productReadReplicaQueryExecutor.query(() -> findSpuDetailResponse(spuId)));
     }
 
     public AdminProductSpuDetailSkuResponse getSkuDetail(Long id, String skuId) {
@@ -211,7 +216,8 @@ public class AdminProductSpuService {
         if (!skuBloomService.mightSkuExist(normalizedSkuId)) {
             throw skuNotFoundException();
         }
-        return findSkuDetailResponse(spuId, normalizedSkuIdBytes);
+        return productReadReplicaQueryExecutor.query(() ->
+                findSkuDetailResponse(spuId, normalizedSkuIdBytes));
     }
 
     @Transactional

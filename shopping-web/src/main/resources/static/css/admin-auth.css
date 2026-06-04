@@ -10,7 +10,10 @@
 @import url("./admin/modules/product-spu.css");
 @import url("./admin/modules/product-detail.css");
 @import url("./admin/modules/product-carousel.css");
+@import url("./admin/modules/coupon.css");
+@import url("./admin/modules/order.css");
 @import url("./admin/modules/account.css");
 @import url("./admin/modules/ip2location-mail-tool.css");
+@import url("./admin/modules/openai-mail-status.css");
 @import url("./admin/effects.css");
 @import url("./admin/responsive.css");

@@ -23,6 +23,18 @@
           "module": null,
           "modules": []
       },
+      "openAiMailStatus": {
+          "route": "mail/openai/status",
+          "eyebrow": "External APIs / OpenAI Mail",
+          "title": "OpenAI mailbox status",
+          "copy": "Batch check Outlook and Hotmail mailbox evidence for OpenAI or ChatGPT account status.",
+          "navTarget": "externalInterfaces",
+          "fragment": "/shopping/admin/panels/openai-mail-status.html",
+          "module": "AdminOpenAiMailStatusModule",
+          "modules": [
+              "AdminOpenAiMailStatusModule"
+          ]
+      },
       "riskCreditScore": {
           "route": "risk-credit-score",
           "eyebrow": "Risk Credit",
@@ -157,6 +169,42 @@
           "module": "AdminProductsModule",
           "modules": [
               "AdminProductsModule"
+          ]
+      },
+      "coupons": {
+          "route": "coupons",
+          "eyebrow": "Coupons",
+          "title": "优惠券管理",
+          "copy": "查询优惠券模板，查看领取用户邮箱和使用状态。",
+          "navTarget": "coupons",
+          "fragment": "/shopping/admin/panels/coupons.html",
+          "module": "AdminCouponsModule",
+          "modules": [
+              "AdminCouponsModule"
+          ]
+      },
+      "orders": {
+          "route": "orders",
+          "eyebrow": "Orders",
+          "title": "订单管理",
+          "copy": "实时查看 Redis 和 DB 中的订单，按状态筛选并按订单号进入详情页。",
+          "navTarget": "orders",
+          "fragment": "/shopping/admin/panels/orders.html",
+          "module": "AdminOrdersModule",
+          "modules": [
+              "AdminOrdersModule"
+          ]
+      },
+      "cardSecrets": {
+          "route": "card-secrets",
+          "eyebrow": "Card Secrets",
+          "title": "卡密管理",
+          "copy": "配置卡密 AES/HMAC 环境变量，并在商品 SKU 页面导入一行一个的卡密。",
+          "navTarget": "cardSecrets",
+          "fragment": "/shopping/admin/panels/card-secrets.html",
+          "module": "AdminCardSecretsModule",
+          "modules": [
+              "AdminCardSecretsModule"
           ]
       },
       "oauth2": {

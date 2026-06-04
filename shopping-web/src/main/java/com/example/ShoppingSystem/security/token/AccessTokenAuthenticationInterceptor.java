@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -24,14 +25,18 @@ import java.util.concurrent.CompletionException;
 public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor {
 
     private static final String LOGIN_PATH = "/shopping/user/log-in";
+    private static final String ORDER_API_PATH_PREFIX = "/shopping/user/api/orders";
 
     private final AuthTokenService authTokenService;
     private final ObjectMapper objectMapper;
+    private final boolean orderLoadtestBypassGuards;
 
     public AccessTokenAuthenticationInterceptor(AuthTokenService authTokenService,
-                                                ObjectMapper objectMapper) {
+                                                ObjectMapper objectMapper,
+                                                @Value("${app.order.loadtest.bypass-guards:false}") boolean orderLoadtestBypassGuards) {
         this.authTokenService = authTokenService;
         this.objectMapper = objectMapper;
+        this.orderLoadtestBypassGuards = orderLoadtestBypassGuards;
     }
 
     @Override
@@ -54,7 +59,11 @@ public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor 
             }
 
             String riskLevel = request.getAttribute("preAuthRiskLevel") instanceof String text ? text : "L1";
-            AuthUserContext context = authTokenService.authenticateAccessToken(accessToken, riskLevel);
+            AuthUserContext context = authTokenService.authenticateAccessToken(
+                    accessToken,
+                    riskLevel,
+                    shouldUseOrderLoadtestAuthCache(request)
+            );
             AuthUserContextHolder.set(context);
             request.setAttribute("authUserContext", context);
             request.setAttribute("authUserId", context.userId());
@@ -108,6 +117,14 @@ public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor 
                 .map(role -> role.startsWith("ROLE_") ? role : "ROLE_" + role)
                 .map(SimpleGrantedAuthority::new)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private boolean shouldUseOrderLoadtestAuthCache(HttpServletRequest request) {
+        if (!orderLoadtestBypassGuards || request == null) {
+            return false;
+        }
+        String path = request.getRequestURI();
+        return path != null && path.startsWith(ORDER_API_PATH_PREFIX);
     }
 
     private void clearAuthenticationContext() {

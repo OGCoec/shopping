@@ -11,6 +11,9 @@ public interface ProductHotSkuMapper {
 
     List<Map<String, Object>> listHotSkusBySpuId(@Param("spuId") Long spuId);
 
+    Map<String, Object> findHotSkuBySkuId(@Param("spuId") Long spuId,
+                                          @Param("skuId") byte[] skuId);
+
     Map<String, Object> upsertHotSkus(@Param("spuId") Long spuId,
                                       @Param("itemsJson") String itemsJson);
 

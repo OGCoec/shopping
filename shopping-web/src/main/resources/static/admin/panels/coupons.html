@@ -1,0 +1,78 @@
+<section class="admin-panel" data-admin-panel="coupons">
+  <div class="admin-api-detail admin-coupon-detail">
+    <article class="admin-oauth-config-card admin-coupon-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Coupons</span>
+          <strong>优惠券管理</strong>
+        </div>
+        <div class="admin-coupon-tools">
+          <button id="admin-coupon-refresh" class="admin-api-back admin-spring-button" type="button">刷新</button>
+        </div>
+      </div>
+
+      <form id="admin-coupon-filter-form" class="admin-risk-ip-filter-form admin-coupon-filter-form">
+        <label class="admin-risk-ip-field">
+          <span>优惠券名称</span>
+          <input id="admin-coupon-filter-name" type="search" autocomplete="off" placeholder="按优惠券名称搜索" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>状态</span>
+          <select id="admin-coupon-filter-status">
+            <option value="">全部状态</option>
+            <option value="DRAFT">DRAFT</option>
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="DISABLED">DISABLED</option>
+            <option value="EXPIRED">EXPIRED</option>
+            <option value="DELETED">DELETED</option>
+          </select>
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>领取开始不早于</span>
+          <input id="admin-coupon-filter-start-from" type="datetime-local" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>领取结束不晚于</span>
+          <input id="admin-coupon-filter-end-to" type="datetime-local" />
+        </label>
+        <label class="admin-risk-ip-field">
+          <span>每页</span>
+          <input id="admin-coupon-page-size" type="number" min="1" max="100" step="1" value="20" inputmode="numeric" />
+        </label>
+        <div class="admin-risk-ip-actions">
+          <button id="admin-coupon-search" class="admin-nav-button admin-spring-button" type="submit">查询</button>
+          <button id="admin-coupon-filter-reset" class="admin-api-back admin-spring-button" type="button">重置</button>
+        </div>
+      </form>
+
+      <div class="admin-risk-ip-summary admin-coupon-summary">
+        <div><span>优惠券总数</span><strong id="admin-coupon-total">-</strong></div>
+        <div><span>当前页</span><strong id="admin-coupon-page-label">1</strong></div>
+        <div><span>搜索来源</span><strong>DB / ES</strong></div>
+      </div>
+
+      <p id="admin-coupon-status" class="admin-oauth-config-status"></p>
+      <div class="admin-coupon-table" aria-label="优惠券列表">
+        <div class="admin-coupon-row admin-coupon-header">
+          <span>优惠券</span>
+          <span>编码</span>
+          <span>状态</span>
+          <span>库存</span>
+          <span>领取时间</span>
+          <span>有效期</span>
+          <span>操作</span>
+        </div>
+        <div id="admin-coupon-list" class="admin-coupon-list"></div>
+      </div>
+      <div class="admin-risk-ip-pagination">
+        <button id="admin-coupon-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-coupon-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+
+    <article id="admin-coupon-detail-page" class="admin-oauth-config-card admin-product-detail-page admin-coupon-detail-page" hidden>
+      <p id="admin-coupon-detail-status" class="admin-oauth-config-status"></p>
+      <div id="admin-coupon-detail-body" class="admin-product-detail-body"></div>
+    </article>
+  </div>
+</section>

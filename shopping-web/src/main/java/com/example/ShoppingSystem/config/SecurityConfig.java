@@ -24,6 +24,10 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private static final String COUPON_API_PATTERN = "/shopping/user/api/coupons/**";
+    private static final String ORDER_API_PATTERN = "/shopping/user/api/orders/**";
+    private static final String PAYMENT_CALLBACK_PATTERN = "/shopping/api/payments/callback/**";
+
     private static final String[] APP_SECURITY_PATHS = {
             "/",
             "/index.html",
@@ -73,6 +77,8 @@ public class SecurityConfig {
             "/shopping/user/profile",
             "/shopping/user/console",
             "/shopping/user/products/**",
+            "/shopping/user/coupons",
+            "/shopping/user/coupons/**",
             "/shopping/user/forgot-password",
             "/shopping/user/forgot-password/**",
             "/shopping/user/reset-password-url",
@@ -95,7 +101,9 @@ public class SecurityConfig {
             "/shopping/user/security/phone/**",
             "/shopping/user/totp",
             "/shopping/user/totp/**",
-            "/shopping/user/api/coupons/**",
+            COUPON_API_PATTERN,
+            ORDER_API_PATTERN,
+            PAYMENT_CALLBACK_PATTERN,
             "/css/**",
             "/js/**",
             "/images/**",
@@ -159,15 +167,20 @@ public class SecurityConfig {
                                                       RedisStateAuthorizationRequestRepository redisStateAuthorizationRequestRepository,
                                                       OAuth2AuthorizationRequestResolver oauth2AuthorizationRequestResolver,
                                                       OAuth2PreAuthRiskFilter oauth2PreAuthRiskFilter,
-                                                      @Value("${app.coupon.loadtest.bypass-guards:false}") boolean couponLoadtestBypassGuards) throws Exception {
+                                                      @Value("${app.coupon.loadtest.bypass-guards:false}") boolean couponLoadtestBypassGuards,
+                                                      @Value("${app.order.loadtest.bypass-guards:false}") boolean orderLoadtestBypassGuards) throws Exception {
         java.util.List<String> csrfIgnorePaths = new java.util.ArrayList<>(java.util.List.of(
                 "/shopping/auth/preauth/**",
                 "/shopping/admin/**",
                 "/shopping/user/forgot-password",
-                "/shopping/user/forgot-password/**"
+                "/shopping/user/forgot-password/**",
+                PAYMENT_CALLBACK_PATTERN
         ));
         if (couponLoadtestBypassGuards) {
-            csrfIgnorePaths.add("/shopping/user/api/coupons/**");
+            csrfIgnorePaths.add(COUPON_API_PATTERN);
+        }
+        if (orderLoadtestBypassGuards) {
+            csrfIgnorePaths.add(ORDER_API_PATTERN);
         }
         return http
                 .securityMatcher(APP_SECURITY_PATHS)

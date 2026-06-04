@@ -92,6 +92,29 @@ public class StaticController {
         return htmlPage("product-detail.html");
     }
 
+    @GetMapping("/shopping/user/checkout/{skuId}")
+    public ResponseEntity<Resource> checkoutPage() {
+        return htmlPage("checkout.html");
+    }
+
+    @GetMapping({
+            "/shopping/user/orders",
+            "/shopping/user/orders/{orderNo}"
+    })
+    public ResponseEntity<Resource> ordersPage() {
+        return htmlPage("orders.html");
+    }
+
+    @GetMapping({
+            "/shopping/user/coupons",
+            "/shopping/user/coupons/{couponTemplateId}",
+            "/shopping/user/coupons/mine",
+            "/shopping/user/coupons/mine/{userCouponId}"
+    })
+    public ResponseEntity<Resource> couponsPage() {
+        return htmlPage("coupons.html");
+    }
+
     @GetMapping("/shopping/user/security/phone")
     public ResponseEntity<Resource> securityPhonePage() {
         return htmlPage("security-phone.html");

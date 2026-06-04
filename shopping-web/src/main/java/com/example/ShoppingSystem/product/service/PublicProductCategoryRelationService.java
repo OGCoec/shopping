@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.product.service;
 
+import com.example.ShoppingSystem.config.datasource.ProductReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.product.ProductCategoryMapper;
 import com.example.ShoppingSystem.product.dto.ProductCategoryRelationResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -54,15 +55,18 @@ public class PublicProductCategoryRelationService {
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
     private final ProductCategoryBloomService categoryBloomService;
+    private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
 
     public PublicProductCategoryRelationService(ProductCategoryMapper productCategoryMapper,
                                                 StringRedisTemplate stringRedisTemplate,
                                                 ObjectMapper objectMapper,
-                                                ProductCategoryBloomService categoryBloomService) {
+                                                ProductCategoryBloomService categoryBloomService,
+                                                ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
         this.productCategoryMapper = productCategoryMapper;
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
         this.categoryBloomService = categoryBloomService;
+        this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
     }
 
     public ProductCategoryRelationResponse getRelation(Long id) {
@@ -132,7 +136,8 @@ public class PublicProductCategoryRelationService {
     }
 
     private Map<Long, ProductCategoryRelationResponse> rebuildAndCacheRelations() {
-        List<Map<String, Object>> rows = productCategoryMapper.listActivePublicCategoryRows();
+        List<Map<String, Object>> rows = productReadReplicaQueryExecutor.query(
+                productCategoryMapper::listActivePublicCategoryRows);
         Map<Long, PublicCategoryNode> nodes = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
             PublicCategoryNode node = toPublicNode(row);

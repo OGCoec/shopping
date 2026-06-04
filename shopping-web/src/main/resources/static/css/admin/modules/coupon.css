@@ -1,0 +1,188 @@
+.admin-coupon-detail,
+.admin-coupon-card {
+  min-width: 0;
+  align-content: start;
+}
+
+.admin-coupon-tools,
+.admin-coupon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-coupon-filter-form {
+  margin-top: 14px;
+}
+
+.admin-coupon-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-coupon-table,
+.admin-coupon-claims-table {
+  display: grid;
+  overflow: hidden;
+  min-width: 0;
+  border: 1px solid rgba(21, 32, 24, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.admin-coupon-list,
+.admin-coupon-claim-list {
+  display: grid;
+  min-width: 0;
+}
+
+.admin-coupon-row,
+.admin-coupon-claim-row {
+  display: grid;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(21, 32, 24, 0.08);
+}
+
+.admin-coupon-row {
+  grid-template-columns:
+    minmax(190px, 1.3fr)
+    minmax(120px, 0.75fr)
+    minmax(92px, 0.45fr)
+    minmax(90px, 0.45fr)
+    minmax(170px, 0.9fr)
+    minmax(170px, 0.9fr)
+    minmax(90px, 0.42fr);
+}
+
+.admin-coupon-claim-row {
+  grid-template-columns:
+    minmax(210px, 1.15fr)
+    minmax(90px, 0.45fr)
+    minmax(92px, 0.42fr)
+    minmax(150px, 0.7fr)
+    minmax(180px, 0.85fr)
+    minmax(150px, 0.7fr)
+    minmax(150px, 0.7fr);
+}
+
+.admin-coupon-row.is-clickable {
+  cursor: pointer;
+  transition: background 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+}
+
+.admin-coupon-row.is-clickable:hover,
+.admin-coupon-row.is-clickable:focus-visible {
+  background: rgba(21, 32, 24, 0.065);
+  box-shadow: inset 3px 0 0 rgba(23, 151, 114, 0.7);
+  filter: brightness(0.97);
+  outline: none;
+}
+
+.admin-coupon-row:last-child,
+.admin-coupon-claim-row:last-child {
+  border-bottom: 0;
+}
+
+.admin-coupon-header,
+.admin-coupon-claim-header {
+  background: rgba(238, 244, 238, 0.72);
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.admin-coupon-name-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-coupon-name-cell strong,
+.admin-coupon-name-cell small,
+.admin-coupon-cell,
+.admin-coupon-row span,
+.admin-coupon-claim-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-coupon-name-cell strong,
+.admin-coupon-cell {
+  color: var(--admin-ink);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.admin-coupon-name-cell small {
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.admin-coupon-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: rgba(100, 116, 139, 0.14);
+  color: #334155;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+}
+
+.admin-coupon-status-badge.is-active {
+  background: rgba(22, 163, 74, 0.14);
+  color: #15803d;
+}
+
+.admin-coupon-status-badge.is-used {
+  background: rgba(37, 99, 235, 0.14);
+  color: #1d4ed8;
+}
+
+.admin-coupon-status-badge.is-locked {
+  background: rgba(217, 119, 6, 0.16);
+  color: #b45309;
+}
+
+.admin-coupon-status-badge.is-disabled {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.admin-coupon-status-badge.is-draft {
+  background: rgba(100, 116, 139, 0.14);
+  color: #475569;
+}
+
+.admin-coupon-empty {
+  padding: 22px;
+  color: var(--admin-muted);
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.admin-coupon-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-coupon-claims-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-coupon-claims-filter {
+  margin-top: 0;
+}

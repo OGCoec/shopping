@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.order.PaymentRefundMapper">
+
+    <sql id="RefundColumns">
+        id,
+        refund_no AS "refundNo",
+        order_no AS "orderNo",
+        user_id AS "userId",
+        payment_provider AS "paymentProvider",
+        external_trade_no AS "externalTradeNo",
+        external_refund_no AS "externalRefundNo",
+        payment_callback_id AS "paymentCallbackId",
+        paid_amount_yuan AS "paidAmountYuan",
+        refund_amount_yuan AS "refundAmountYuan",
+        currency,
+        status,
+        source,
+        reason_code AS "reasonCode",
+        reason_detail AS "reasonDetail",
+        order_status_when_detected AS "orderStatusWhenDetected",
+        detected_at AS "detectedAt",
+        detection_batch_no AS "detectionBatchNo",
+        approved_admin_id AS "approvedAdminId",
+        approved_at AS "approvedAt",
+        rejected_admin_id AS "rejectedAdminId",
+        rejected_at AS "rejectedAt",
+        reject_reason AS "rejectReason",
+        refunded_admin_id AS "refundedAdminId",
+        refunded_at AS "refundedAt",
+        refund_started_at AS "refundStartedAt",
+        retry_count AS "retryCount",
+        next_retry_at AS "nextRetryAt",
+        last_error_code AS "lastErrorCode",
+        last_error_message AS "lastErrorMessage",
+        refund_proof_no AS "refundProofNo",
+        refund_proof_url AS "refundProofUrl",
+        admin_remark AS "adminRemark",
+        user_message AS "userMessage",
+        snapshot_json::text AS "snapshotJson",
+        extra_json::text AS "extraJson",
+        idempotency_key AS "idempotencyKey",
+        version,
+        created_at AS "createdAt",
+        updated_at AS "updatedAt"
+    </sql>
+
+    <select id="insertRefundIgnore" resultType="map">
+        <![CDATA[
+WITH inserted AS (
+    INSERT INTO payment_refund_record (
+        refund_no,
+        order_no,
+        user_id,
+        payment_provider,
+        external_trade_no,
+        payment_callback_id,
+        paid_amount_yuan,
+        refund_amount_yuan,
+        currency,
+        status,
+        source,
+        reason_code,
+        reason_detail,
+        order_status_when_detected,
+        detected_at,
+        detection_batch_no,
+        user_message,
+        snapshot_json,
+        extra_json,
+        idempotency_key,
+        created_at,
+        updated_at
+    )
+    VALUES (
+        #{refundNo},
+        #{orderNo},
+        #{userId},
+        #{paymentProvider},
+        #{externalTradeNo},
+        #{paymentCallbackId},
+        #{paidAmountYuan},
+        #{refundAmountYuan},
+        #{currency},
+        'REFUND_PENDING',
+        #{source},
+        #{reasonCode},
+        #{reasonDetail},
+        #{orderStatusWhenDetected},
+        #{detectedAt},
+        #{detectionBatchNo},
+        #{userMessage},
+        CAST(#{snapshotJson} AS jsonb),
+        CAST(#{extraJson} AS jsonb),
+        #{idempotencyKey},
+        NOW(),
+        NOW()
+    )
+    ON CONFLICT (idempotency_key) DO NOTHING
+    RETURNING *
+)
+        ]]>
+SELECT <include refid="RefundColumns"/>
+FROM inserted
+UNION ALL
+SELECT <include refid="RefundColumns"/>
+FROM payment_refund_record
+WHERE idempotency_key = #{idempotencyKey}
+  AND NOT EXISTS (SELECT 1 FROM inserted)
+LIMIT 1
+    </select>
+
+    <select id="batchInsertRefundIgnore" resultType="map">
+        <![CDATA[
+WITH raw AS (
+    SELECT row_number() OVER () AS rn,
+           callback_no,
+           refund_no,
+           order_no,
+           user_id,
+           payment_provider,
+           external_trade_no,
+           payment_callback_id,
+           paid_amount_yuan,
+           refund_amount_yuan,
+           currency,
+           source,
+           reason_code,
+           reason_detail,
+           order_status_when_detected,
+           detected_at_epoch_ms,
+           detection_batch_no,
+           user_message,
+           snapshot_json,
+           extra_json,
+           idempotency_key
+    FROM jsonb_to_recordset(CAST(#{refundsJson} AS jsonb)) AS refund(
+        callback_no text,
+        refund_no text,
+        order_no text,
+        user_id bigint,
+        payment_provider text,
+        external_trade_no text,
+        payment_callback_id text,
+        paid_amount_yuan numeric,
+        refund_amount_yuan numeric,
+        currency text,
+        source text,
+        reason_code text,
+        reason_detail text,
+        order_status_when_detected text,
+        detected_at_epoch_ms bigint,
+        detection_batch_no text,
+        user_message text,
+        snapshot_json text,
+        extra_json text,
+        idempotency_key text
+    )
+),
+inserted AS (
+    INSERT INTO payment_refund_record (
+        refund_no,
+        order_no,
+        user_id,
+        payment_provider,
+        external_trade_no,
+        payment_callback_id,
+        paid_amount_yuan,
+        refund_amount_yuan,
+        currency,
+        status,
+        source,
+        reason_code,
+        reason_detail,
+        order_status_when_detected,
+        detected_at,
+        detection_batch_no,
+        user_message,
+        snapshot_json,
+        extra_json,
+        idempotency_key,
+        created_at,
+        updated_at
+    )
+    SELECT refund_no,
+           order_no,
+           user_id,
+           payment_provider,
+           external_trade_no,
+           payment_callback_id,
+           paid_amount_yuan,
+           refund_amount_yuan,
+           currency,
+           'REFUND_PENDING',
+           source,
+           reason_code,
+           reason_detail,
+           order_status_when_detected,
+           to_timestamp(detected_at_epoch_ms / 1000.0),
+           detection_batch_no,
+           user_message,
+           CAST(snapshot_json AS jsonb),
+           CAST(extra_json AS jsonb),
+           idempotency_key,
+           NOW(),
+           NOW()
+    FROM raw
+    ORDER BY rn
+    ON CONFLICT (idempotency_key) DO NOTHING
+    RETURNING *
+),
+existing AS (
+    SELECT raw.rn,
+           raw.callback_no,
+           r.*
+    FROM raw
+    INNER JOIN payment_refund_record r ON r.idempotency_key = raw.idempotency_key
+)
+        ]]>
+SELECT existing.callback_no AS "callbackNo",
+       existing.id,
+       existing.refund_no AS "refundNo",
+       existing.order_no AS "orderNo",
+       existing.user_id AS "userId",
+       existing.payment_provider AS "paymentProvider",
+       existing.external_trade_no AS "externalTradeNo",
+       existing.external_refund_no AS "externalRefundNo",
+       existing.payment_callback_id AS "paymentCallbackId",
+       existing.paid_amount_yuan AS "paidAmountYuan",
+       existing.refund_amount_yuan AS "refundAmountYuan",
+       existing.currency,
+       existing.status,
+       existing.source,
+       existing.reason_code AS "reasonCode",
+       existing.reason_detail AS "reasonDetail",
+       existing.order_status_when_detected AS "orderStatusWhenDetected",
+       existing.detected_at AS "detectedAt",
+       existing.detection_batch_no AS "detectionBatchNo",
+       existing.version,
+       existing.created_at AS "createdAt",
+       existing.updated_at AS "updatedAt"
+FROM existing
+ORDER BY existing.rn
+    </select>
+
+    <select id="findByIdempotencyKey" resultType="map">
+        SELECT <include refid="RefundColumns"/>
+        FROM payment_refund_record
+        WHERE idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="findByRefundNo" resultType="map">
+        SELECT <include refid="RefundColumns"/>
+        FROM payment_refund_record
+        WHERE refund_no = #{refundNo}
+    </select>
+
+    <sql id="AdminRefundFilters">
+        <where>
+            <if test="status != null and status != ''">
+                status = #{status}
+            </if>
+            <if test="orderNo != null and orderNo != ''">
+                AND order_no = #{orderNo}
+            </if>
+            <if test="refundNo != null and refundNo != ''">
+                AND refund_no = #{refundNo}
+            </if>
+            <if test="source != null and source != ''">
+                AND source = #{source}
+            </if>
+            <if test="reasonCode != null and reasonCode != ''">
+                AND reason_code = #{reasonCode}
+            </if>
+        </where>
+    </sql>
+
+    <select id="pageForAdmin" resultType="map">
+        SELECT <include refid="RefundColumns"/>
+        FROM payment_refund_record
+        <include refid="AdminRefundFilters"/>
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForAdmin" resultType="long">
+        SELECT COUNT(*)
+        FROM payment_refund_record
+        <include refid="AdminRefundFilters"/>
+    </select>
+
+    <select id="pageForUserOrder" resultType="map">
+        SELECT <include refid="RefundColumns"/>
+        FROM payment_refund_record
+        WHERE user_id = #{userId}
+          AND order_no = #{orderNo}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForUserOrder" resultType="long">
+        SELECT COUNT(*)
+        FROM payment_refund_record
+        WHERE user_id = #{userId}
+          AND order_no = #{orderNo}
+    </select>
+
+    <select id="approve" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE payment_refund_record
+    SET status = 'REFUND_APPROVED',
+        approved_admin_id = #{adminId},
+        approved_at = NOW(),
+        admin_remark = #{adminRemark},
+        user_message = COALESCE(#{userMessage}, user_message),
+        updated_at = NOW(),
+        version = version + 1
+    WHERE refund_no = #{refundNo}
+      AND status = 'REFUND_PENDING'
+      AND version = #{version}
+    RETURNING *
+)
+        ]]>
+SELECT <include refid="RefundColumns"/>
+FROM updated
+    </select>
+
+    <select id="reject" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE payment_refund_record
+    SET status = 'REFUND_REJECTED',
+        rejected_admin_id = #{adminId},
+        rejected_at = NOW(),
+        reject_reason = #{rejectReason},
+        admin_remark = #{adminRemark},
+        updated_at = NOW(),
+        version = version + 1
+    WHERE refund_no = #{refundNo}
+      AND status = 'REFUND_PENDING'
+      AND version = #{version}
+    RETURNING *
+)
+        ]]>
+SELECT <include refid="RefundColumns"/>
+FROM updated
+    </select>
+
+    <select id="markRefunded" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE payment_refund_record
+    SET status = 'REFUNDED',
+        refunded_admin_id = #{adminId},
+        refunded_at = NOW(),
+        refund_proof_no = #{refundProofNo},
+        refund_proof_url = #{refundProofUrl},
+        admin_remark = #{adminRemark},
+        last_error_code = NULL,
+        last_error_message = NULL,
+        updated_at = NOW(),
+        version = version + 1
+    WHERE refund_no = #{refundNo}
+      AND status IN ('REFUND_PENDING', 'REFUND_APPROVED', 'REFUND_FAILED')
+      AND version = #{version}
+    RETURNING *
+)
+        ]]>
+SELECT <include refid="RefundColumns"/>
+FROM updated
+    </select>
+
+    <select id="claimDispatchBatch" resultType="map">
+        <![CDATA[
+WITH picked AS (
+    SELECT id
+    FROM payment_refund_record
+    WHERE (
+        status = 'REFUND_PENDING'
+        OR (
+            status = 'REFUND_FAILED'
+            AND retry_count < #{maxRetry}
+            AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+        )
+    )
+    ORDER BY created_at ASC, id ASC
+    LIMIT #{limit}
+    FOR UPDATE SKIP LOCKED
+),
+updated AS (
+    UPDATE payment_refund_record r
+    SET status = 'REFUNDING',
+        refund_started_at = COALESCE(refund_started_at, NOW()),
+        last_error_code = NULL,
+        last_error_message = NULL,
+        updated_at = NOW(),
+        version = r.version + 1
+    FROM picked
+    WHERE r.id = picked.id
+    RETURNING r.*
+)
+        ]]>
+SELECT <include refid="RefundColumns"/>
+FROM updated
+    </select>
+
+    <update id="batchWriteDispatchResults">
+        <![CDATA[
+WITH result_rows AS (
+    SELECT *
+    FROM jsonb_to_recordset(CAST(#{resultsJson} AS jsonb)) AS raw(
+        refund_no text,
+        status text,
+        external_refund_no text,
+        last_error_code text,
+        last_error_message text,
+        retry_count integer,
+        next_retry_at_epoch_ms bigint,
+        refunded_at_epoch_ms bigint
+    )
+)
+UPDATE payment_refund_record r
+SET status = result_rows.status,
+    external_refund_no = result_rows.external_refund_no,
+    last_error_code = result_rows.last_error_code,
+    last_error_message = result_rows.last_error_message,
+    retry_count = GREATEST(result_rows.retry_count, r.retry_count),
+    next_retry_at = CASE
+        WHEN result_rows.next_retry_at_epoch_ms IS NULL THEN NULL
+        ELSE to_timestamp(result_rows.next_retry_at_epoch_ms / 1000.0)
+    END,
+    refunded_at = CASE
+        WHEN result_rows.refunded_at_epoch_ms IS NULL THEN r.refunded_at
+        ELSE to_timestamp(result_rows.refunded_at_epoch_ms / 1000.0)
+    END,
+    updated_at = NOW(),
+    version = r.version + 1
+FROM result_rows
+WHERE r.refund_no = result_rows.refund_no
+  AND r.status = 'REFUNDING'
+        ]]>
+    </update>
+</mapper>

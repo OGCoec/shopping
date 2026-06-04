@@ -240,6 +240,7 @@ public class Ip2LocationVerifyMailReaderService {
                 localProxyResolver.resolveOrConfigured(configuredHost, configuredPort);
         List<ProxyTarget> targets = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
+        addDirectTarget(targets, seen);
         InetSocketAddress proxyAddress = proxySelection.address();
         if (proxyAddress != null) {
             addProxyTarget(targets, seen, proxyAddress.getHostString(), proxyAddress.getPort());
@@ -249,9 +250,6 @@ public class Ip2LocationVerifyMailReaderService {
             for (String rawPort : candidateProxyPorts.split(",")) {
                 addProxyTarget(targets, seen, configuredHost, parseProxyPort(rawPort));
             }
-        }
-        if (targets.isEmpty()) {
-            targets.add(new ProxyTarget("", -1));
         }
         return targets;
     }
@@ -267,6 +265,12 @@ public class Ip2LocationVerifyMailReaderService {
         String key = normalizedHost + ":" + port;
         if (seen.add(key)) {
             targets.add(new ProxyTarget(normalizedHost, port));
+        }
+    }
+
+    private static void addDirectTarget(List<ProxyTarget> targets, Set<String> seen) {
+        if (seen.add("DIRECT")) {
+            targets.add(new ProxyTarget("", -1));
         }
     }
 
