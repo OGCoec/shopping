@@ -28,9 +28,9 @@
         updated_at AS "updatedAt"
     </sql>
 
-    <select id="insertCallbackIgnore" resultType="map">
+    <select id="upsertCallbackIdempotent" resultType="map">
         <![CDATA[
-WITH inserted AS (
+WITH upserted AS (
     INSERT INTO payment_callback_inbox (
         callback_no,
         order_no,
@@ -57,18 +57,13 @@ WITH inserted AS (
         NOW(),
         NOW()
     )
-    ON CONFLICT (idempotency_key) DO NOTHING
+    ON CONFLICT (idempotency_key) DO UPDATE
+    SET idempotency_key = payment_callback_inbox.idempotency_key
     RETURNING *
 )
         ]]>
 SELECT <include refid="CallbackColumns"/>
-FROM inserted
-UNION ALL
-SELECT <include refid="CallbackColumns"/>
-FROM payment_callback_inbox
-WHERE idempotency_key = #{idempotencyKey}
-  AND NOT EXISTS (SELECT 1 FROM inserted)
-LIMIT 1
+FROM upserted
     </select>
 
     <select id="claimDispatchBatch" resultType="map">

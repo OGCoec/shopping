@@ -35,6 +35,7 @@ public final class OpenAiMailImapScanner {
     private final ImapFolderScanPlanner folderScanPlanner;
     private final OpenAiMailMatcher mailMatcher;
     private final OpenAiMailBodyExtractor bodyExtractor;
+    private final String serviceLabel;
 
     public OpenAiMailImapScanner(String imapHost,
                                  int imapPort,
@@ -46,6 +47,30 @@ public final class OpenAiMailImapScanner {
                                  ImapFolderScanPlanner folderScanPlanner,
                                  OpenAiMailMatcher mailMatcher,
                                  OpenAiMailBodyExtractor bodyExtractor) {
+        this(imapHost,
+                imapPort,
+                fetchCount,
+                maxCandidateMessages,
+                socksHost,
+                socksPort,
+                requestTimeout,
+                folderScanPlanner,
+                mailMatcher,
+                bodyExtractor,
+                "OpenAI");
+    }
+
+    public OpenAiMailImapScanner(String imapHost,
+                                 int imapPort,
+                                 int fetchCount,
+                                 int maxCandidateMessages,
+                                 String socksHost,
+                                 int socksPort,
+                                 Duration requestTimeout,
+                                 ImapFolderScanPlanner folderScanPlanner,
+                                 OpenAiMailMatcher mailMatcher,
+                                 OpenAiMailBodyExtractor bodyExtractor,
+                                 String serviceLabel) {
         this.imapHost = imapHost;
         this.imapPort = imapPort;
         this.fetchCount = Math.max(1, fetchCount);
@@ -56,6 +81,7 @@ public final class OpenAiMailImapScanner {
         this.folderScanPlanner = folderScanPlanner;
         this.mailMatcher = mailMatcher;
         this.bodyExtractor = bodyExtractor;
+        this.serviceLabel = isBlank(serviceLabel) ? "mail" : serviceLabel.trim();
     }
 
     public MailStatusScanResult scanStatus(String email, String accessToken, Duration scanTimeout) {
@@ -91,10 +117,11 @@ public final class OpenAiMailImapScanner {
                     firstCandidate.receivedAt()
             );
         } catch (AuthenticationFailedException e) {
-            log.warn("OpenAI mail IMAP XOAUTH2 authentication failed, email={}, reason={}", email, e.getMessage());
+            log.warn("{} mail IMAP XOAUTH2 authentication failed, email={}, reason={}",
+                    serviceLabel, email, e.getMessage());
             return MailStatusScanResult.imapAuthFailed();
         } catch (MessagingException e) {
-            log.warn("OpenAI mail IMAP read failed, email={}, reason={}", email, e.getMessage());
+            log.warn("{} mail IMAP read failed, email={}, reason={}", serviceLabel, email, e.getMessage());
             return MailStatusScanResult.imapError("imap_error");
         } finally {
             closeQuietly(store);
@@ -104,8 +131,8 @@ public final class OpenAiMailImapScanner {
     private Store connect(String email, String accessToken) throws MessagingException {
         Session session = Session.getInstance(buildImapProperties());
         Store store = session.getStore("imaps");
-        log.info("Connecting IMAP via XOAUTH2 for OpenAI mail status check, host={}, port={}, route={}, email={}",
-                imapHost, imapPort, routeLabel(), email);
+        log.info("Connecting IMAP via XOAUTH2 for {} mail status check, host={}, port={}, route={}, email={}",
+                serviceLabel, imapHost, imapPort, routeLabel(), email);
         store.connect(imapHost, imapPort, email, accessToken);
         return store;
     }
@@ -167,8 +194,8 @@ public final class OpenAiMailImapScanner {
             }
             return new FolderScanOutcome(null, firstCandidate);
         } catch (MessagingException | IOException e) {
-            log.warn("OpenAI mail IMAP folder scan failed, email={}, folder={}, reason={}",
-                    email, folderName, e.getMessage());
+            log.warn("{} mail IMAP folder scan failed, email={}, folder={}, reason={}",
+                    serviceLabel, email, folderName, e.getMessage());
             return FolderScanOutcome.result(MailStatusScanResult.imapError("folder_read_error_" + sanitizeReason(folderName)));
         } finally {
             closeQuietly(folder);
@@ -182,8 +209,8 @@ public final class OpenAiMailImapScanner {
             try {
                 messages = folder.search(searchTerm);
             } catch (MessagingException e) {
-                log.warn("OpenAI mail IMAP candidate search failed, folder={}, reason={}",
-                        folder.getFullName(), e.getMessage());
+                log.warn("{} mail IMAP candidate search failed, folder={}, reason={}",
+                        serviceLabel, folder.getFullName(), e.getMessage());
             }
         }
         if (messages == null || messages.length == 0) {

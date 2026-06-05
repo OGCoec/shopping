@@ -244,12 +244,14 @@
   font-weight: 900;
 }
 
-.admin-openai-mail-result-row[data-status="DETECTED_EVIDENCE_FOUND"] {
+.admin-openai-mail-result-row[data-status="DETECTED_EVIDENCE_FOUND"],
+.admin-openai-mail-result-row[data-status="KIRO_RESTRICTED_EVIDENCE_FOUND"] {
   border-color: rgba(173, 63, 36, 0.2);
   background: rgba(255, 240, 235, 0.58);
 }
 
-.admin-openai-mail-result-row[data-status="REGISTERED_NORMAL"] {
+.admin-openai-mail-result-row[data-status="REGISTERED_NORMAL"],
+.admin-openai-mail-result-row[data-status="KIRO_REGISTERED_NORMAL"] {
   border-color: rgba(15, 139, 110, 0.16);
   background: rgba(239, 249, 244, 0.56);
 }

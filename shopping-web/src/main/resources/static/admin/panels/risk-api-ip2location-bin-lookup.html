@@ -1,0 +1,80 @@
+<section class="admin-panel" data-admin-panel="riskApiIp2LocationBinLookup">
+  <div class="admin-api-detail admin-ip2location-bin-detail">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="riskApiIp2Location">返回 IP2Location API</button>
+    <article class="admin-oauth-config-card admin-ip2location-bin-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Local BIN wildcard lookup</span>
+          <strong>IP2Location BIN 查询</strong>
+        </div>
+        <div class="admin-oauth-config-tools">
+          <button id="admin-ip2location-bin-clear" class="admin-ghost-button admin-spring-button" type="button">清空</button>
+        </div>
+      </div>
+
+      <form id="admin-ip2location-bin-form" class="admin-ip2location-bin-form">
+        <label class="admin-ip2location-bin-field">
+          <span>IP 模式</span>
+          <input id="admin-ip2location-bin-pattern" type="search" autocomplete="off" inputmode="decimal" placeholder="154.*.160.238" />
+        </label>
+
+        <label class="admin-ip2location-bin-field">
+          <span>国家/地区</span>
+          <input id="admin-ip2location-bin-country-code" type="hidden" value="" />
+          <div id="admin-ip2location-bin-country-picker" class="admin-risk-country-picker" data-open="false">
+            <button id="admin-ip2location-bin-country-trigger" class="admin-risk-country-trigger admin-spring-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <span class="admin-risk-country-trigger-main">
+                <span id="admin-ip2location-bin-country-flag" class="admin-risk-country-flag"></span>
+                <span id="admin-ip2location-bin-country-name">全部国家/地区</span>
+              </span>
+              <span id="admin-ip2location-bin-country-dial" class="admin-risk-country-dial">All</span>
+            </button>
+            <div id="admin-ip2location-bin-country-popover" class="admin-risk-country-popover">
+              <input id="admin-ip2location-bin-country-search" class="admin-risk-country-search" type="search" autocomplete="off" placeholder="输入国家、ISO2 代码或区号" />
+              <ul id="admin-ip2location-bin-country-list" class="admin-risk-country-list" role="listbox"></ul>
+            </div>
+          </div>
+        </label>
+
+        <label class="admin-ip2location-bin-field">
+          <span>地区/州</span>
+          <input id="admin-ip2location-bin-region" type="search" autocomplete="off" placeholder="California" />
+        </label>
+
+        <label class="admin-ip2location-bin-field">
+          <span>城市</span>
+          <input id="admin-ip2location-bin-city" type="search" autocomplete="off" placeholder="San Jose" />
+        </label>
+
+        <label class="admin-ip2location-bin-field">
+          <span>每页</span>
+          <input id="admin-ip2location-bin-page-size" type="number" min="1" max="500" step="1" value="100" inputmode="numeric" />
+        </label>
+
+        <label class="admin-ip2location-bin-toggle">
+          <input id="admin-ip2location-bin-include-unmatched" type="checkbox" />
+          <span>显示不匹配 IP</span>
+        </label>
+
+        <div class="admin-ip2location-bin-actions">
+          <button id="admin-ip2location-bin-submit" class="admin-nav-button admin-spring-button" type="submit">开始查询</button>
+        </div>
+      </form>
+
+      <div class="admin-ip2location-bin-summary">
+        <div><span>候选</span><strong id="admin-ip2location-bin-candidates">-</strong></div>
+        <div><span>已查询</span><strong id="admin-ip2location-bin-queried">-</strong></div>
+        <div><span>匹配</span><strong id="admin-ip2location-bin-matched">-</strong></div>
+        <div><span>不匹配</span><strong id="admin-ip2location-bin-unmatched">-</strong></div>
+        <div><span>当前页</span><strong id="admin-ip2location-bin-page-label">1</strong></div>
+      </div>
+
+      <p id="admin-ip2location-bin-status" class="admin-oauth-config-status">输入 IPv4 通配模式后开始查询，本工具只读取本地 BIN，不消耗 IP2Location.io 额度。</p>
+      <div id="admin-ip2location-bin-list" class="admin-ip2location-bin-list"></div>
+      <div class="admin-ip2location-bin-pagination">
+        <button id="admin-ip2location-bin-prev" class="admin-api-back admin-spring-button" type="button">上一页</button>
+        <button id="admin-ip2location-bin-next" class="admin-api-back admin-spring-button" type="button">下一页</button>
+      </div>
+    </article>
+  </div>
+</section>

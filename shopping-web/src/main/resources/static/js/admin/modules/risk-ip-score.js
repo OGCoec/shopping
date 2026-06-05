@@ -38,6 +38,10 @@
   const SHARED_DIAL_CODE_PREFERRED_ISO2 = {
     "+1": "us"
   };
+  const COUNTRY_CODE_ALIASES = {
+    uk: "gb",
+    usa: "us"
+  };
   const LEVEL_LABELS = {
     L1: "L1 · 8500+",
     L2: "L2 · 7500-8499",
@@ -58,6 +62,26 @@
     }
     const normalized = rawCountryCode.trim().toLowerCase();
     return /^[a-z]{2}$/.test(normalized) ? normalized : "";
+  }
+
+  function normalizeCountryCodeSearch(rawCountryCode) {
+    if (typeof rawCountryCode !== "string") {
+      return "";
+    }
+    const normalized = rawCountryCode.trim().toLowerCase();
+    if (!/^[a-z]{1,3}$/.test(normalized)) {
+      return "";
+    }
+    return COUNTRY_CODE_ALIASES[normalized] || normalized;
+  }
+
+  function formatCountryCode(country) {
+    return country?.iso2 ? country.iso2.toUpperCase() : "All";
+  }
+
+  function normalizeSearchInputValue(rawValue) {
+    const value = typeof rawValue === "string" ? rawValue.trim() : "";
+    return /^[a-z]{1,3}$/i.test(value) ? value.toUpperCase() : value;
   }
 
   function normalizeDialCode(rawDialCode) {
@@ -133,6 +157,23 @@
     }
     const lengthOrder = firstDigits.length - secondDigits.length;
     return lengthOrder !== 0 ? lengthOrder : compareCountries(firstCountry, secondCountry);
+  }
+
+  function compareCountriesByCountryCodeSearch(firstCountry, secondCountry, queryCountryCode) {
+    if (!firstCountry.iso2 || !secondCountry.iso2) {
+      return compareCountries(firstCountry, secondCountry);
+    }
+    const firstExact = firstCountry.iso2 === queryCountryCode;
+    const secondExact = secondCountry.iso2 === queryCountryCode;
+    if (firstExact !== secondExact) {
+      return firstExact ? -1 : 1;
+    }
+    const firstStartsWith = firstCountry.iso2.startsWith(queryCountryCode);
+    const secondStartsWith = secondCountry.iso2.startsWith(queryCountryCode);
+    if (firstStartsWith !== secondStartsWith) {
+      return firstStartsWith ? -1 : 1;
+    }
+    return compareCountries(firstCountry, secondCountry);
   }
 
   function normalizeAndSortCountries(countries) {
@@ -235,7 +276,13 @@
           this.moveHighlight(1);
         }
       });
-      this.searchInput.addEventListener("input", (event) => this.applyFilter(event.target.value));
+      this.searchInput.addEventListener("input", (event) => {
+        const normalizedValue = normalizeSearchInputValue(event.target.value);
+        if (normalizedValue !== event.target.value) {
+          event.target.value = normalizedValue;
+        }
+        this.applyFilter(normalizedValue);
+      });
       this.searchInput.addEventListener("keydown", (event) => this.handleSearchKeydown(event));
       this.list.addEventListener("mousemove", (event) => {
         const index = this.getOptionIndexFromEventTarget(event.target);
@@ -306,7 +353,9 @@
         return "all".includes(query) || "全部".includes(query);
       }
       const queryDigits = query.replace(/\D/g, "");
+      const queryCountryCode = normalizeCountryCodeSearch(query);
       return (queryDigits && getDialCodeDigits(country).includes(queryDigits))
+        || (queryCountryCode && country.iso2.includes(queryCountryCode))
         || country.name.toLowerCase().includes(query)
         || country.iso2.toLowerCase().includes(query)
         || country.dialCode.toLowerCase().includes(query);
@@ -315,10 +364,14 @@
     applyFilter(keyword) {
       const query = (keyword || "").trim().toLowerCase();
       const queryDigits = query.replace(/\D/g, "");
+      const queryCountryCode = normalizeCountryCodeSearch(query);
       this.filteredCountries = query
         ? this.allCountries.filter((country) => this.matchesCountryQuery(country, query))
         : [...this.allCountries];
-      if (queryDigits) {
+      if (queryCountryCode) {
+        this.filteredCountries.sort((firstCountry, secondCountry) =>
+          compareCountriesByCountryCodeSearch(firstCountry, secondCountry, queryCountryCode));
+      } else if (queryDigits) {
         this.filteredCountries.sort((firstCountry, secondCountry) =>
           compareCountriesByDialSearch(firstCountry, secondCountry, queryDigits));
       }
@@ -354,7 +407,7 @@
         name.textContent = country.name;
         const code = document.createElement("span");
         code.className = "admin-risk-country-option-code";
-        code.textContent = country.dialCode;
+        code.textContent = formatCountryCode(country);
         main.append(flag, name);
         option.append(main, code);
         return option;
@@ -386,7 +439,7 @@
       this.hiddenInput.value = country.iso2 ? country.iso2.toUpperCase() : "";
       this.triggerFlag.className = country.iso2 ? `admin-risk-country-flag fi fi-${country.iso2}` : "admin-risk-country-flag";
       this.triggerName.textContent = country.name;
-      this.triggerDial.textContent = country.dialCode;
+      this.triggerDial.textContent = formatCountryCode(country);
     }
 
     select(country, options = {}) {

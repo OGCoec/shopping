@@ -35,6 +35,18 @@
               "AdminOpenAiMailStatusModule"
           ]
       },
+      "kiroMailStatus": {
+          "route": "mail/kiro/status",
+          "eyebrow": "External APIs / Kiro Mail",
+          "title": "Kiro mailbox status",
+          "copy": "Batch check Outlook and Hotmail mailbox evidence for Kiro account restrictions.",
+          "navTarget": "externalInterfaces",
+          "fragment": "/shopping/admin/panels/kiro-mail-status.html",
+          "module": "AdminKiroMailStatusModule",
+          "modules": [
+              "AdminKiroMailStatusModule"
+          ]
+      },
       "riskCreditScore": {
           "route": "risk-credit-score",
           "eyebrow": "Risk Credit",
@@ -388,6 +400,18 @@
           "modules": [
               "AdminRiskApiConfigModule",
               "AdminIp2LocationQuotaKeysModule"
+          ]
+      },
+      "riskApiIp2LocationBinLookup": {
+          "route": "ip-risk/ip2location/bin",
+          "eyebrow": "Risk API / IP2Location / Local BIN",
+          "title": "IP2Location BIN 查询",
+          "copy": "按 IPv4 通配模式查询本地 IP2Location BIN，不消耗外部 API 额度。",
+          "navTarget": "externalInterfaces",
+          "fragment": "/shopping/admin/panels/risk-api-ip2location-bin-lookup.html",
+          "module": "AdminIp2LocationBinLookupModule",
+          "modules": [
+              "AdminIp2LocationBinLookupModule"
           ]
       },
       "riskApiIping": {

@@ -1,0 +1,114 @@
+<section class="admin-panel" data-admin-panel="kiroMailStatus">
+  <div class="admin-api-detail admin-openai-mail-status">
+    <button class="admin-api-back admin-spring-button" type="button" data-section-target="externalInterfaces">Back to External APIs</button>
+
+    <section class="admin-oauth-config-card admin-openai-mail-card">
+      <div class="admin-oauth-config-heading">
+        <div class="admin-oauth-config-title">
+          <span>Kiro / AmazonAWS mailbox evidence</span>
+          <strong>Kiro status check</strong>
+        </div>
+        <div class="admin-oauth-config-tools">
+          <label class="admin-openai-mail-thread-field">
+            <span>Threads</span>
+            <input id="admin-kiro-mail-thread-pool" type="number" min="1" max="64" step="1" value="4" />
+          </label>
+          <input id="admin-kiro-mail-file" class="admin-openai-mail-file-input" type="file" accept=".txt,text/plain" />
+          <button id="admin-kiro-mail-import" class="admin-ghost-button admin-spring-button" type="button">Import txt</button>
+          <button id="admin-kiro-mail-clear" class="admin-ghost-button admin-spring-button" type="button">Clear</button>
+          <button id="admin-kiro-mail-run" class="admin-ghost-button admin-spring-button" type="button">Start check</button>
+        </div>
+      </div>
+
+      <p id="admin-kiro-mail-status" class="admin-oauth-config-status">
+        Paste Outlook or Hotmail credentials, one per line. The backend creates one Kiro job and runs at most 64 IMAP checks concurrently.
+      </p>
+
+      <label class="admin-openai-mail-input-label">
+        <span>Mailbox credentials</span>
+        <textarea id="admin-kiro-mail-credentials" rows="10" spellcheck="false" placeholder="email----password----client_id----refresh_token&#10;email----client_id----refresh_token"></textarea>
+      </label>
+    </section>
+
+    <section class="admin-openai-mail-job-card" aria-live="polite">
+      <div class="admin-openai-mail-job-header">
+        <div>
+          <span>Job</span>
+          <strong id="admin-kiro-mail-job-id">-</strong>
+        </div>
+        <div class="admin-openai-mail-job-state" id="admin-kiro-mail-job-state">IDLE</div>
+      </div>
+      <div class="admin-openai-mail-progress-grid">
+        <div><span>Requested</span><strong id="admin-kiro-mail-requested">0</strong></div>
+        <div><span>Processed</span><strong id="admin-kiro-mail-processed">0</strong></div>
+        <div><span>Running</span><strong id="admin-kiro-mail-running">0</strong></div>
+        <div><span>Queued</span><strong id="admin-kiro-mail-queued">0</strong></div>
+        <div><span>Threads</span><strong id="admin-kiro-mail-threads">0</strong></div>
+        <div><span>Elapsed</span><strong id="admin-kiro-mail-elapsed">0s</strong></div>
+      </div>
+      <div class="admin-openai-mail-summary-grid">
+        <div data-summary-status="notRegistered"><span>Not found</span><strong id="admin-kiro-mail-summary-not-registered">0</strong></div>
+        <div data-summary-status="registeredNormal"><span>Registered normal</span><strong id="admin-kiro-mail-summary-registered-normal">0</strong></div>
+        <div data-summary-status="detectedEvidenceFound"><span>Restricted evidence</span><strong id="admin-kiro-mail-summary-detected">0</strong></div>
+        <div data-summary-status="duplicate"><span>Duplicate</span><strong id="admin-kiro-mail-summary-duplicate">0</strong></div>
+        <div data-summary-status="failed"><span>Failed</span><strong id="admin-kiro-mail-summary-failed">0</strong></div>
+      </div>
+    </section>
+
+    <section class="admin-openai-mail-export-card">
+      <div class="admin-openai-mail-results-heading">
+        <div>
+          <span>Kiro normal credentials</span>
+          <strong>Local credential lines</strong>
+        </div>
+        <button id="admin-kiro-mail-normal-copy" class="admin-ghost-button admin-spring-button" type="button">Copy</button>
+      </div>
+      <p class="admin-openai-mail-export-note">
+        Only original input lines whose result is KIRO_REGISTERED_NORMAL are collected here. Tokens are never returned by the backend job response.
+      </p>
+      <textarea id="admin-kiro-mail-normal-credentials" rows="6" spellcheck="false" readonly placeholder="Completed KIRO_REGISTERED_NORMAL credential lines will appear here."></textarea>
+      <small id="admin-kiro-mail-normal-count">0 lines</small>
+    </section>
+
+    <section class="admin-openai-mail-export-card">
+      <div class="admin-openai-mail-results-heading">
+        <div>
+          <span>Kiro restricted credentials</span>
+          <strong>Local credential lines</strong>
+        </div>
+        <button id="admin-kiro-mail-restricted-copy" class="admin-ghost-button admin-spring-button" type="button">Copy</button>
+      </div>
+      <p class="admin-openai-mail-export-note">
+        Original input lines whose result is KIRO_RESTRICTED_EVIDENCE_FOUND are collected here for review.
+      </p>
+      <textarea id="admin-kiro-mail-restricted-credentials" rows="6" spellcheck="false" readonly placeholder="Completed KIRO_RESTRICTED_EVIDENCE_FOUND credential lines will appear here."></textarea>
+      <small id="admin-kiro-mail-restricted-count">0 lines</small>
+    </section>
+
+    <section class="admin-openai-mail-export-card">
+      <div class="admin-openai-mail-results-heading">
+        <div>
+          <span>IMAP auth failed credentials</span>
+          <strong>Local credential lines</strong>
+        </div>
+        <button id="admin-kiro-mail-imap-auth-copy" class="admin-ghost-button admin-spring-button" type="button">Copy</button>
+      </div>
+      <p class="admin-openai-mail-export-note">
+        Original input lines whose result is IMAP_AUTH_FAILED are collected here for retrying with another mail access path.
+      </p>
+      <textarea id="admin-kiro-mail-imap-auth-credentials" rows="6" spellcheck="false" readonly placeholder="Completed IMAP_AUTH_FAILED credential lines will appear here."></textarea>
+      <small id="admin-kiro-mail-imap-auth-count">0 lines</small>
+    </section>
+
+    <section class="admin-openai-mail-results-card">
+      <div class="admin-openai-mail-results-heading">
+        <div>
+          <span>Results</span>
+          <strong>Kiro mailbox status rows</strong>
+        </div>
+        <small id="admin-kiro-mail-results-count">0 rows</small>
+      </div>
+      <div id="admin-kiro-mail-results" class="admin-openai-mail-results-table"></div>
+    </section>
+  </div>
+</section>

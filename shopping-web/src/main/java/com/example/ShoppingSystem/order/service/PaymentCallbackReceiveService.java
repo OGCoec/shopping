@@ -49,7 +49,7 @@ public class PaymentCallbackReceiveService {
         OffsetDateTime paidAt = request == null || request.paidAt() == null ? OffsetDateTime.now() : request.paidAt();
         BigDecimal paidAmount = normalizePaidAmount(request == null ? null : request.paidAmountYuan());
         String idempotencyKey = stableIdempotencyKey("payment:callback", orderNo, externalTradeNo);
-        Map<String, Object> row = paymentCallbackInboxMapper.insertCallbackIgnore(
+        Map<String, Object> row = paymentCallbackInboxMapper.upsertCallbackIdempotent(
                 nextCallbackNo(),
                 orderNo,
                 externalTradeNo,

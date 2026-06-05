@@ -11,14 +11,14 @@ import java.util.Map;
 @Mapper
 public interface PaymentCallbackInboxMapper {
 
-    Map<String, Object> insertCallbackIgnore(@Param("callbackNo") String callbackNo,
-                                             @Param("orderNo") String orderNo,
-                                             @Param("externalTradeNo") String externalTradeNo,
-                                             @Param("paymentProvider") String paymentProvider,
-                                             @Param("paidAt") OffsetDateTime paidAt,
-                                             @Param("paidAmountYuan") BigDecimal paidAmountYuan,
-                                             @Param("idempotencyKey") String idempotencyKey,
-                                             @Param("rawPayloadJson") String rawPayloadJson);
+    Map<String, Object> upsertCallbackIdempotent(@Param("callbackNo") String callbackNo,
+                                                 @Param("orderNo") String orderNo,
+                                                 @Param("externalTradeNo") String externalTradeNo,
+                                                 @Param("paymentProvider") String paymentProvider,
+                                                 @Param("paidAt") OffsetDateTime paidAt,
+                                                 @Param("paidAmountYuan") BigDecimal paidAmountYuan,
+                                                 @Param("idempotencyKey") String idempotencyKey,
+                                                 @Param("rawPayloadJson") String rawPayloadJson);
 
     List<Map<String, Object>> claimDispatchBatch(@Param("limit") int limit,
                                                  @Param("maxRetry") int maxRetry);

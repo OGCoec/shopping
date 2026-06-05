@@ -2,6 +2,39 @@
 
 This directory contains the local JMeter assets for coupon claim concurrency checks.
 
+## File index
+
+| Type | Path | Purpose |
+| --- | --- | --- |
+| PowerShell runners | `loadtest/scripts/*.ps1` | Run JMeter plans, create per-run output directories, summarize JTL files, and optionally run PostgreSQL verification SQL. |
+| JMeter plans | `loadtest/jmeter/*.jmx` | Cover coupon claim concurrency, hot SKU order creation, soft-close payment, batch payment callback refund, and duplicate callback card-secret delivery. |
+| Verification SQL | `loadtest/sql/*.sql` | Verify database state after RabbitMQ/schedulers finish: claim uniqueness, stock safety, refund rows, callback inbox idempotency, and card-secret delivery. |
+| Manual localhost requests | `loadtest/localhost/*.http` | Hand-run localhost smoke requests for targeted scenarios. |
+| Java seed/export mains | `shopping-web/src/main/java/com/example/ShoppingSystem/tools/loadtest` | Seed users/coupons/SKUs/orders and export access-token or input CSV files used by JMeter. |
+| Local run output | `loadtest-output/` | Stores JTL, logs, HTML reports, CSV inputs, summaries, and app run logs. This directory is ignored by Git. |
+
+Current Java tools:
+
+```text
+CouponLoadtestUserSeedMain
+CouponLoadtestCouponSeedMain
+CouponAccessTokenCsvExportMain
+OrderLoadtestHotSkuSeedMain
+OrderAccessTokenSkuCsvExportMain
+OrderDuplicateCallbackCardSecretSeedMain
+```
+
+Current JMeter plans:
+
+```text
+coupon-claim-same-user.jmx
+coupon-claim-different-users.jmx
+order-create-hot-sku.jmx
+order-soft-close-payment-flow.jmx
+order-callback-batch-refund-flow.jmx
+order-duplicate-callback-card-secret-flow.jmx
+```
+
 ## 1. Start the app for load test
 
 Set the bypass flag before starting Spring Boot:
@@ -233,3 +266,18 @@ For a manual localhost smoke test, generate one order with the seed main and the
 ```text
 loadtest/localhost/order-duplicate-callback-card-secret.http
 ```
+
+## 8. Local result summary
+
+The table below summarizes local `loadtest-output/runs/*/summary.csv` files found on this machine. These generated files are intentionally ignored by Git, so the table is a readable snapshot, not a committed source of truth.
+
+| Scenario | Latest referenced run | Total | Success | Failure | Error rate | Avg ms | P95 ms | QPS | Notes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Duplicate payment callback card secret | `20260604-013126-order-duplicate-callback-card-secret` | 200 | 200 | 0 | 0% | 287.44 | 710 | 72.75 | Latest local run has no JMeter sample failures. |
+| Order soft-close payment | `20260603-095827-order-soft-close-payment` | 595 | 344 | 251 | 42.18% | 1719.46 | 4409 | 0.94 | Includes expected negative business paths; verification SQL is the business acceptance check. |
+| Payment callback batch refund | `20260603-010559-order-callback-batch-refund` | 12 | 12 | 0 | 0% | 731.58 | 992 | 5.56 | Local callback/refund inbox run completed without JMeter sample failures. |
+| Order hot SKU create | `20260601-113009-order-single-hot` | 500 | 500 | 0 | 0% | 2677.62 | 3854 | 86.69 | Local hot SKU order-create run completed without JMeter sample failures. |
+| Coupon same-user claim | `20260531-014004-same` | 500 | 354 | 146 | 29.2% | 2488.71 | 3960 | 106.22 | Same-user scenario expects many duplicate-claim rejections; check `verify-coupon-claim.sql` for DB invariants. |
+| Coupon different-users claim | `20260531-013808-different` | 500 | 462 | 38 | 7.6% | 1923.21 | 2552 | 146.76 | Stock safety scenario may include expected sold-out responses depending on coupon stock. |
+
+For scenarios without a current local summary, use the matching runner and verification SQL listed above. Do not treat a missing `loadtest-output` run as a pass.
