@@ -4,10 +4,11 @@
   const modal = window.AdminModal;
   const router = window.AdminRouter;
   const transition = window.AdminParticleTransition;
+  const securityUrls = window.ShoppingSecurityUrls;
   const accountNode = document.getElementById("admin-console-account");
   const logoutButton = document.getElementById("admin-console-logout");
   const transitionSource = document.querySelector(".admin-split-console") || document.querySelector(".admin-main");
-  const NETWORK_CHECK_ERROR_CODES = new Set(["WEBRTC_SIGNAL_REQUIRED", "WEBRTC_IP_MISMATCH"]);
+  const NETWORK_CHECK_ERROR_CODES = new Set(["WEBRTC_SIGNAL_REQUIRED", "WEBRTC_SIGNAL_UNVERIFIED", "WEBRTC_IP_MISMATCH"]);
   let currentUser = {};
   window.__ADMIN_CONSOLE_JS_VERSION__ = "modular-v32";
 
@@ -18,7 +19,7 @@
   function isNetworkCheckError(error) {
     const status = Number(error?.status || error?.payload?.status || 0);
     const code = String(error?.payload?.error || error?.payload?.code || "");
-    return status === 403 && NETWORK_CHECK_ERROR_CODES.has(code);
+    return (status === 403 || status === 409) && NETWORK_CHECK_ERROR_CODES.has(code);
   }
 
   function revealConsole() {
@@ -116,7 +117,11 @@
       transition?.prewarm?.(transitionSource);
       try {
         const response = await api.request("/shopping/admin/logout", {});
-        const redirectPath = response.data?.redirectPath || "/shopping/admin/login";
+        const redirectPath = securityUrls?.safeSameOriginPath?.(
+          response.data?.redirectPath,
+          "/shopping/admin/login",
+          ["/shopping/admin/"]
+        ) || "/shopping/admin/login";
         if (transition?.beginExit) {
           await transition.beginExit({ source: transitionSource, to: redirectPath });
           return;

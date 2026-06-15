@@ -1,27 +1,27 @@
 package com.example.ShoppingSystem.listener;
 
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateRequest;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
 import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaResourceInitService;
-import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
-/**
- * 天爱验证码启动预热监听器。
- * 应用启动后先导入默认模板资源，再主动生成一次 Rotate 验证码以预热生成链路。
- */
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_TIANAI;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.SUBTYPE_TIANAI_ROTATE;
+
 @Slf4j
 @Component
 public class TianaiCaptchaWarmUpListener implements ApplicationListener<ApplicationReadyEvent> {
 
     private final TianaiCaptchaResourceInitService resourceInitService;
-    private final TianaiCaptchaService tianaiCaptchaService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
 
     public TianaiCaptchaWarmUpListener(TianaiCaptchaResourceInitService resourceInitService,
-                                       TianaiCaptchaService tianaiCaptchaService) {
+                                       CaptchaStrategyRegistry captchaStrategyRegistry) {
         this.resourceInitService = resourceInitService;
-        this.tianaiCaptchaService = tianaiCaptchaService;
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
     }
 
     @Override
@@ -29,10 +29,15 @@ public class TianaiCaptchaWarmUpListener implements ApplicationListener<Applicat
         long start = System.currentTimeMillis();
         try {
             resourceInitService.initializeRotateResources();
-            tianaiCaptchaService.generateRotateCaptcha();
-            log.info("天爱 Rotate 验证码预热完成，耗时 {} ms", System.currentTimeMillis() - start);
+            captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                    CHALLENGE_TIANAI,
+                    SUBTYPE_TIANAI_ROTATE,
+                    "warmup",
+                    null
+            ));
+            log.info("Tianai Rotate captcha warm-up completed, elapsed={}ms", System.currentTimeMillis() - start);
         } catch (Exception e) {
-            log.warn("天爱 Rotate 验证码预热失败，不影响应用启动", e);
+            log.warn("Tianai Rotate captcha warm-up failed, application startup continues.", e);
         }
     }
 }

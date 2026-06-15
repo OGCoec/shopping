@@ -10,7 +10,8 @@
     buildDisplayImages,
     displayImagePayload,
     imageItemUrl,
-    escapeAttribute,
+    safeImageUrl,
+    appendImageOrPlaceholder,
     buildSkuNumericPayload
   } = imageUtils;
   const {
@@ -155,8 +156,9 @@
 
     function renderImagePreview() {
       const tempUrl = state.tempImage?.tempUrl || "";
-      if (tempUrl) {
-        el.imagePreview.src = tempUrl;
+      const previewUrl = safeImageUrl(tempUrl);
+      if (previewUrl) {
+        el.imagePreview.src = previewUrl;
         el.imagePreview.hidden = false;
         el.imageEmpty.hidden = true;
         el.imageRemove.hidden = false;
@@ -305,7 +307,7 @@
         const url = imageItemUrl(item);
         const preview = document.createElement("div");
         preview.className = "admin-product-spu-preview";
-        preview.innerHTML = url ? `<img src="${escapeAttribute(url)}" alt="商品图片" />` : "<span>-</span>";
+        appendImageOrPlaceholder(preview, url, "商品图片");
         appendImageOrderBadge(preview, index);
         const controls = imageOrderControls(items, index, renderImageLists, async () => {
           await cancelTempByUrl(url);
@@ -342,10 +344,14 @@
       const preview = document.createElement("div");
       preview.className = "admin-product-sku-card-preview";
       const firstImage = imagePayload(sku.skuImageUrls || [])[0] || "";
-      preview.innerHTML = firstImage ? `<img src="${escapeAttribute(firstImage)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />` : "<span>-</span>";
+      appendImageOrPlaceholder(preview, firstImage, sku.skuName || "SKU");
       const title = document.createElement("div");
       title.className = "admin-product-sku-card-title";
-      title.innerHTML = `<strong>${escapeAttribute(sku.skuName || "新增 SKU")}</strong><span>${escapeAttribute(sku.skuCode || "未填写编码")}</span>`;
+      const titleName = document.createElement("strong");
+      titleName.textContent = sku.skuName || "新增 SKU";
+      const titleCode = document.createElement("span");
+      titleCode.textContent = sku.skuCode || "未填写编码";
+      title.append(titleName, titleCode);
       const status = document.createElement("select");
       status.className = "admin-product-sku-card-status";
       ["ACTIVE", "DISABLED"].forEach((value) => {
@@ -395,7 +401,9 @@
       if (!sku.skuImageUrls.length) {
         const empty = document.createElement("div");
         empty.className = "admin-product-detail-edit-preview";
-        empty.innerHTML = "<span>-</span>";
+        const emptyText = document.createElement("span");
+        emptyText.textContent = "-";
+        empty.appendChild(emptyText);
         list.appendChild(empty);
         return list;
       }
@@ -405,7 +413,7 @@
         const url = imageItemUrl(item);
         const preview = document.createElement("div");
         preview.className = "admin-product-detail-edit-preview";
-        preview.innerHTML = url ? `<img src="${escapeAttribute(url)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />` : "<span>-</span>";
+        appendImageOrPlaceholder(preview, url, sku.skuName || "SKU");
         appendImageOrderBadge(preview, index);
         const controls = imageOrderControls(sku.skuImageUrls, index, rerender, async () => {
           await cancelTempByUrl(url);

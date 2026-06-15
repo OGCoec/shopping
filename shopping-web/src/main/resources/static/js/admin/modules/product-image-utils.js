@@ -143,6 +143,50 @@
     return typeof item === "string" ? item : String(item?.url || "");
   }
 
+  function safeImageUrl(value, fallback = "") {
+    const securityUrls = root.ShoppingSecurityUrls;
+    if (securityUrls && typeof securityUrls.safeImageUrl === "function") {
+      return securityUrls.safeImageUrl(value, fallback, {
+        allowData: false,
+        allowBlob: false,
+        allowAnyHttps: true,
+        allowLocalHttp: true,
+        allowedPathPrefixes: ["/shopping/"]
+      });
+    }
+    const raw = String(value ?? "").trim();
+    if (!raw || raw.includes("\\") || raw.startsWith("//")) {
+      return fallback;
+    }
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.origin === window.location.origin) {
+        return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      }
+      return parsed.protocol === "https:" ? parsed.href : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function appendImageOrPlaceholder(container, url, alt) {
+    if (!container) {
+      return;
+    }
+    container.replaceChildren();
+    const safeUrl = safeImageUrl(url);
+    if (safeUrl) {
+      const image = document.createElement("img");
+      image.src = safeUrl;
+      image.alt = String(alt || "");
+      container.appendChild(image);
+      return;
+    }
+    const empty = document.createElement("span");
+    empty.textContent = "-";
+    container.appendChild(empty);
+  }
+
   function setImageItemUrl(item, url) {
     if (item && typeof item === "object") {
       item.url = url;
@@ -150,7 +194,7 @@
   }
 
   function collectProductCarouselImages(product) {
-    return buildDisplayImages(product).map(imageItemUrl).filter(Boolean);
+    return buildDisplayImages(product).map((item) => safeImageUrl(imageItemUrl(item))).filter(Boolean);
   }
 
   function formatJson(value) {
@@ -276,6 +320,8 @@
     moveImageItem,
     imageUrlsFromNode,
     imageItemUrl,
+    safeImageUrl,
+    appendImageOrPlaceholder,
     setImageItemUrl,
     collectProductCarouselImages,
     formatJson,

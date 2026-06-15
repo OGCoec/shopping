@@ -27,6 +27,17 @@ public class SecurityConfig {
     private static final String COUPON_API_PATTERN = "/shopping/user/api/coupons/**";
     private static final String ORDER_API_PATTERN = "/shopping/user/api/orders/**";
     private static final String PAYMENT_CALLBACK_PATTERN = "/shopping/api/payments/callback/**";
+    private static final String CSP_REPORT_ONLY_POLICY = String.join("; ",
+            "default-src 'self'",
+            "base-uri 'self'",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "img-src 'self' https: data: blob:",
+            "connect-src 'self'",
+            "script-src 'self' https://challenges.cloudflare.com https://js.hcaptcha.com https://www.google.com https://www.gstatic.com",
+            "frame-src https://challenges.cloudflare.com https://*.hcaptcha.com https://www.google.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+            "font-src 'self' https://fonts.gstatic.com data:");
 
     private static final String[] APP_SECURITY_PATHS = {
             "/",
@@ -77,6 +88,8 @@ public class SecurityConfig {
             "/shopping/user/profile",
             "/shopping/user/console",
             "/shopping/user/products/**",
+            "/shopping/user/orders",
+            "/shopping/user/orders/**",
             "/shopping/user/coupons",
             "/shopping/user/coupons/**",
             "/shopping/user/forgot-password",
@@ -85,6 +98,8 @@ public class SecurityConfig {
             "/shopping/user/reset-password-code",
             "/shopping/auth/network-check-failed",
             "/shopping/auth/preauth/bootstrap",
+            "/shopping/auth/preauth/webrtc/report",
+            "/shopping/auth/preauth/webrtc/state",
             "/shopping/auth/preauth/phone-country",
             "/shopping/auth/preauth/phone-validate",
             "/shopping/auth/waf/verify",
@@ -202,6 +217,8 @@ public class SecurityConfig {
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
                         .ignoringRequestMatchers(csrfIgnorePaths.toArray(new String[0])))
+                .headers(headers -> headers.addHeaderWriter((request, response) ->
+                        response.setHeader("Content-Security-Policy-Report-Only", CSP_REPORT_ONLY_POLICY)))
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .build();

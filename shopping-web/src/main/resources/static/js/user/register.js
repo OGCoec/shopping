@@ -83,7 +83,7 @@ const {
 const { createRegisterForm, buildRegisterDeviceFingerprint } = registerFormModule;
 const {
   getConcatRenderData,
-  buildConcatLayerMarkup,
+  renderConcatLayers,
   resetCaptchaImageVisibility,
   createRegisterTianai
 } = registerTianaiModule;
@@ -341,7 +341,7 @@ if (typeof module !== "undefined" && module.exports) {
     buildTianaiWordClickPayload,
     getCaptchaSuccessFeedbackDelay,
     getConcatRenderData,
-    buildConcatLayerMarkup,
+    renderConcatLayers,
     resetCaptchaImageVisibility,
     renderHCaptcha
   };

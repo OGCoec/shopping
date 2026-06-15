@@ -47,6 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_product_spu_category_id
 CREATE INDEX IF NOT EXISTS idx_product_spu_status_created_at
     ON product_spu (status, created_at);
 
+CREATE INDEX IF NOT EXISTS idx_product_spu_created_id
+    ON product_spu (created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_product_spu_status_created_id
+    ON product_spu (status, created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_product_spu_brand_name
     ON product_spu (brand_name)
     WHERE brand_name IS NOT NULL;

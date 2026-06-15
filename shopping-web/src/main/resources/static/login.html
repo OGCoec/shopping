@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/shopping/fonts/noto-sans-sc/noto-sans-sc.css" />
   <link rel="preload" href="/shopping/js/user/auth/login/login-visuals.js" as="script" />
   <link rel="stylesheet" href="/shopping/css/login.css" />
+  <script src="/shopping/js/security/security-urls.js?v=1"></script>
 </head>
 
 <body class="auth-route-pending">
@@ -547,23 +548,18 @@
   </div>
 
   <script src="/shopping/js/user/auth/login/login-visuals.js"></script>
-  <script>
-    window.ShoppingLoginVisuals?.initializeVisuals?.({
-      emailInput: document.getElementById("email"),
-      phoneNumberInput: document.getElementById("phone-number")
-    });
-  </script>
+  <script src="/shopping/js/user/auth/login/login-visuals-init.js?v=1"></script>
   <script src="/shopping/js/user/auth/login/login-country-picker.js"></script>
   <script src="/shopping/js/user/auth/shared/auth-routes.js"></script>
-  <script src="/shopping/js/user/auth/login/login-shell.js"></script>
+  <script src="/shopping/js/user/auth/login/login-shell.js?v=2"></script>
   <script src="/shopping/js/user/auth/login/login-otp.js"></script>
   <script src="/shopping/js/user/auth/login/login-otp-resend.js"></script>
   <script src="/shopping/js/user/auth/login/login-route-notice.js"></script>
   <script src="/shopping/js/user/auth/login/login-captcha-coordinator.js"></script>
-  <script src="/shopping/js/user/auth/login/login-submit-handlers.js"></script>
+  <script src="/shopping/js/user/auth/login/login-submit-handlers.js?v=2"></script>
   <script src="/shopping/js/user/auth/login/login-register-bridge.js"></script>
   <script src="/shopping/js/user/auth/shared/auth-utils.js"></script>
-  <script src="/shopping/js/user/auth/shared/preauth-client.js?v=2"></script>
+  <script src="/shopping/js/user/auth/shared/preauth-client.js?v=3"></script>
   <script src="/shopping/js/user/auth/register/register-turnstile.js"></script>
   <script src="/shopping/js/user/auth/register/register-hcaptcha.js"></script>
   <script src="/shopping/js/user/auth/register/register-recaptcha.js"></script>
@@ -577,7 +573,7 @@
   <script src="/shopping/js/user/auth/register/register-otp-step.js"></script>
   <script src="/shopping/js/user/auth/register/register-captcha-coordinator.js"></script>
   <script src="/shopping/js/user/auth/register/register-password-step.js"></script>
-  <script src="/shopping/js/user/auth/password-reset/password-reset.js"></script>
+  <script src="/shopping/js/user/auth/password-reset/password-reset.js?v=2"></script>
   <script src="/shopping/js/user/login.js"></script>
   <script src="/shopping/js/user/register.js"></script>
 </body>

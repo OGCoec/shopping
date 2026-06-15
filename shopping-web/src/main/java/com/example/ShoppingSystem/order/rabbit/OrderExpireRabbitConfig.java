@@ -2,6 +2,7 @@ package com.example.ShoppingSystem.order.rabbit;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.CustomExchange;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.annotation.EnableRabbit;
@@ -27,6 +28,32 @@ public class OrderExpireRabbitConfig {
     }
 
     @Bean
+    public CustomExchange orderPaymentCheckExchange(OrderExpireRabbitProperties properties) {
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("x-delayed-type", "direct");
+        return new CustomExchange(
+                properties.getPaymentCheckExchange(),
+                "x-delayed-message",
+                true,
+                false,
+                arguments
+        );
+    }
+
+    @Bean
+    public CustomExchange orderClosingFinalizeExchange(OrderExpireRabbitProperties properties) {
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("x-delayed-type", "direct");
+        return new CustomExchange(
+                properties.getClosingFinalizeExchange(),
+                "x-delayed-message",
+                true,
+                false,
+                arguments
+        );
+    }
+
+    @Bean
     public Queue orderExpireDelayQueue(OrderExpireRabbitProperties properties) {
         Map<String, Object> arguments = new HashMap<>();
         arguments.put("x-dead-letter-exchange", properties.getExchange());
@@ -37,6 +64,16 @@ public class OrderExpireRabbitConfig {
     @Bean
     public Queue orderExpireDeadLetterQueue(OrderExpireRabbitProperties properties) {
         return new Queue(properties.getDeadLetterQueue(), true);
+    }
+
+    @Bean
+    public Queue orderPaymentCheckQueue(OrderExpireRabbitProperties properties) {
+        return new Queue(properties.getPaymentCheckQueue(), true);
+    }
+
+    @Bean
+    public Queue orderClosingFinalizeQueue(OrderExpireRabbitProperties properties) {
+        return new Queue(properties.getClosingFinalizeQueue(), true);
     }
 
     @Bean
@@ -51,6 +88,26 @@ public class OrderExpireRabbitConfig {
                                                      DirectExchange orderExpireExchange,
                                                      OrderExpireRabbitProperties properties) {
         return BindingBuilder.bind(orderExpireDeadLetterQueue).to(orderExpireExchange).with(properties.getDeadRoutingKey());
+    }
+
+    @Bean
+    public Binding orderPaymentCheckQueueBinding(Queue orderPaymentCheckQueue,
+                                                  CustomExchange orderPaymentCheckExchange,
+                                                  OrderExpireRabbitProperties properties) {
+        return BindingBuilder.bind(orderPaymentCheckQueue)
+                .to(orderPaymentCheckExchange)
+                .with(properties.getPaymentCheckRoutingKey())
+                .noargs();
+    }
+
+    @Bean
+    public Binding orderClosingFinalizeQueueBinding(Queue orderClosingFinalizeQueue,
+                                                    CustomExchange orderClosingFinalizeExchange,
+                                                    OrderExpireRabbitProperties properties) {
+        return BindingBuilder.bind(orderClosingFinalizeQueue)
+                .to(orderClosingFinalizeExchange)
+                .with(properties.getClosingFinalizeRoutingKey())
+                .noargs();
     }
 
     @Bean

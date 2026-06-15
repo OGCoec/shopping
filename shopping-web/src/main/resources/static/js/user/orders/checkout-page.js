@@ -14,6 +14,16 @@
   const amountsEl = document.getElementById("checkout-amounts");
   const submitButton = document.getElementById("checkout-submit");
 
+  function safeImageUrl(value) {
+    return window.ShoppingSecurityUrls?.safeImageUrl?.(value, "", {
+      allowData: false,
+      allowBlob: false,
+      allowAnyHttps: true,
+      allowLocalHttp: true,
+      allowedPathPrefixes: ["/shopping/"]
+    }) || "";
+  }
+
   const state = {
     skuId: "",
     quantity: 1,
@@ -117,7 +127,7 @@
     productEl.dataset.skuId = String(preview?.skuId || state.skuId);
     const media = document.createElement("div");
     media.className = "checkout-product-media";
-    const imageUrl = String(preview?.skuImageUrl || "").trim();
+    const imageUrl = safeImageUrl(preview?.skuImageUrl);
     if (imageUrl) {
       const image = document.createElement("img");
       image.src = imageUrl;

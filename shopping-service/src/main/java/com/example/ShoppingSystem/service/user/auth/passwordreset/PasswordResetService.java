@@ -17,9 +17,12 @@ public interface PasswordResetService {
     PasswordResetResult sendEmailCode(String email,
                                       String preAuthToken,
                                       String deviceFingerprint,
+                                      String clientIp,
                                       String riskLevel,
                                       boolean wafResumeRequest,
-                                      String baseUrl);
+                                      String baseUrl,
+                                      String captchaUuid,
+                                      String captchaCode);
 
     PasswordResetResult resetByLink(String token,
                                     String deviceFingerprint,

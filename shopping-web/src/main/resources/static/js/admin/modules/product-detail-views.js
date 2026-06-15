@@ -12,6 +12,8 @@
       formatJson,
       escapeHtml,
       escapeAttribute,
+      safeImageUrl,
+      appendImageOrPlaceholder,
       formatDate,
       syncMainImageFromDisplayImages
     } = imageUtils;
@@ -67,11 +69,15 @@
       gallery.innerHTML = `<span class="admin-product-detail-muted">-</span>`;
     } else {
       normalizedUrls.forEach((url, index) => {
+        const safeUrl = safeImageUrl(url);
+        if (!safeUrl) {
+          return;
+        }
         const item = document.createElement("a");
-        item.href = url;
+        item.href = safeUrl;
         item.target = "_blank";
         item.rel = "noreferrer";
-        item.innerHTML = `<img src="${escapeAttribute(url)}" alt="${escapeAttribute(title)}" />`;
+        appendImageOrPlaceholder(item, safeUrl, title);
         appendImageOrderBadge(item, index, markFirstAsMain && index === 0 ? "主图 / #1" : `#${index + 1}`);
         gallery.appendChild(item);
       });
@@ -162,7 +168,7 @@
     values.forEach((value, index) => {
       const cell = document.createElement("div");
       if (!header && index === 0 && value) {
-        cell.innerHTML = `<img src="${escapeAttribute(value)}" alt="${escapeAttribute(sku?.skuName || "SKU")}" />`;
+        appendImageOrPlaceholder(cell, value, sku?.skuName || "SKU");
       } else {
         cell.textContent = value || "-";
       }

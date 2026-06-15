@@ -1,23 +1,27 @@
 (function (root) {
   const CSRF_COOKIE = "XSRF-TOKEN";
   const CSRF_HEADER = "X-XSRF-TOKEN";
-  const WEBRTC_IP_HEADER = "X-WebRTC-IP";
   const WEBRTC_IPS_HEADER = "X-WebRTC-IPs";
   const WEBRTC_STATUS_HEADER = "X-WebRTC-Status";
   const WEBRTC_SIGNAL_TTL_MILLIS = 60_000;
-  const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 5_000;
+  const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 8_000;
+  const WEBRTC_REPORT_URL = "/shopping/admin/session/webrtc/report";
+  const WEBRTC_STATE_URL = "/shopping/admin/session/webrtc/state";
   const NETWORK_CHECK_FAILED_PATH = "/shopping/auth/network-check-failed";
   const WAF_VERIFY_PATH = "/shopping/auth/waf/verify";
   const ADMIN_LOGIN_PATH = "/shopping/admin/login";
   const PASSWORD_CRYPTO_KEY_PATH = "/shopping/admin/password-crypto/key";
   const PASSWORD_CRYPTO_ERROR_MESSAGE = "Password encryption is unavailable, please refresh and try again.";
-  const WEBRTC_ERROR_CODES = new Set(["WEBRTC_IP_MISMATCH", "WEBRTC_SIGNAL_REQUIRED"]);
+  const WEBRTC_ERROR_CODES = new Set(["WEBRTC_IP_MISMATCH", "WEBRTC_SIGNAL_REQUIRED", "WEBRTC_SIGNAL_UNVERIFIED"]);
   const ADMIN_WAF_REQUIRED_ERROR_CODE = "ADMIN_IP_CHANGED_WAF_REQUIRED";
   const NETWORK_DEBUG_STORAGE_KEY = "shopping:admin:network-debug";
 
   let webRtcSignalTask = null;
   let cachedWebRtcSignal = null;
   let cachedWebRtcSignalAt = 0;
+  let webRtcReportTask = null;
+  let lastReportedWebRtcSignature = "";
+  let lastReportedWebRtcAt = 0;
 
   function readCookie(name) {
     if (!document.cookie || !name) {
@@ -77,19 +81,81 @@
     if (csrfToken && !headers.has(CSRF_HEADER)) {
       headers.set(CSRF_HEADER, csrfToken);
     }
-    await applyWebRtcHeaders(headers);
+    applyWebRtcHeaders(headers);
     return headers;
   }
 
-  async function applyWebRtcHeaders(headers) {
-    const signal = await resolveWebRtcSignal();
-    headers.set(WEBRTC_STATUS_HEADER, signal.status || "error");
-    if (signal.ip) {
-      headers.set(WEBRTC_IP_HEADER, signal.ip);
+  function applyWebRtcHeaders(headers) {
+    const signal = currentCachedWebRtcSignal();
+    if (signal) {
+      headers.set(WEBRTC_STATUS_HEADER, signal.status || "error");
+      if (Array.isArray(signal.ips) && signal.ips.length > 0) {
+        headers.set(WEBRTC_IPS_HEADER, signal.ips.join(","));
+      }
     }
-    if (Array.isArray(signal.ips) && signal.ips.length > 0) {
-      headers.set(WEBRTC_IPS_HEADER, signal.ips.join(","));
+    scheduleWebRtcSignalReport();
+  }
+
+  function currentCachedWebRtcSignal() {
+    const now = Date.now();
+    if (cachedWebRtcSignal && now - cachedWebRtcSignalAt < WEBRTC_SIGNAL_TTL_MILLIS) {
+      return cachedWebRtcSignal;
     }
+    return null;
+  }
+
+  function scheduleWebRtcSignalReport() {
+    if (!isBrowserRuntime()) {
+      return;
+    }
+    resolveWebRtcSignal()
+      .then((signal) => reportWebRtcSignal(signal))
+      .catch(() => {
+      });
+  }
+
+  function reportWebRtcSignal(signal) {
+    const normalized = normalizeWebRtcSignal(signal);
+    const signature = `${normalized.status || "error"}|${(normalized.ips || []).join(",")}`;
+    const now = Date.now();
+    if (signature === lastReportedWebRtcSignature && now - lastReportedWebRtcAt < WEBRTC_SIGNAL_TTL_MILLIS) {
+      return;
+    }
+    if (webRtcReportTask) {
+      return;
+    }
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest"
+    });
+    const csrfToken = readCookie(CSRF_COOKIE);
+    if (csrfToken) {
+      headers.set(CSRF_HEADER, csrfToken);
+    }
+    webRtcReportTask = fetch(WEBRTC_REPORT_URL, {
+      method: "POST",
+      headers,
+      credentials: "same-origin",
+      keepalive: true,
+      body: JSON.stringify({
+        webRtcIps: normalized.ips || [],
+        webRtcStatus: normalized.status || "error",
+        durationMillis: normalized.durationMillis == null ? null : normalized.durationMillis,
+        diagnosticReason: normalized.diagnosticReason || ""
+      })
+    })
+      .then((response) => {
+        if (response.ok) {
+          lastReportedWebRtcSignature = signature;
+          lastReportedWebRtcAt = Date.now();
+        }
+      })
+      .catch(() => {
+      })
+      .finally(() => {
+        webRtcReportTask = null;
+      });
   }
 
   async function resolveWebRtcSignal() {
@@ -100,7 +166,9 @@
     if (webRtcSignalTask) {
       return webRtcSignalTask;
     }
-    webRtcSignalTask = detectWebRtcSignal()
+    webRtcSignalTask = fetchReusableWebRtcStateSignal()
+      .catch(() => null)
+      .then((serverSignal) => serverSignal || detectWebRtcSignal())
       .then((signal) => {
         cachedWebRtcSignal = normalizeWebRtcSignal(signal);
         cachedWebRtcSignalAt = Date.now();
@@ -117,6 +185,45 @@
     return webRtcSignalTask;
   }
 
+  async function fetchReusableWebRtcStateSignal() {
+    if (!isBrowserRuntime()) {
+      return null;
+    }
+    const headers = new Headers({
+      "Accept": "application/json",
+      "X-Requested-With": "XMLHttpRequest"
+    });
+    const csrfToken = readCookie(CSRF_COOKIE);
+    if (csrfToken) {
+      headers.set(CSRF_HEADER, csrfToken);
+    }
+    const response = await fetch(WEBRTC_STATE_URL, {
+      method: "GET",
+      headers,
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json().catch(() => null);
+    if (!payload || payload.success !== true || payload.reusable !== true) {
+      return null;
+    }
+    const ips = normalizeIpList(payload.webRtcIps);
+    const status = payload.webRtcStatus ? String(payload.webRtcStatus).trim().toLowerCase() : "ok";
+    if (status !== "ok" || ips.length === 0) {
+      return null;
+    }
+    return {
+      ip: ips[0],
+      ips,
+      status,
+      durationMillis: 0,
+      diagnosticReason: payload.reason || "server_state_reusable",
+      serverReusable: true
+    };
+  }
+
   function detectWebRtcSignal() {
     return new Promise((resolve) => {
       const PeerConnection = window.RTCPeerConnection
@@ -124,8 +231,14 @@
         || window.mozRTCPeerConnection;
       const diagnostics = createWebRtcDiagnostics(typeof PeerConnection === "function");
       if (typeof PeerConnection !== "function") {
-        logWebRtcSignalDiagnostic({ ip: "", status: "unsupported" }, diagnostics);
-        resolve({ ip: "", status: "unsupported" });
+        const unsupportedSignal = normalizeWebRtcSignal({
+          ip: "",
+          status: "unsupported",
+          durationMillis: Date.now() - diagnostics.startedAt
+        });
+        unsupportedSignal.diagnosticReason = resolveWebRtcDiagnosticReason(unsupportedSignal, diagnostics);
+        logWebRtcSignalDiagnostic(unsupportedSignal, diagnostics);
+        resolve(unsupportedSignal);
         return;
       }
 
@@ -154,6 +267,8 @@
           window.clearTimeout(timer);
         }
         const normalizedSignal = normalizeWebRtcSignal(signal);
+        normalizedSignal.durationMillis = Date.now() - diagnostics.startedAt;
+        normalizedSignal.diagnosticReason = resolveWebRtcDiagnosticReason(normalizedSignal, diagnostics);
         logWebRtcSignalDiagnostic(normalizedSignal, diagnostics);
         try {
           peer?.close?.();
@@ -384,7 +499,6 @@
       responseError: errorCode,
       responseMessage: body?.message || "",
       webRtcStatus: headers?.get?.(WEBRTC_STATUS_HEADER) || "",
-      webRtcIp: headers?.get?.(WEBRTC_IP_HEADER) || "",
       webRtcIps: headers?.get?.(WEBRTC_IPS_HEADER) || "",
       networkCheckUrl: body?.networkCheckUrl || ""
     });
@@ -394,17 +508,22 @@
     const status = signal?.status ? String(signal.status).trim().toLowerCase() : "error";
     const ips = normalizeIpList(signal?.ips);
     const primaryIp = normalizeIpLiteral(signal?.ip ? String(signal.ip) : "");
+    const durationMillis = Number.isFinite(Number(signal?.durationMillis))
+      ? Math.max(0, Math.round(Number(signal.durationMillis)))
+      : null;
+    const diagnosticReason = signal?.diagnosticReason ? String(signal.diagnosticReason).trim() : "";
+    const serverReusable = signal?.serverReusable === true;
     if (primaryIp && !ips.includes(primaryIp)) {
       ips.unshift(primaryIp);
     }
     const ip = primaryIp || ips[0] || "";
     if (!ip && status === "ok") {
-      return { ip: "", ips: [], status: "private_only" };
+      return { ip: "", ips: [], status: "private_only", durationMillis, diagnosticReason, serverReusable };
     }
     if (["ok", "timeout", "unsupported", "private_only", "error"].includes(status)) {
-      return { ip, ips, status };
+      return { ip, ips, status, durationMillis, diagnosticReason, serverReusable };
     }
-    return { ip, ips, status: "error" };
+    return { ip, ips, status: "error", durationMillis, diagnosticReason, serverReusable };
   }
 
   function normalizeIpList(rawIps) {
@@ -489,6 +608,28 @@
     return typeof window !== "undefined" && window.location;
   }
 
+  function safeSameOriginPath(value, fallback, allowedPrefixes = ["/shopping/"]) {
+    const securityUrls = window.ShoppingSecurityUrls;
+    if (securityUrls && typeof securityUrls.safeSameOriginPath === "function") {
+      return securityUrls.safeSameOriginPath(value, fallback, allowedPrefixes);
+    }
+    const fallbackPath = fallback || ADMIN_LOGIN_PATH;
+    const raw = String(value || "").trim();
+    if (!raw || raw.includes("\\") || raw.startsWith("//")) {
+      return fallbackPath;
+    }
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.origin !== window.location.origin) {
+        return fallbackPath;
+      }
+      const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      return allowedPrefixes.some((prefix) => path.startsWith(prefix)) ? path : fallbackPath;
+    } catch (_) {
+      return fallbackPath;
+    }
+  }
+
   function isNetworkCheckFailure(body) {
     const errorCode = body && (body.error || body.code) ? String(body.error || body.code) : "";
     return WEBRTC_ERROR_CODES.has(errorCode);
@@ -498,8 +639,8 @@
     if (!isBrowserRuntime()) {
       return ADMIN_LOGIN_PATH;
     }
-    const path = `${window.location.pathname || "/"}${window.location.search || ""}`;
-    if (!path.startsWith("/") || path.startsWith("//") || path.startsWith(NETWORK_CHECK_FAILED_PATH)) {
+    const path = safeSameOriginPath(`${window.location.pathname || "/"}${window.location.search || ""}`, ADMIN_LOGIN_PATH);
+    if (path.startsWith(NETWORK_CHECK_FAILED_PATH)) {
       return ADMIN_LOGIN_PATH;
     }
     return path;
@@ -517,11 +658,8 @@
       return fallbackUrl;
     }
     try {
-      const parsed = new URL(value, window.location.origin);
-      if (parsed.origin !== window.location.origin || parsed.pathname !== NETWORK_CHECK_FAILED_PATH) {
-        return fallbackUrl;
-      }
-      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      const path = safeSameOriginPath(value, fallbackUrl, [NETWORK_CHECK_FAILED_PATH]);
+      return path.startsWith(NETWORK_CHECK_FAILED_PATH) ? path : fallbackUrl;
     } catch (_) {
       return fallbackUrl;
     }
@@ -538,11 +676,8 @@
       return fallbackUrl;
     }
     try {
-      const parsed = new URL(value, window.location.origin);
-      if (parsed.origin !== window.location.origin || parsed.pathname !== WAF_VERIFY_PATH) {
-        return fallbackUrl;
-      }
-      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      const path = safeSameOriginPath(value, fallbackUrl, [WAF_VERIFY_PATH]);
+      return path.startsWith(WAF_VERIFY_PATH) ? path : fallbackUrl;
     } catch (_) {
       return fallbackUrl;
     }
@@ -557,7 +692,6 @@
       httpStatus: response?.status || "",
       responseError: body?.error || body?.code || "",
       webRtcStatus: headers?.get?.(WEBRTC_STATUS_HEADER) || "",
-      webRtcIp: headers?.get?.(WEBRTC_IP_HEADER) || "",
       webRtcIps: headers?.get?.(WEBRTC_IPS_HEADER) || "",
       targetUrl
     });
@@ -565,7 +699,7 @@
   }
 
   function handleNetworkCheckFailure(response, body, headers) {
-    if (response.status === 403 && isNetworkCheckFailure(body)) {
+    if ((response.status === 403 || response.status === 409) && isNetworkCheckFailure(body)) {
       scheduleNetworkCheckRedirect(response, body, headers);
     }
   }

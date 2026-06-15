@@ -17,11 +17,19 @@
   const challengeWidget = document.getElementById("security-phone-challenge-widget");
   const authClient = window.ShoppingAuthClient;
   const countryPickerApi = window.ShoppingLoginCountryPicker;
+  const securityUrls = window.ShoppingSecurityUrls;
 
   let cooldownTimer = null;
   let cooldownUntil = 0;
   let sending = false;
   let binding = false;
+
+  function forceReportWebRtcSignal() {
+    try {
+      window.ShoppingPreAuthClient?.forceReportWebRtcSignal?.();
+    } catch (_) {
+    }
+  }
 
   countryPickerApi?.initSecurityPhoneCountryPicker?.();
   countryPickerApi?.autoDetectPhoneCountryCode?.();
@@ -232,7 +240,8 @@
       const payload = await parseJson(response);
       if (response.ok && payload?.success) {
         if (payload.requirePhoneBinding === false && payload.redirectPath) {
-          window.location.assign(payload.redirectPath);
+          forceReportWebRtcSignal();
+          window.location.assign(securityUrls?.safeSameOriginPath?.(payload.redirectPath, CONSOLE_PATH) || CONSOLE_PATH);
           return;
         }
         onCodeSent(payload);
@@ -283,7 +292,8 @@
         return;
       }
       setStatus(payload?.message || "手机号验证已完成。", "success");
-      window.location.assign(payload?.redirectPath || CONSOLE_PATH);
+      forceReportWebRtcSignal();
+      window.location.assign(securityUrls?.safeSameOriginPath?.(payload?.redirectPath, CONSOLE_PATH) || CONSOLE_PATH);
     } catch (error) {
       setStatus(error?.message || "手机号验证失败。", "error");
     } finally {

@@ -26,6 +26,11 @@ public class AdminSessionService {
     private static final String FIELD_PHONE = "phone";
     private static final String FIELD_CURRENT_IP = "currentIp";
     private static final String FIELD_LAST_SEEN_AT = "lastSeenAt";
+    private static final String FIELD_WEBRTC_IPS = "webRtcIps";
+    private static final String FIELD_WEBRTC_STATUS = "webRtcStatus";
+    private static final String FIELD_WEBRTC_SEEN_AT = "webRtcSeenAt";
+    private static final String FIELD_WEBRTC_MISMATCH_COUNT = "webRtcMismatchCount";
+    private static final String FIELD_WEBRTC_RISK_LEVEL = "webRtcRiskLevel";
 
     private final AdminSecurityProperties properties;
     private final StringRedisTemplate stringRedisTemplate;
@@ -123,12 +128,37 @@ public class AdminSessionService {
         stringRedisTemplate.expire(key, sessionTtl());
     }
 
+    public void updateWebRtcRisk(String token,
+                                 String webRtcIps,
+                                 String webRtcStatus,
+                                 long seenAtEpochMillis,
+                                 int mismatchIncrement,
+                                 String riskLevel) {
+        if (StrUtil.isBlank(token)) {
+            return;
+        }
+        String key = sessionKey(token.trim());
+        Boolean exists = stringRedisTemplate.hasKey(key);
+        if (!Boolean.TRUE.equals(exists)) {
+            return;
+        }
+        int currentMismatchCount = parseInt(stringRedisTemplate.opsForHash().get(key, FIELD_WEBRTC_MISMATCH_COUNT));
+        Map<String, String> updates = new LinkedHashMap<>();
+        updates.put(FIELD_WEBRTC_IPS, safe(webRtcIps));
+        updates.put(FIELD_WEBRTC_STATUS, safe(webRtcStatus));
+        updates.put(FIELD_WEBRTC_SEEN_AT, String.valueOf(Math.max(0L, seenAtEpochMillis)));
+        updates.put(FIELD_WEBRTC_MISMATCH_COUNT, String.valueOf(Math.max(0, currentMismatchCount + Math.max(0, mismatchIncrement))));
+        updates.put(FIELD_WEBRTC_RISK_LEVEL, safe(riskLevel));
+        stringRedisTemplate.opsForHash().putAll(key, updates);
+        stringRedisTemplate.expire(key, sessionTtl());
+    }
+
     private void touch(String key) {
         stringRedisTemplate.opsForHash().put(key, FIELD_LAST_SEEN_AT, OffsetDateTime.now().toString());
         stringRedisTemplate.expire(key, sessionTtl());
     }
 
-    private String resolveSessionToken(HttpServletRequest request) {
+    public String resolveSessionToken(HttpServletRequest request) {
         if (request == null || request.getCookies() == null) {
             return "";
         }
@@ -172,6 +202,17 @@ public class AdminSessionService {
 
     private String sessionKey(String token) {
         return properties.getSessionRedisKeyPrefix() + token;
+    }
+
+    private int parseInt(Object value) {
+        if (value == null || StrUtil.isBlank(value.toString())) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(value.toString().trim());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private Duration sessionTtl() {

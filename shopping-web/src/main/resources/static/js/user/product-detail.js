@@ -2,18 +2,31 @@
   const PRODUCT_DETAIL_BASE_PATH = "/shopping/api/products";
   const CAROUSEL_MODULE_PATH = "/shopping/js/user/product-image-fromanother-carousel.js?v=1";
 
-  const authClient = window.ShoppingAuthClient;
   const statusEl = document.getElementById("product-detail-status");
   const contentEl = document.getElementById("product-detail-content");
   let carousel = null;
   let carouselToken = 0;
 
+  function authClient() {
+    return window.ShoppingAuthClient || null;
+  }
+
+  function safeImageUrl(value) {
+    return window.ShoppingSecurityUrls?.safeImageUrl?.(value, "", {
+      allowData: false,
+      allowBlob: false,
+      allowAnyHttps: true,
+      allowLocalHttp: true,
+      allowedPathPrefixes: ["/shopping/"]
+    }) || "";
+  }
+
   async function fetchJson(path) {
-    if (!authClient?.fetchWithAuth) {
-      window.location.assign("/shopping/user/log-in");
+    const client = authClient();
+    if (!client?.fetchWithAuth) {
       throw new Error("Authentication client is unavailable.");
     }
-    const response = await authClient.fetchWithAuth(path, {
+    const response = await client.fetchWithAuth(path, {
       method: "GET",
       credentials: "same-origin",
       headers: {
@@ -328,7 +341,7 @@
     if (displayImages.length) {
       return uniqueImages(displayImages);
     }
-    const mainImageUrl = String(detail?.mainImageUrl || "").trim();
+    const mainImageUrl = safeImageUrl(detail?.mainImageUrl);
     return mainImageUrl ? [mainImageUrl] : [];
   }
 
@@ -337,12 +350,12 @@
     return values
       .map((item) => {
         if (typeof item === "string") {
-          return item.trim();
+          return safeImageUrl(item);
         }
         if (!item || typeof item !== "object") {
           return "";
         }
-        return String(item.url || item.imageUrl || item.src || "").trim();
+        return safeImageUrl(item.url || item.imageUrl || item.src);
       })
       .filter(Boolean);
   }

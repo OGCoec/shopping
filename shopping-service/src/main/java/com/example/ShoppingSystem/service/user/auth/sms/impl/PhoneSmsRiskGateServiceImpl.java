@@ -2,9 +2,8 @@ package com.example.ShoppingSystem.service.user.auth.sms.impl;
 
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
-import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
-import com.example.ShoppingSystem.service.captcha.thirdparty.ThirdPartyCaptchaService;
-import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaVerifyRequest;
 import com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengePolicy;
 import com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengeSessionService;
 import com.example.ShoppingSystem.service.user.auth.register.model.ChallengeSelection;
@@ -14,7 +13,6 @@ import org.springframework.stereotype.Service;
 
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_TIANAI;
@@ -39,20 +37,14 @@ public class PhoneSmsRiskGateServiceImpl implements PhoneSmsRiskGateService {
     private static final String CHALLENGE_IDENTITY_SEPARATOR = ":";
 
     private final LoginChallengeSessionService loginChallengeSessionService;
-    private final HutoolCaptchaService hutoolCaptchaService;
-    private final TianaiCaptchaService tianaiCaptchaService;
-    private final ThirdPartyCaptchaService thirdPartyCaptchaService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
     private final LoginChallengePolicy loginChallengePolicy;
 
     public PhoneSmsRiskGateServiceImpl(LoginChallengeSessionService loginChallengeSessionService,
-                                       HutoolCaptchaService hutoolCaptchaService,
-                                       TianaiCaptchaService tianaiCaptchaService,
-                                       ThirdPartyCaptchaService thirdPartyCaptchaService,
+                                       CaptchaStrategyRegistry captchaStrategyRegistry,
                                        LoginChallengePolicy loginChallengePolicy) {
         this.loginChallengeSessionService = loginChallengeSessionService;
-        this.hutoolCaptchaService = hutoolCaptchaService;
-        this.tianaiCaptchaService = tianaiCaptchaService;
-        this.thirdPartyCaptchaService = thirdPartyCaptchaService;
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
         this.loginChallengePolicy = loginChallengePolicy;
     }
 
@@ -93,7 +85,7 @@ public class PhoneSmsRiskGateServiceImpl implements PhoneSmsRiskGateService {
                     normalizedRiskLevel,
                     requiredSelection.type(),
                     requiredSelection.subType(),
-                    resolveChallengeSiteKey(requiredSelection.type()),
+                    resolveChallengeSiteKey(requiredSelection.type(), requiredSelection.subType()),
                     challengeIdentity
             );
         }
@@ -105,7 +97,7 @@ public class PhoneSmsRiskGateServiceImpl implements PhoneSmsRiskGateService {
                     normalizedRiskLevel,
                     requiredSelection.type(),
                     requiredSelection.subType(),
-                    resolveChallengeSiteKey(requiredSelection.type()),
+                    resolveChallengeSiteKey(requiredSelection.type(), requiredSelection.subType()),
                     challengeIdentity
             );
         }
@@ -155,33 +147,18 @@ public class PhoneSmsRiskGateServiceImpl implements PhoneSmsRiskGateService {
                                   String remoteIp,
                                   String captchaUuid,
                                   String captchaCode) {
-        return switch (selection.type()) {
-            case CHALLENGE_HUTOOL_SHEAR ->
-                    hutoolCaptchaService.validateCaptcha(SMS_CAPTCHA_TYPE, captchaUuid, captchaCode);
-            case CHALLENGE_TIANAI ->
-                    tianaiCaptchaService.validateCaptcha(captchaUuid, captchaCode);
-            case CHALLENGE_CLOUDFLARE_TURNSTILE ->
-                    thirdPartyCaptchaService.validateTurnstile(captchaCode, remoteIp);
-            case CHALLENGE_HCAPTCHA ->
-                    thirdPartyCaptchaService.validateHCaptcha(captchaCode, remoteIp);
-            case CHALLENGE_GOOGLE_RECAPTCHA_V2, CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY ->
-                    thirdPartyCaptchaService.validateRecaptcha(captchaCode, remoteIp);
-            default -> false;
-        };
+        return captchaStrategyRegistry.verify(new CaptchaVerifyRequest(
+                selection.type(),
+                selection.subType(),
+                SMS_CAPTCHA_TYPE,
+                captchaUuid,
+                captchaCode,
+                remoteIp
+        ));
     }
 
-    private String resolveChallengeSiteKey(String challengeType) {
-        if (CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)) {
-            return thirdPartyCaptchaService.getTurnstileSiteKey();
-        }
-        if (CHALLENGE_HCAPTCHA.equals(challengeType)) {
-            return thirdPartyCaptchaService.getHCaptchaSiteKey();
-        }
-        if (CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
-                || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType)) {
-            return thirdPartyCaptchaService.getRecaptchaSiteKey();
-        }
-        return null;
+    private String resolveChallengeSiteKey(String challengeType, String challengeSubType) {
+        return captchaStrategyRegistry.siteKey(challengeType, challengeSubType);
     }
 
     private String buildChallengeIdentity(String scene, String normalizedPhone) {

@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS product_hot_sku (
 CREATE INDEX IF NOT EXISTS idx_product_hot_sku_spu_id
     ON product_hot_sku (spu_id);
 
+CREATE INDEX IF NOT EXISTS idx_product_hot_sku_spu_updated_created
+    ON product_hot_sku (spu_id, updated_at DESC, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_product_hot_sku_status
     ON product_hot_sku (status);
 

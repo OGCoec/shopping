@@ -8,7 +8,6 @@
   const HIGHLIGHT_END = "[[/HL]]";
   const PAGE_SIZE = 20;
 
-  const authClient = window.ShoppingAuthClient;
   const avatarLink = document.getElementById("console-avatar-link");
   const avatarImage = document.getElementById("console-avatar-image");
   const avatarFallback = document.getElementById("console-avatar-fallback");
@@ -44,8 +43,13 @@
   let currentAvatarUrl = "";
 
   function normalizeAvatarUrl(value) {
-    const normalized = value === null || value === undefined ? "" : String(value).trim();
-    return /^https?:\/\//i.test(normalized) ? normalized : "";
+    return window.ShoppingSecurityUrls?.safeImageUrl?.(value, "", {
+      allowData: false,
+      allowBlob: false,
+      allowAnyHttps: true,
+      allowLocalHttp: true,
+      allowedPathPrefixes: ["/shopping/"]
+    }) || "";
   }
 
   function renderAvatar(user) {
@@ -81,9 +85,13 @@
     window.location.assign(PROFILE_PATH);
   });
 
+  function authClient() {
+    return window.ShoppingAuthClient || null;
+  }
+
   async function fetchJson(path, params) {
-    if (!authClient?.fetchWithAuth) {
-      window.location.assign("/shopping/user/log-in");
+    const client = authClient();
+    if (!client?.fetchWithAuth) {
       throw new Error("Authentication client is unavailable.");
     }
     const url = new URL(path, window.location.origin);
@@ -92,7 +100,7 @@
         url.searchParams.set(key, String(value));
       }
     });
-    const response = await authClient.fetchWithAuth(url, {
+    const response = await client.fetchWithAuth(url, {
       method: "GET",
       credentials: "same-origin",
       headers: {
@@ -109,13 +117,13 @@
   }
 
   async function loadUser() {
-    if (!authClient?.fetchWithAuth) {
-      window.location.assign("/shopping/user/log-in");
+    const client = authClient();
+    if (!client?.fetchWithAuth) {
       return;
     }
 
     try {
-      const response = await authClient.fetchWithAuth(ME_PATH, { method: "GET" });
+      const response = await client.fetchWithAuth(ME_PATH, { method: "GET" });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success || !payload?.user) {
         return;
@@ -290,7 +298,7 @@
 
     const media = document.createElement("div");
     media.className = "console-product-media";
-    const imageUrl = String(product?.mainImageUrl || "").trim();
+    const imageUrl = normalizeAvatarUrl(product?.mainImageUrl);
     if (imageUrl) {
       const image = document.createElement("img");
       image.src = imageUrl;

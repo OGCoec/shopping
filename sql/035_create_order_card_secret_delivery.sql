@@ -106,6 +106,9 @@ CREATE INDEX IF NOT EXISTS idx_order_card_secret_delivery_sku_status
 CREATE INDEX IF NOT EXISTS idx_order_card_secret_delivery_status_created
     ON order_card_secret_delivery (status, created_at DESC, id DESC);
 
+CREATE INDEX IF NOT EXISTS idx_order_card_secret_delivery_delivered_order
+    ON order_card_secret_delivery (delivered_at DESC, id DESC);
+
 COMMENT ON TABLE order_card_secret_delivery IS '订单卡密交付记录表：一条记录代表一张卡密发放给一个已支付订单，用于用户订单详情展示、售后追踪、退款关联和防重复交付。本表只保存卡密库存 ID，不保存卡密明文，不创建物理外键。';
 
 COMMENT ON COLUMN order_card_secret_delivery.id IS '订单卡密交付记录主键，由 HybridSemaphoreIdWorker 生成的 16 字节 Hybrid ID；接口和视图使用该字节值转出的 Base62 字符串';

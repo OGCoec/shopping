@@ -68,6 +68,9 @@ CREATE INDEX IF NOT EXISTS idx_user_account_self_deletion_deleted_at
 CREATE INDEX IF NOT EXISTS idx_user_account_self_deletion_admin_scope
     ON user_account_self_deletion (is_deleted, deleted_at, restored_at);
 
+CREATE INDEX IF NOT EXISTS idx_user_account_self_deletion_admin_order
+    ON user_account_self_deletion (deleted_at DESC NULLS LAST, created_at DESC, id DESC);
+
 COMMENT ON TABLE user_account_self_deletion IS '用户主动注销账号拦截表';
 COMMENT ON COLUMN user_account_self_deletion.id IS '注销记录 ID，由业务侧雪花 ID 生成';
 COMMENT ON COLUMN user_account_self_deletion.user_id IS '业务用户 ID，不设置物理外键';

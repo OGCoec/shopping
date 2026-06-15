@@ -1,7 +1,6 @@
 local detailKey = KEYS[1]
-local dirtyKey = KEYS[2]
-local expireKey = KEYS[3]
-local closingKey = KEYS[4]
+local expireKey = KEYS[2]
+local closingKey = KEYS[3]
 
 local nowIso = ARGV[1]
 local nowMs = tonumber(ARGV[2])
@@ -33,7 +32,6 @@ order['version'] = tonumber(order['version'] or 1) + 1
 
 local updatedJson = cjson.encode(order)
 redis.call('SET', detailKey, updatedJson)
-redis.call('ZADD', dirtyKey, nowMs, orderNo)
 redis.call('ZREM', expireKey, orderNo)
 redis.call('ZADD', closingKey, closingDeadlineMs, orderNo)
 

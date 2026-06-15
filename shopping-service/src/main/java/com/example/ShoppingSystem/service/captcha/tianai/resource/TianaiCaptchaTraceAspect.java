@@ -25,11 +25,8 @@ import static cloud.tianai.captcha.generator.impl.StandardSliderImageCaptchaGene
 @ConditionalOnProperty(prefix = "captcha.trace", name = "enabled", havingValue = "true")
 public class TianaiCaptchaTraceAspect {
 
-    @Around("execution(* com.example.ShoppingSystem.service.impl.TianaiCaptchaServiceImpl.generateRotateCaptcha(..))"
-            + " || execution(* com.example.ShoppingSystem.service.impl.TianaiCaptchaServiceImpl.generateSliderCaptcha(..))"
-            + " || execution(* com.example.ShoppingSystem.service.impl.TianaiCaptchaServiceImpl.generateConcatCaptcha(..))"
-            + " || execution(* com.example.ShoppingSystem.service.impl.TianaiCaptchaServiceImpl.generateWordClickCaptcha(..))"
-            + " || execution(* com.example.ShoppingSystem.service.impl.TianaiCaptchaServiceImpl.generateCaptcha(..))")
+    @Around("execution(* com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaEngine.generate(..))"
+            + " || execution(* com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaEngine.generateResponse(..))")
     public Object traceCaptchaGeneration(ProceedingJoinPoint joinPoint) throws Throwable {
         String requestedType = resolveRequestedType(joinPoint);
         log.info("[TianaiCaptcha] generating type={}", requestedType);

@@ -4,19 +4,34 @@ import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.controller.login.user.dto.PasswordResetEmailRequest;
 import com.example.ShoppingSystem.controller.login.user.dto.PasswordResetResponse;
 import com.example.ShoppingSystem.controller.login.user.dto.PasswordResetSubmitRequest;
+import com.example.ShoppingSystem.controller.login.user.dto.RegisterCaptchaResponse;
+import com.example.ShoppingSystem.controller.login.user.dto.TianaiRotateCaptchaResponse;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateRequest;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateResult;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetResult;
+import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetEmailCaptchaRiskGateService;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
+
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_TIANAI;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.SUBTYPE_TIANAI_CONCAT;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.SUBTYPE_TIANAI_ROTATE;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.SUBTYPE_TIANAI_SLIDER;
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.SUBTYPE_TIANAI_WORD_IMAGE_CLICK;
 
 @RestController
 @RequestMapping("/shopping/user/forgot-password")
@@ -32,9 +47,15 @@ public class PasswordResetController {
     private static final Duration PASSWORD_RESET_CODE_COOKIE_TTL = Duration.ofMinutes(5);
 
     private final PasswordResetService passwordResetService;
+    private final PasswordResetEmailCaptchaRiskGateService passwordResetEmailCaptchaRiskGateService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
 
-    public PasswordResetController(PasswordResetService passwordResetService) {
+    public PasswordResetController(PasswordResetService passwordResetService,
+                                   PasswordResetEmailCaptchaRiskGateService passwordResetEmailCaptchaRiskGateService,
+                                   CaptchaStrategyRegistry captchaStrategyRegistry) {
         this.passwordResetService = passwordResetService;
+        this.passwordResetEmailCaptchaRiskGateService = passwordResetEmailCaptchaRiskGateService;
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
     }
 
     @PostMapping("/crypto-key")
@@ -61,9 +82,70 @@ public class PasswordResetController {
                 body.email(),
                 resolvePreAuthToken(request),
                 resolveDeviceFingerprint(request),
+                resolveClientIp(request),
                 resolveRiskLevel(request),
                 isPasswordResetWafResumeRequest(request),
-                resolveBaseUrl(request))));
+                resolveBaseUrl(request),
+                body.captchaUuid(),
+                body.captchaCode())));
+    }
+
+    @GetMapping("/hutoolcaptcha")
+    public ResponseEntity<?> getPasswordResetCaptcha(@RequestParam(required = false) String uuid,
+                                                     @RequestParam(required = false) String email,
+                                                     @RequestParam(required = false) String deviceFingerprint) throws Exception {
+        ensurePasswordResetChallengeAlive(email, deviceFingerprint, CHALLENGE_HUTOOL_SHEAR, null);
+        CaptchaGenerateResult result = captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                CHALLENGE_HUTOOL_SHEAR,
+                null,
+                PasswordResetEmailCaptchaRiskGateService.PASSWORD_RESET_CAPTCHA_TYPE,
+                uuid
+        ));
+        return ResponseEntity.ok(RegisterCaptchaResponse.builder()
+                .uuid(result.uuid())
+                .image(result.image())
+                .build());
+    }
+
+    @GetMapping("/tianai/rotate")
+    public ResponseEntity<?> getPasswordResetTianaiRotateCaptcha(@RequestParam(required = false) String captchaId,
+                                                                @RequestParam(required = false) String email,
+                                                                @RequestParam(required = false) String deviceFingerprint) {
+        ensurePasswordResetChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, SUBTYPE_TIANAI_ROTATE);
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(SUBTYPE_TIANAI_ROTATE, captchaId)));
+    }
+
+    @GetMapping("/tianai/slider")
+    public ResponseEntity<?> getPasswordResetTianaiSliderCaptcha(@RequestParam(required = false) String captchaId,
+                                                                @RequestParam(required = false) String email,
+                                                                @RequestParam(required = false) String deviceFingerprint) {
+        ensurePasswordResetChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, SUBTYPE_TIANAI_SLIDER);
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(SUBTYPE_TIANAI_SLIDER, captchaId)));
+    }
+
+    @GetMapping("/tianai/concat")
+    public ResponseEntity<?> getPasswordResetTianaiConcatCaptcha(@RequestParam(required = false) String captchaId,
+                                                                @RequestParam(required = false) String email,
+                                                                @RequestParam(required = false) String deviceFingerprint) {
+        ensurePasswordResetChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, SUBTYPE_TIANAI_CONCAT);
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(SUBTYPE_TIANAI_CONCAT, captchaId)));
+    }
+
+    @GetMapping("/tianai/word-click")
+    public ResponseEntity<?> getPasswordResetTianaiWordClickCaptcha(@RequestParam(required = false) String captchaId,
+                                                                   @RequestParam(required = false) String email,
+                                                                   @RequestParam(required = false) String deviceFingerprint) {
+        ensurePasswordResetChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, SUBTYPE_TIANAI_WORD_IMAGE_CLICK);
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(SUBTYPE_TIANAI_WORD_IMAGE_CLICK, captchaId)));
+    }
+
+    private cloud.tianai.captcha.application.vo.ImageCaptchaVO generateTianaiCaptcha(String subType, String captchaId) {
+        return captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                CHALLENGE_TIANAI,
+                subType,
+                PasswordResetEmailCaptchaRiskGateService.PASSWORD_RESET_CAPTCHA_TYPE,
+                captchaId
+        )).tianaiCaptcha();
     }
 
     @PostMapping("/reset-by-link")
@@ -164,6 +246,19 @@ public class PasswordResetController {
             }
         }
         return StrUtil.blankToDefault(proto, "https") + "://" + host;
+    }
+
+    private void ensurePasswordResetChallengeAlive(String email,
+                                                   String deviceFingerprint,
+                                                   String challengeType,
+                                                   String challengeSubType) {
+        if (!passwordResetEmailCaptchaRiskGateService.refreshPendingChallengeSelection(
+                email,
+                deviceFingerprint,
+                challengeType,
+                challengeSubType)) {
+            throw new IllegalArgumentException("Current password reset challenge has expired, please resubmit.");
+        }
     }
 
     private String resolveCookieValue(HttpServletRequest request, String name) {

@@ -12,6 +12,7 @@
   const ERROR_MESSAGES = {
     WEBRTC_IP_MISMATCH: "网络环境异常，请关闭 VPN/代理后重试",
     WEBRTC_SIGNAL_REQUIRED: "网络环境校验失败，未能获取浏览器 WebRTC 公网 IP。请关闭 VPN、代理或加速器后重试；如果仍失败，请检查浏览器是否禁用了 WebRTC，并开启 WebRTC 后重新打开页面。",
+    WEBRTC_SIGNAL_UNVERIFIED: "网络环境信号暂不可验证，请关闭 VPN、代理或加速器后重试；如果仍失败，请检查浏览器 WebRTC 设置。",
     NETWORK_CHECK_BLOCKED: DEFAULT_MESSAGE,
     PREAUTH_IP_CHANGED_WAF_REQUIRED: "检测到访问 IP 变化，请完成安全验证后重试",
     DEVICE_RISK_BLOCKED: "当前设备环境异常，请调整设备或网络环境后重试",
@@ -61,7 +62,7 @@
 
   function resolveMessage(scope, error, rawMessage, webRtcStatus) {
     const normalizedError = clean(error).toUpperCase();
-    if (normalizedError === "WEBRTC_SIGNAL_REQUIRED") {
+    if (normalizedError === "WEBRTC_SIGNAL_REQUIRED" || normalizedError === "WEBRTC_SIGNAL_UNVERIFIED") {
       return resolveWebRtcSignalRequiredMessage(webRtcStatus);
     }
     if (ERROR_MESSAGES[normalizedError]) {
@@ -213,7 +214,7 @@
     appendDetail(details, "原因", error);
     appendDetail(details, "路径", params.get("path"));
     appendDetail(details, "HTTP IP", params.get("httpIp"));
-    appendDetail(details, "WebRTC IP", params.get("webRtcIp"));
+    appendDetail(details, "WebRTC IPs", params.get("webRtcIps"));
     appendDetail(details, "WebRTC", params.get("webRtcStatus"));
     appendDetail(details, "Ray ID", firstParam(params, ["cfRay", "rayId", "rayID", "cf-ray", "CF-Ray", "cf_ray"]));
     void replayFailure(scope, error);

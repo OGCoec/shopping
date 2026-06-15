@@ -3,6 +3,7 @@ package com.example.ShoppingSystem.service.user.auth.risk.impl;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
+import com.example.ShoppingSystem.common.transaction.AfterCommitExecutor;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.mapper.risk.UserRiskAccountTerminationMapper;
@@ -12,6 +13,8 @@ import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailB
 import com.example.ShoppingSystem.service.user.auth.risk.UserAuthFailureRiskService;
 import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthFailureType;
 import com.example.ShoppingSystem.service.user.auth.risk.model.UserAuthLockStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +34,8 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserAuthFailureRiskServiceImpl.class);
 
     private static final int SINGLE_FAILURE_LOCK_THRESHOLD = 8;
     private static final int TOTAL_FAILURE_LOCK_THRESHOLD = 15;
@@ -226,7 +231,13 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
                 buildMetadata(snapshot, nextLockCount, decision),
                 now
         );
-        stringRedisTemplate.delete(failureKeys(userId));
+        AfterCommitExecutor.run(() -> {
+            try {
+                stringRedisTemplate.delete(failureKeys(userId));
+            } catch (Exception e) {
+                log.warn("Auth failure risk cache cleanup failed, userId={}, reason={}", userId, e.getMessage());
+            }
+        });
 
         return UserAuthLockStatus.builder()
                 .blocked(true)
@@ -329,7 +340,14 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
                 now,
                 now
         );
-        terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(emailHash);
+        AfterCommitExecutor.run(() -> {
+            try {
+                terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(emailHash);
+            } catch (Exception e) {
+                log.warn("Terminated account email bloom sync failed, userId={}, reason={}",
+                        userId, e.getMessage());
+            }
+        });
     }
 
     private FailureWindowSnapshot readSnapshot(Long userId) {

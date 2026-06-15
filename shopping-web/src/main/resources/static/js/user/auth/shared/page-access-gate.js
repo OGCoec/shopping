@@ -337,10 +337,27 @@
     if (!isBrowserRuntime() || !path) {
       return;
     }
-    if (window.location.pathname === path) {
+    const target = root.ShoppingSecurityUrls?.safeSameOriginPath?.(path, LOGIN_PATH) || LOGIN_PATH;
+    if (window.location.pathname === target) {
       return;
     }
-    window.location.assign(path);
+    window.location.assign(target);
+  }
+
+  function buildDefaultWafVerifyUrl() {
+    if (!isBrowserRuntime()) {
+      return "/shopping/auth/waf/verify";
+    }
+    const currentPath = `${window.location.pathname || "/"}${window.location.search || ""}`;
+    return `/shopping/auth/waf/verify?return=${encodeURIComponent(currentPath)}`;
+  }
+
+  function handleNetworkCheckFailure(payload) {
+    const preAuthClient = root.ShoppingPreAuthClient;
+    if (preAuthClient?.handleNetworkCheckFailurePayload) {
+      return preAuthClient.handleNetworkCheckFailurePayload(payload, "user");
+    }
+    return false;
   }
 
   async function parseJson(response) {
@@ -353,7 +370,11 @@
 
   function handleBlockedResponse(response, payload) {
     const error = payload?.error ? String(payload.error) : "";
-    if (response.status === 409 || error === WAF_REQUIRED_ERROR) {
+    if ((response.status === 403 || response.status === 409) && handleNetworkCheckFailure(payload)) {
+      return true;
+    }
+    if (error === WAF_REQUIRED_ERROR) {
+      redirectTo(payload?.verifyUrl || buildDefaultWafVerifyUrl());
       return true;
     }
     if (response.status === 428 || error === PHONE_BINDING_REQUIRED_ERROR) {
@@ -380,6 +401,12 @@
       return true;
     }
     const payload = await preAuthClient.bootstrapPreAuthToken(false);
+    if (preAuthClient?.handleNetworkCheckFailurePayload?.(payload, "user")) {
+      if (visible) {
+        await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
+      }
+      return false;
+    }
     if (payload?.error === WAF_REQUIRED_ERROR) {
       if (visible) {
         await waitRemaining(startedAt, MIN_DEVICE_VISIBLE_MS);
@@ -410,8 +437,12 @@
 
     const authClient = root.ShoppingAuthClient;
     if (!authClient?.fetchWithAuth) {
-      redirectTo(LOGIN_PATH);
-      return false;
+      if (!silent) {
+        failPage(FAILED_MESSAGE, "session");
+      } else {
+        revealPage();
+      }
+      return true;
     }
 
     try {

@@ -4,7 +4,6 @@
   const PAGE_SIZE = 20;
   const HIGHLIGHT_START = "[[HL]]";
   const HIGHLIGHT_END = "[[/HL]]";
-  const authClient = window.ShoppingAuthClient;
 
   const statusEl = document.getElementById("coupon-page-status");
   const availableView = document.getElementById("coupon-available-view");
@@ -61,9 +60,13 @@
     });
   }
 
+  function authClient() {
+    return window.ShoppingAuthClient || null;
+  }
+
   async function fetchJson(path, params = null, options = {}) {
-    if (!authClient?.fetchWithAuth) {
-      window.location.assign("/shopping/user/log-in");
+    const client = authClient();
+    if (!client?.fetchWithAuth) {
       throw new Error("Authentication client is unavailable.");
     }
     const url = new URL(path, window.location.origin);
@@ -72,7 +75,7 @@
         url.searchParams.set(key, String(value));
       }
     });
-    const response = await authClient.fetchWithAuth(url, {
+    const response = await client.fetchWithAuth(url, {
       method: options.method || "GET",
       credentials: "same-origin",
       headers: {
@@ -507,7 +510,18 @@
     }
   });
 
-  route().catch((error) => {
+  async function startPage() {
+    const pageGate = window.ShoppingPageAccessGate;
+    if (pageGate?.ready) {
+      const allowed = await pageGate.ready();
+      if (allowed === false) {
+        return;
+      }
+    }
+    await route();
+  }
+
+  startPage().catch((error) => {
     setStatus(error.message || "优惠券页面加载失败。", "error");
   });
 })();

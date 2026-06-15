@@ -126,6 +126,14 @@ CREATE INDEX IF NOT EXISTS idx_coupon_template_status_receive_time
 CREATE INDEX IF NOT EXISTS idx_coupon_template_valid_time
     ON coupon_template (valid_start_at, valid_end_at);
 
+CREATE INDEX IF NOT EXISTS idx_coupon_template_visible_updated_created
+    ON coupon_template (updated_at DESC, created_at DESC)
+    WHERE status <> 'DELETED';
+
+CREATE INDEX IF NOT EXISTS idx_coupon_template_active_updated_created
+    ON coupon_template (updated_at DESC, created_at DESC)
+    WHERE status = 'ACTIVE';
+
 COMMENT ON TABLE coupon_template IS '优惠券模板表：保存优惠券规则，例如满减券、折扣券、发放数量、有效期和状态';
 
 COMMENT ON COLUMN coupon_template.id IS '优惠券模板 ID，由 HybridSemaphoreIdWorker 生成的 16 字节 ID；接口可使用该字节值转出的 Base62 字符串';

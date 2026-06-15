@@ -13,6 +13,11 @@ import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationError;
 import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
 import com.example.ShoppingSystem.quota.IpCountryQueryService;
 import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
+import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskReportRequest;
+import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskReportResponse;
+import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskReportService;
+import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskStateQueryService;
+import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskStateResponse;
 import com.example.ShoppingSystem.service.user.auth.phone.PhoneBindingAvailabilityService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -47,17 +52,23 @@ public class PreAuthBootstrapController {
     private final RegisterPasswordCryptoService registerPasswordCryptoService;
     private final PhoneNumberValidationService phoneNumberValidationService;
     private final PhoneBindingAvailabilityService phoneBindingAvailabilityService;
+    private final WebRtcRiskReportService webRtcRiskReportService;
+    private final WebRtcRiskStateQueryService webRtcRiskStateQueryService;
 
     public PreAuthBootstrapController(PreAuthBindingService preAuthBindingService,
                                       IpCountryQueryService ipCountryQueryService,
                                       RegisterPasswordCryptoService registerPasswordCryptoService,
                                       PhoneNumberValidationService phoneNumberValidationService,
-                                      PhoneBindingAvailabilityService phoneBindingAvailabilityService) {
+                                      PhoneBindingAvailabilityService phoneBindingAvailabilityService,
+                                      WebRtcRiskReportService webRtcRiskReportService,
+                                      WebRtcRiskStateQueryService webRtcRiskStateQueryService) {
         this.preAuthBindingService = preAuthBindingService;
         this.ipCountryQueryService = ipCountryQueryService;
         this.registerPasswordCryptoService = registerPasswordCryptoService;
         this.phoneNumberValidationService = phoneNumberValidationService;
         this.phoneBindingAvailabilityService = phoneBindingAvailabilityService;
+        this.webRtcRiskReportService = webRtcRiskReportService;
+        this.webRtcRiskStateQueryService = webRtcRiskStateQueryService;
     }
 
     /**
@@ -110,6 +121,18 @@ public class PreAuthBootstrapController {
             return new PreAuthPhoneCountryResponse(true, "ok", result.country(), result.source());
         }
         return new PreAuthPhoneCountryResponse(false, result.reason(), null, result.source());
+    }
+
+    @PostMapping("/webrtc/report")
+    public ResponseEntity<WebRtcRiskReportResponse> reportWebRtc(
+            @RequestBody(required = false) WebRtcRiskReportRequest report,
+            HttpServletRequest request) {
+        return ResponseEntity.accepted().body(webRtcRiskReportService.reportPreAuthOrUser(request, report));
+    }
+
+    @GetMapping("/webrtc/state")
+    public WebRtcRiskStateResponse webRtcState(HttpServletRequest request) {
+        return webRtcRiskStateQueryService.queryPreAuthOrUser(request);
     }
 
     @PostMapping("/phone-validate")

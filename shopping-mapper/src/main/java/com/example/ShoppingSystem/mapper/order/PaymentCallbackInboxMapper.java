@@ -23,6 +23,10 @@ public interface PaymentCallbackInboxMapper {
     List<Map<String, Object>> claimDispatchBatch(@Param("limit") int limit,
                                                  @Param("maxRetry") int maxRetry);
 
+    List<Map<String, Object>> batchUpsertAndClaimStreamCallbacks(@Param("callbacksJson") String callbacksJson,
+                                                                 @Param("maxRetry") int maxRetry,
+                                                                 @Param("processingTimeoutMs") long processingTimeoutMs);
+
     int batchWriteResults(@Param("resultsJson") String resultsJson);
 
     Map<String, Object> findByCallbackNo(@Param("callbackNo") String callbackNo);

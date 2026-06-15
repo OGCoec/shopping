@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.Utils.AliyunUtils;
 import com.example.ShoppingSystem.avatar.AvatarMetadata;
 import com.example.ShoppingSystem.avatar.AvatarMetadataUtils;
+import com.example.ShoppingSystem.common.transaction.AfterCommitExecutor;
 import com.example.ShoppingSystem.mapper.user.UserProfileMapper;
 import com.example.ShoppingSystem.service.user.profile.UserAvatarService;
 import com.example.ShoppingSystem.service.user.profile.UserAvatarUploadMessagePublisher;
@@ -13,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Locale;
 import java.util.Set;
@@ -30,17 +32,20 @@ public class UserAvatarServiceImpl implements UserAvatarService {
     private final UserProfileMapper userProfileMapper;
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
+    private final TransactionTemplate transactionTemplate;
     private final UserAvatarUploadMessagePublisher userAvatarUploadMessagePublisher;
 
     public UserAvatarServiceImpl(AliyunUtils aliyunUtils,
                                  UserProfileMapper userProfileMapper,
                                  ObjectMapper objectMapper,
                                  StringRedisTemplate stringRedisTemplate,
+                                 TransactionTemplate transactionTemplate,
                                  UserAvatarUploadMessagePublisher userAvatarUploadMessagePublisher) {
         this.aliyunUtils = aliyunUtils;
         this.userProfileMapper = userProfileMapper;
         this.objectMapper = objectMapper;
         this.stringRedisTemplate = stringRedisTemplate;
+        this.transactionTemplate = transactionTemplate;
         this.userAvatarUploadMessagePublisher = userAvatarUploadMessagePublisher;
     }
 
@@ -78,22 +83,25 @@ public class UserAvatarServiceImpl implements UserAvatarService {
                 .build();
 
         try {
-            ensureProfileRow(message.getUserId());
-            int updated = userProfileMapper.updateAvatarById(
-                    message.getUserId(),
-                    uploadedUrl
-            );
-            if (updated <= 0) {
-                throw new IllegalStateException("Failed to update avatar URL.");
-            }
-            evictUserContext(message.getUserId());
+            transactionTemplate.executeWithoutResult(status -> {
+                ensureProfileRow(message.getUserId());
+                int updated = userProfileMapper.updateAvatarById(
+                        message.getUserId(),
+                        uploadedUrl
+                );
+                if (updated <= 0) {
+                    throw new IllegalStateException("Failed to update avatar URL.");
+                }
+                AfterCommitExecutor.run(() -> {
+                    evictUserContext(message.getUserId());
+                    deletePreviousAvatar(oldAvatar, objectKey);
+                    log.info("User avatar updated, userId={}, objectKey={}", message.getUserId(), objectKey);
+                });
+            });
         } catch (Exception ex) {
             deleteQuietly(newAvatar);
             throw ex;
         }
-
-        deletePreviousAvatar(oldAvatar, objectKey);
-        log.info("User avatar updated, userId={}, objectKey={}", message.getUserId(), objectKey);
     }
 
     @Override
@@ -105,15 +113,19 @@ public class UserAvatarServiceImpl implements UserAvatarService {
             return false;
         }
 
-        int updated = userProfileMapper.clearAvatarById(userId);
-        if (updated <= 0) {
-            return false;
-        }
-        evictUserContext(userId);
-        if (avatarMetadata != null) {
-            deleteQuietly(avatarMetadata);
-        }
-        return true;
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int updated = userProfileMapper.clearAvatarById(userId);
+            if (updated <= 0) {
+                return false;
+            }
+            AfterCommitExecutor.run(() -> {
+                evictUserContext(userId);
+                if (avatarMetadata != null) {
+                    deleteQuietly(avatarMetadata);
+                }
+            });
+            return true;
+        }));
     }
 
     private void ensureProfileRow(Long userId) {
@@ -121,7 +133,12 @@ public class UserAvatarServiceImpl implements UserAvatarService {
     }
 
     private void evictUserContext(Long userId) {
-        stringRedisTemplate.delete(USER_CONTEXT_CACHE_KEY_PREFIX + userId);
+        try {
+            stringRedisTemplate.delete(USER_CONTEXT_CACHE_KEY_PREFIX + userId);
+        } catch (Exception ex) {
+            log.warn("Failed to evict user context cache after avatar change, userId={}, error={}",
+                    userId, ex.getMessage());
+        }
     }
 
     private void deletePreviousAvatar(AvatarMetadata previousAvatar, String currentObjectKey) {

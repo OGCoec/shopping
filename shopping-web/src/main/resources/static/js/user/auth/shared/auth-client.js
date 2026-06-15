@@ -81,11 +81,33 @@
     }
   }
 
+  function safeSameOriginPath(value, fallback, allowedPrefixes = ["/shopping/"]) {
+    const securityUrls = globalThis?.ShoppingSecurityUrls;
+    if (securityUrls && typeof securityUrls.safeSameOriginPath === "function") {
+      return securityUrls.safeSameOriginPath(value, fallback, allowedPrefixes);
+    }
+    const fallbackPath = fallback || "/shopping/";
+    const raw = String(value || "").trim();
+    if (!raw || raw.includes("\\") || raw.startsWith("//")) {
+      return fallbackPath;
+    }
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.origin !== window.location.origin) {
+        return fallbackPath;
+      }
+      const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      return allowedPrefixes.some((prefix) => path.startsWith(prefix)) ? path : fallbackPath;
+    } catch (_) {
+      return fallbackPath;
+    }
+  }
+
   function redirectToPhoneBinding(payload) {
     if (typeof window === "undefined" || !window.location) {
       return;
     }
-    const target = payload?.redirectPath || PHONE_BINDING_PATH;
+    const target = safeSameOriginPath(payload?.redirectPath, PHONE_BINDING_PATH);
     if (window.location.pathname === PHONE_BINDING_PATH) {
       return;
     }
@@ -94,6 +116,22 @@
 
   function isPreAuthVerificationResponse(response) {
     return response?.status === 409;
+  }
+
+  function handleNetworkCheckFailurePayload(payload) {
+    const client = preAuthClient();
+    if (client?.handleNetworkCheckFailurePayload) {
+      return client.handleNetworkCheckFailurePayload(payload, "user");
+    }
+    return false;
+  }
+
+  async function handleNetworkCheckRequiredResponse(response) {
+    if (response?.status !== 403 && response?.status !== 409) {
+      return false;
+    }
+    const payload = await parseJson(response.clone());
+    return handleNetworkCheckFailurePayload(payload);
   }
 
   async function handlePhoneBindingRequiredResponse(response) {
@@ -126,6 +164,9 @@
     const firstOptions = cloneOptions(options);
     applyCsrf(firstOptions.headers);
     const firstResponse = await guardedFetch(url, firstOptions);
+    if (await handleNetworkCheckRequiredResponse(firstResponse)) {
+      return firstResponse;
+    }
     if (await handlePhoneBindingRequiredResponse(firstResponse)) {
       return firstResponse;
     }
@@ -141,6 +182,9 @@
 
     const refreshResponse = await refresh();
     if (!refreshResponse.ok) {
+      if (await handleNetworkCheckRequiredResponse(refreshResponse)) {
+        return refreshResponse;
+      }
       if (isPreAuthVerificationResponse(refreshResponse)) {
         return refreshResponse;
       }
@@ -151,6 +195,9 @@
     const retryOptions = cloneOptions(options);
     applyCsrf(retryOptions.headers);
     const retryResponse = await guardedFetch(url, retryOptions);
+    if (await handleNetworkCheckRequiredResponse(retryResponse)) {
+      return retryResponse;
+    }
     await handlePhoneBindingRequiredResponse(retryResponse);
     return retryResponse;
   }
@@ -159,7 +206,7 @@
     const options = cloneOptions({ method: "POST" });
     applyCsrf(options.headers);
     const response = await guardedFetch(LOGOUT_PATH, options);
-    if (!isPreAuthVerificationResponse(response)) {
+    if (!await handleNetworkCheckRequiredResponse(response) && !isPreAuthVerificationResponse(response)) {
       redirectToLogin();
     }
     return response;
@@ -169,7 +216,7 @@
     const options = cloneOptions({ method: "POST" });
     applyCsrf(options.headers);
     const response = await fetchWithAuth(LOGOUT_ALL_PATH, options);
-    if (!isPreAuthVerificationResponse(response)) {
+    if (!await handleNetworkCheckRequiredResponse(response) && !isPreAuthVerificationResponse(response)) {
       redirectToLogin();
     }
     return response;

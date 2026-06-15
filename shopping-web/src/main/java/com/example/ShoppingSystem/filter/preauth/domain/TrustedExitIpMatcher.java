@@ -7,7 +7,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
 
 @Component
@@ -26,10 +25,10 @@ public class TrustedExitIpMatcher {
         }
 
         Set<String> normalizedWebRtcIps = new LinkedHashSet<>();
-        for (String webRtcIp : webRtcIps) {
-            String normalizedWebRtcIp = PreAuthIpNormalizer.normalizeIp(webRtcIp);
-            if (StrUtil.isNotBlank(normalizedWebRtcIp)) {
-                normalizedWebRtcIps.add(normalizedWebRtcIp);
+        for (String candidateIp : webRtcIps) {
+            String normalizedCandidateIp = PreAuthIpNormalizer.normalizeIp(candidateIp);
+            if (StrUtil.isNotBlank(normalizedCandidateIp)) {
+                normalizedWebRtcIps.add(normalizedCandidateIp);
             }
         }
         if (normalizedWebRtcIps.isEmpty()) {
@@ -41,17 +40,13 @@ public class TrustedExitIpMatcher {
             if (!group.contains(normalizedHttpIp)) {
                 continue;
             }
-            for (String webRtcIp : normalizedWebRtcIps) {
-                if (group.contains(webRtcIp)) {
+            for (String candidateIp : normalizedWebRtcIps) {
+                if (group.contains(candidateIp)) {
                     return true;
                 }
             }
         }
         return false;
-    }
-
-    public boolean isTrustedMatch(String httpIp, String webRtcIp) {
-        return isTrustedMatch(httpIp, List.of(StrUtil.blankToDefault(webRtcIp, "")));
     }
 
     private Set<String> parseGroup(String groupSpec) {

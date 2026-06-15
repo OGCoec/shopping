@@ -253,6 +253,7 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
 
             boolean captchaVerified = verifyRequiredCaptcha(
                     challengeType,
+                    challengeSubType,
                     publicIp,
                     captchaUuid,
                     captchaCode);
@@ -461,14 +462,24 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
 
     // test compatibility wrapper
     boolean verifyRequiredCaptcha(String challengeType,
+                                  String challengeSubType,
                                   String publicIp,
                                   String captchaUuid,
                                   String captchaCode) {
         return captchaVerificationService.verifyRequiredCaptcha(
                 challengeType,
+                challengeSubType,
                 publicIp,
                 captchaUuid,
                 captchaCode);
+    }
+
+    // test compatibility wrapper
+    boolean verifyRequiredCaptcha(String challengeType,
+                                  String publicIp,
+                                  String captchaUuid,
+                                  String captchaCode) {
+        return verifyRequiredCaptcha(challengeType, null, publicIp, captchaUuid, captchaCode);
     }
 
     // test compatibility wrapper
@@ -517,7 +528,7 @@ public class RegisterPrecheckServiceImpl implements RegisterPrecheckService {
                 .riskLevel(riskLevel)
                 .challengeType(challengeType)
                 .challengeSubType(challengeSubType)
-                .challengeSiteKey(captchaVerificationService.resolveChallengeSiteKey(challengeType))
+                .challengeSiteKey(captchaVerificationService.resolveChallengeSiteKey(challengeType, challengeSubType))
                 .retryAfterMs(retryAfterMs)
                 .waitUntilEpochMs(waitUntilEpochMs)
                 .emailCodeSent(false)

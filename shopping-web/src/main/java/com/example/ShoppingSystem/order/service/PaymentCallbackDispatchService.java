@@ -42,8 +42,11 @@ public class PaymentCallbackDispatchService {
     private final CouponUsageRecordMapper couponUsageRecordMapper;
     private final PaymentRefundMapper paymentRefundMapper;
     private final PaymentRefundMessagePublisher paymentRefundMessagePublisher;
+    private final PaymentRefundStreamService paymentRefundStreamService;
+    private final PaymentRefundStreamProperties paymentRefundStreamProperties;
     private final OrderCardSecretDeliveryService orderCardSecretDeliveryService;
     private final PaymentCallbackDispatchProperties properties;
+    private final PaymentCallbackStreamProperties paymentCallbackStreamProperties;
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
@@ -55,8 +58,11 @@ public class PaymentCallbackDispatchService {
                                           CouponUsageRecordMapper couponUsageRecordMapper,
                                           PaymentRefundMapper paymentRefundMapper,
                                           PaymentRefundMessagePublisher paymentRefundMessagePublisher,
+                                          PaymentRefundStreamService paymentRefundStreamService,
+                                          PaymentRefundStreamProperties paymentRefundStreamProperties,
                                           OrderCardSecretDeliveryService orderCardSecretDeliveryService,
                                           PaymentCallbackDispatchProperties properties,
+                                          PaymentCallbackStreamProperties paymentCallbackStreamProperties,
                                           HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
                                           ObjectMapper objectMapper,
                                           TransactionTemplate transactionTemplate) {
@@ -67,8 +73,11 @@ public class PaymentCallbackDispatchService {
         this.couponUsageRecordMapper = couponUsageRecordMapper;
         this.paymentRefundMapper = paymentRefundMapper;
         this.paymentRefundMessagePublisher = paymentRefundMessagePublisher;
+        this.paymentRefundStreamService = paymentRefundStreamService;
+        this.paymentRefundStreamProperties = paymentRefundStreamProperties;
         this.orderCardSecretDeliveryService = orderCardSecretDeliveryService;
         this.properties = properties;
+        this.paymentCallbackStreamProperties = paymentCallbackStreamProperties;
         this.hybridSemaphoreIdWorker = hybridSemaphoreIdWorker;
         this.objectMapper = objectMapper;
         this.transactionTemplate = transactionTemplate;
@@ -88,7 +97,7 @@ public class PaymentCallbackDispatchService {
         try {
             DispatchBatchResult result = processClaimed(claimed);
             orderCardSecretDeliveryService.deliverPaidOrdersFromRows(result.paidRows());
-            publishRefundDispatchMessages(result.refundNos());
+            enqueueRefundDispatchMessages(result.refundNos(), false);
             log.info("[PaymentCallback] dispatch finished, claimed={}, inboxWritten={}, refunds={}",
                     claimed.size(), result.inboxWrittenCount(), result.refundNos().size());
             return new DispatchSummary(claimed.size(), result.inboxWrittenCount(), result.refundNos().size(), 0);
@@ -96,6 +105,54 @@ public class PaymentCallbackDispatchService {
             int failed = writeFailureResults(claimed, "PAYMENT_CALLBACK_BATCH_FAILED", "Payment callback batch failed.");
             log.warn("[PaymentCallback] dispatch batch failed, claimed={}, failedWritten={}", claimed.size(), failed, e);
             return new DispatchSummary(claimed.size(), 0, 0, failed);
+        }
+    }
+
+    public StreamDispatchSummary dispatchStreamRecords(List<PaymentCallbackStreamRecord> records) {
+        if (!properties.isEnabled() || records == null || records.isEmpty()) {
+            return StreamDispatchSummary.empty();
+        }
+        List<Map<String, Object>> streamRows = transactionTemplate.execute(status ->
+                paymentCallbackInboxMapper.batchUpsertAndClaimStreamCallbacks(
+                        toStreamCallbackRowsJson(records),
+                        Math.max(1, properties.getMaxRetry()),
+                        Math.max(1L, paymentCallbackStreamProperties.getProcessingTimeoutMs())
+                )
+        );
+        if (streamRows == null || streamRows.isEmpty()) {
+            return StreamDispatchSummary.empty();
+        }
+        List<Map<String, Object>> ackOnlyRows = streamRows.stream()
+                .filter(row -> booleanValue(row.get("streamAckOnly")))
+                .toList();
+        List<Map<String, Object>> claimedRows = distinctRowsByCallbackNo(streamRows.stream()
+                .filter(row -> booleanValue(row.get("streamClaimed")))
+                .toList());
+        List<String> ackStreamMessageIds = streamRows.stream()
+                .filter(row -> booleanValue(row.get("streamAckOnly")) || booleanValue(row.get("streamClaimed")))
+                .map(row -> OrderRowMapper.text(row, "streamMessageId"))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+        List<String> refundNos = new ArrayList<>(refundNosFromRows(ackOnlyRows));
+        if (claimedRows.isEmpty()) {
+            enqueueRefundDispatchMessages(refundNos, true);
+            return new StreamDispatchSummary(0, 0, refundNos.size(), 0, ackStreamMessageIds);
+        }
+        try {
+            DispatchBatchResult result = processClaimed(claimedRows);
+            orderCardSecretDeliveryService.deliverPaidOrdersFromRows(result.paidRows());
+            refundNos.addAll(result.refundNos());
+            refundNos = refundNos.stream()
+                    .filter(value -> value != null && !value.isBlank())
+                    .distinct()
+                    .toList();
+            enqueueRefundDispatchMessages(refundNos, true);
+            return new StreamDispatchSummary(claimedRows.size(), result.inboxWrittenCount(), refundNos.size(), 0, ackStreamMessageIds);
+        } catch (Exception e) {
+            int failed = writeFailureResults(claimedRows, "PAYMENT_CALLBACK_STREAM_BATCH_FAILED", "Payment callback stream batch failed.");
+            log.warn("[PaymentCallbackStream] dispatch batch failed, claimed={}, failedWritten={}", claimedRows.size(), failed, e);
+            return new StreamDispatchSummary(claimedRows.size(), 0, 0, failed, List.of());
         }
     }
 
@@ -428,8 +485,46 @@ public class PaymentCallbackDispatchService {
         return payload;
     }
 
-    private void publishRefundDispatchMessages(List<String> refundNos) {
+    private List<Map<String, Object>> distinctRowsByCallbackNo(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        return new ArrayList<>(rows.stream()
+                .filter(row -> !OrderRowMapper.text(row, "callbackNo").isBlank())
+                .collect(Collectors.toMap(
+                        row -> OrderRowMapper.text(row, "callbackNo"),
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ))
+                .values());
+    }
+
+    private List<String> refundNosFromRows(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        return rows.stream()
+                .filter(row -> PaymentCallbackOutcome.REFUND_PENDING.equals(OrderRowMapper.text(row, "resultOutcome")))
+                .map(row -> OrderRowMapper.text(row, "refundNo"))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private void enqueueRefundDispatchMessages(List<String> refundNos, boolean strict) {
         if (refundNos == null || refundNos.isEmpty()) {
+            return;
+        }
+        if (paymentRefundStreamProperties.isEnabled()) {
+            try {
+                paymentRefundStreamService.enqueueBatch(refundNos);
+            } catch (Exception e) {
+                log.warn("[PaymentCallback] refund stream enqueue failed, size={}", refundNos.size(), e);
+                if (strict) {
+                    throw e;
+                }
+            }
             return;
         }
         for (String refundNo : refundNos) {
@@ -437,6 +532,9 @@ public class PaymentCallbackDispatchService {
                 paymentRefundMessagePublisher.publish(refundNo);
             } catch (Exception e) {
                 log.warn("[PaymentCallback] refund dispatch publish failed, refundNo={}", refundNo, e);
+                if (strict) {
+                    throw e;
+                }
             }
         }
     }
@@ -523,10 +621,82 @@ public class PaymentCallbackDispatchService {
         return Math.max(1, Math.min(value, 500));
     }
 
+    private String toStreamCallbackRowsJson(List<PaymentCallbackStreamRecord> records) {
+        List<Map<String, Object>> rows = records.stream()
+                .map(this::toStreamCallbackRow)
+                .toList();
+        return toJson(rows);
+    }
+
+    private Map<String, Object> toStreamCallbackRow(PaymentCallbackStreamRecord record) {
+        Map<String, String> body = record.body();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("stream_message_id", record.streamMessageId());
+        row.put("callback_no", text(body, "callbackNo"));
+        row.put("order_no", text(body, "orderNo"));
+        row.put("external_trade_no", blankToNull(text(body, "externalTradeNo")));
+        row.put("payment_provider", normalizeProvider(text(body, "paymentProvider")));
+        row.put("paid_at_epoch_ms", longOrNull(text(body, "paidAtEpochMs")));
+        row.put("paid_amount_yuan", decimalOrNull(text(body, "paidAmountYuan")));
+        row.put("idempotency_key", text(body, "idempotencyKey"));
+        row.put("raw_payload_json", text(body, "rawPayloadJson"));
+        row.put("received_at_epoch_ms", longOrNull(text(body, "receivedAtEpochMs")));
+        return row;
+    }
+
+    private String text(Map<String, String> body, String key) {
+        if (body == null || key == null) {
+            return "";
+        }
+        String value = body.get(key);
+        return value == null ? "" : value.trim();
+    }
+
+    private Long longOrNull(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(normalized);
+        } catch (NumberFormatException e) {
+            throw new OrderServiceException("PAYMENT_CALLBACK_STREAM_PAYLOAD_INVALID", "Payment callback stream payload is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private BigDecimal decimalOrNull(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        try {
+            return OrderAmountCalculator.money(new BigDecimal(normalized));
+        } catch (NumberFormatException e) {
+            throw new OrderServiceException("PAYMENT_CALLBACK_STREAM_PAYLOAD_INVALID", "Payment callback stream payload is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private boolean booleanValue(Object value) {
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
+    }
+
     public record DispatchSummary(int claimedCount,
                                   int inboxWrittenCount,
                                   int refundCount,
                                   int failedCount) {
+    }
+
+    public record StreamDispatchSummary(int claimedCount,
+                                        int inboxWrittenCount,
+                                        int refundCount,
+                                        int failedCount,
+                                        List<String> ackStreamMessageIds) {
+        static StreamDispatchSummary empty() {
+            return new StreamDispatchSummary(0, 0, 0, 0, List.of());
+        }
     }
 
     private record DispatchBatchResult(int inboxWrittenCount,

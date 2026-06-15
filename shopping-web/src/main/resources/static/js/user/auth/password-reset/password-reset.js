@@ -10,9 +10,19 @@
   const CRYPTO_KEY_PATH = "/shopping/user/forgot-password/crypto-key";
   const RESET_BY_LINK_PATH = "/shopping/user/forgot-password/reset-by-link";
   const RESET_BY_CODE_PATH = "/shopping/user/forgot-password/reset-by-code";
+  const PASSWORD_RESET_HUTOOL_PATH = "/shopping/user/forgot-password/hutoolcaptcha";
+  const PASSWORD_RESET_TIANAI_PATH_MAP = {
+    SLIDER: "/shopping/user/forgot-password/tianai/slider",
+    ROTATE: "/shopping/user/forgot-password/tianai/rotate",
+    CONCAT: "/shopping/user/forgot-password/tianai/concat",
+    WORD_IMAGE_CLICK: "/shopping/user/forgot-password/tianai/word-click"
+  };
   const WAF_PENDING_KEY = "shopping.password-reset.waf.pending";
   const WAF_RESUME_COOKIE = "PASSWORD_RESET_WAF_RESUME";
   const WAF_RESUME_HEADER = "X-Password-Reset-Waf-Resume";
+  const CAPTCHA_SUCCESS_FEEDBACK_MIN_MS = 1200;
+  const HCAPTCHA_AUTO_RETRY_DELAY_MS = 180;
+  const HCAPTCHA_AUTO_RETRY_LIMIT = 1;
   const PASSWORD_STRENGTH_COLORS = ["#ccc", "#ef4444", "#f97316", "#84cc16", "#16a34a"];
   const PASSWORD_STRENGTH_LABELS = [
     "\u592a\u77ed",
@@ -38,6 +48,16 @@
 
   let initialized = false;
   let cooldownTimer = null;
+  let passwordResetCaptchaApi = null;
+  let pendingPasswordResetChallenge = null;
+
+  function safeSameOriginPath(value, fallback, allowedPrefixes = ["/shopping/"]) {
+    const securityUrls = globalThis.ShoppingSecurityUrls;
+    if (securityUrls && typeof securityUrls.safeSameOriginPath === "function") {
+      return securityUrls.safeSameOriginPath(value, fallback, allowedPrefixes);
+    }
+    return fallback || "/shopping/user/log-in";
+  }
 
   function initializePasswordResetFragment(options = {}) {
     if (initialized) {
@@ -52,6 +72,7 @@
     bindResetPasswordStrength();
     bindPasswordVisibilityToggle("reset-link-password-toggle", "reset-link-password", "Show password", "Hide password");
     bindPasswordVisibilityToggle("reset-link-confirm-toggle", "reset-link-confirm", "Show confirm password", "Hide confirm password");
+    initializePasswordResetCaptcha(options);
     syncMode();
     resumeAfterWaf(options);
   }
@@ -105,7 +126,7 @@
           showRequestMessage(payload?.message || "\u9a8c\u8bc1\u7801\u9519\u8bef\u6216\u5df2\u8fc7\u671f\u3002", true);
           return;
         }
-        await options.shellApi?.navigateTo?.(payload.redirectPath);
+        await options.shellApi?.navigateTo?.(safeSameOriginPath(payload.redirectPath, "/shopping/user/reset-password-code"));
       } catch (_) {
         showRequestMessage("\u9a8c\u8bc1\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002", true);
       }
@@ -208,31 +229,236 @@
     return 2;
   }
 
-  async function sendResetEmail(email, options, wafResume) {
+  async function sendResetEmail(email, options, wafResume, captchaPayload = {}) {
     try {
-      const response = await fetchWithPreAuth(options)(EMAIL_CODE_PATH, {
-        method: "POST",
-        headers: buildJsonHeaders(wafResume),
-        body: JSON.stringify({ email })
-      });
-      const payload = await parseJsonSafely(response);
+      const { response, payload } = await requestResetEmailCode(email, options, wafResume, captchaPayload);
       if (payload?.challengeType === "WAF_REQUIRED" && payload?.verifyUrl) {
         persistWafPending({ email });
-        window.location.assign(payload.verifyUrl);
-        return;
+        window.location.assign(safeSameOriginPath(payload.verifyUrl, "/shopping/auth/waf/verify", ["/shopping/auth/waf/verify"]));
+        return payload;
+      }
+      if (payload?.challengeType) {
+        const handled = await handlePasswordResetChallenge(payload, email, options);
+        if (handled) {
+          return payload;
+        }
       }
       if (!response.ok || !payload?.success) {
         showRequestMessage(payload?.message || "\u53d1\u9001\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002", true);
         startCooldown(Number(payload?.retryAfterMs || 0));
-        return;
+        return payload;
       }
-      showRequestMessage(payload.message || "\u5df2\u53d1\u9001\uff0c\u8bf7\u67e5\u770b\u90ae\u7bb1\u3002", false);
-      startCooldown(Number(payload.retryAfterMs || 60000));
-      const codePanel = document.getElementById("password-reset-code-panel");
-      if (codePanel) codePanel.style.display = "";
-      document.getElementById("reset-code")?.focus();
+      handleEmailCodeSent(payload);
+      return payload;
     } catch (_) {
       showRequestMessage("\u53d1\u9001\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002", true);
+      return { success: false };
+    }
+  }
+
+  async function requestResetEmailCode(email, options, wafResume, captchaPayload = {}) {
+    const response = await fetchWithPreAuth(options)(EMAIL_CODE_PATH, {
+      method: "POST",
+      headers: buildJsonHeaders(wafResume),
+      body: JSON.stringify({
+        email,
+        captchaUuid: captchaPayload.captchaUuid || "",
+        captchaCode: captchaPayload.captchaCode || ""
+      })
+    });
+    return {
+      response,
+      payload: await parseJsonSafely(response)
+    };
+  }
+
+  function handleEmailCodeSent(payload) {
+    pendingPasswordResetChallenge = null;
+    showRequestMessage(payload?.message || "\u5df2\u53d1\u9001\uff0c\u8bf7\u67e5\u770b\u90ae\u7bb1\u3002", false);
+    startCooldown(Number(payload?.retryAfterMs || 60000));
+    const codePanel = document.getElementById("password-reset-code-panel");
+    if (codePanel) codePanel.style.display = "";
+    document.getElementById("reset-code")?.focus();
+    return true;
+  }
+
+  async function handlePasswordResetChallenge(payload, email, options) {
+    const challengeType = String(payload?.challengeType || "").trim().toUpperCase();
+    if (!challengeType || challengeType === "WAF_REQUIRED") {
+      return false;
+    }
+    const captchaApi = initializePasswordResetCaptcha(options);
+    if (!captchaApi) {
+      return false;
+    }
+    pendingPasswordResetChallenge = {
+      email,
+      deviceFingerprint: resolveDeviceFingerprint(options),
+      challengeType,
+      challengeSubType: payload?.challengeSubType || "",
+      riskLevel: payload?.riskLevel || "",
+      options
+    };
+
+    if (challengeType === "HUTOOL_SHEAR_CAPTCHA") {
+      captchaApi.openRegisterCaptchaModal();
+      try {
+        await captchaApi.loadRegisterCaptcha();
+      } catch (_) {
+        captchaApi.showRegisterCaptchaError("Captcha image failed to load. Please refresh and try again.");
+      }
+      return true;
+    }
+
+    if (challengeType === "TIANAI_CAPTCHA") {
+      captchaApi.openTianaiModal();
+      try {
+        await captchaApi.loadTianaiCaptcha(payload?.challengeSubType || "");
+      } catch (_) {
+        captchaApi.showTianaiError("Security challenge failed to load. Please refresh and try again.");
+      }
+      return true;
+    }
+
+    if (challengeType === "CLOUDFLARE_TURNSTILE") {
+      try {
+        await captchaApi.renderTurnstileCaptcha(payload?.challengeSiteKey || "");
+      } catch (_) {
+        captchaApi.openTurnstileModal();
+        captchaApi.showTurnstileError("Cloudflare Turnstile failed to load. Check the site key or network.");
+      }
+      return true;
+    }
+
+    if (challengeType === "HCAPTCHA") {
+      try {
+        await captchaApi.renderHCaptcha(payload?.challengeSiteKey || "");
+      } catch (_) {
+        captchaApi.openHCaptchaModal();
+        captchaApi.showHCaptchaError("hCaptcha failed to load. Check the site key or network.");
+      }
+      return true;
+    }
+
+    if (challengeType === "GOOGLE_RECAPTCHA_V2" || challengeType === "GOOGLE_RECAPTCHA_V3") {
+      try {
+        await captchaApi.executeRecaptcha(payload?.challengeSiteKey || "");
+      } catch (_) {
+        showRequestMessage("Google reCAPTCHA failed to load. Please retry.", true);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  function initializePasswordResetCaptcha(options) {
+    if (passwordResetCaptchaApi) {
+      return passwordResetCaptchaApi;
+    }
+    const dependencies = resolveCaptchaDependencies();
+    if (!dependencies) {
+      return null;
+    }
+    passwordResetCaptchaApi = dependencies.createRegisterCaptchaCoordinator({
+      idPrefix: "password-reset",
+      createRegisterTianai: dependencies.createRegisterTianai,
+      createRegisterHutoolCaptcha: dependencies.createRegisterHutoolCaptcha,
+      createRegisterTurnstile: dependencies.createRegisterTurnstile,
+      createRegisterHCaptcha: dependencies.createRegisterHCaptcha,
+      createRegisterRecaptcha: dependencies.createRegisterRecaptcha,
+      getRegisterFormApi() {
+        return {
+          requestRegisterEmailCodeDelivery: requestPasswordResetEmailCodeDelivery,
+          getPendingRegisterPayload() {
+            return pendingPasswordResetChallenge;
+          }
+        };
+      },
+      showRegisterError(message) {
+        showRequestMessage(message || "\u9a8c\u8bc1\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002", true);
+      },
+      triggerCaptchaFailureAnimation,
+      openRegisterOtpAfterEmailSent: handleEmailCodeSent,
+      handleCaptchaDeliveryFailure(payload, controls = {}) {
+        if (payload?.challengeType) {
+          return false;
+        }
+        controls.closeModal?.();
+        showRequestMessage(payload?.message || controls.defaultMessage || "\u9a8c\u8bc1\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002", true);
+        return true;
+      },
+      waitForCaptchaSuccessFeedback,
+      waitForNextPaint,
+      getElementDisplaySize,
+      captchaSuccessFeedbackMinMs: CAPTCHA_SUCCESS_FEEDBACK_MIN_MS,
+      hcaptchaAutoRetryDelayMs: HCAPTCHA_AUTO_RETRY_DELAY_MS,
+      hcaptchaAutoRetryLimit: HCAPTCHA_AUTO_RETRY_LIMIT,
+      hutoolCaptchaPath: PASSWORD_RESET_HUTOOL_PATH,
+      tianaiCaptchaPathMap: PASSWORD_RESET_TIANAI_PATH_MAP,
+      hcaptchaScriptOnloadCallbackName: "onloadPasswordResetHCaptcha"
+    });
+    passwordResetCaptchaApi.bindRegisterCaptchaControls();
+    return passwordResetCaptchaApi;
+  }
+
+  function resolveCaptchaDependencies() {
+    const registerCaptchaCoordinatorModule = globalThis.ShoppingRegisterCaptchaCoordinator;
+    const registerTianaiModule = globalThis.ShoppingRegisterTianai;
+    const registerHutoolCaptchaModule = globalThis.ShoppingRegisterHutoolCaptcha;
+    const registerTurnstileModule = globalThis.ShoppingRegisterTurnstile;
+    const registerHCaptchaModule = globalThis.ShoppingRegisterHCaptcha;
+    const registerRecaptchaModule = globalThis.ShoppingRegisterRecaptcha;
+    if (!registerCaptchaCoordinatorModule
+        || !registerTianaiModule
+        || !registerHutoolCaptchaModule
+        || !registerTurnstileModule
+        || !registerHCaptchaModule
+        || !registerRecaptchaModule) {
+      return null;
+    }
+    return {
+      createRegisterCaptchaCoordinator: registerCaptchaCoordinatorModule.createRegisterCaptchaCoordinator,
+      createRegisterTianai: registerTianaiModule.createRegisterTianai,
+      createRegisterHutoolCaptcha: registerHutoolCaptchaModule.createRegisterHutoolCaptcha,
+      createRegisterTurnstile: registerTurnstileModule.createRegisterTurnstile,
+      createRegisterHCaptcha: registerHCaptchaModule.createRegisterHCaptcha,
+      createRegisterRecaptcha: registerRecaptchaModule.createRegisterRecaptcha
+    };
+  }
+
+  async function requestPasswordResetEmailCodeDelivery(captchaUuid, captchaCode) {
+    if (!pendingPasswordResetChallenge?.email) {
+      return {
+        success: false,
+        message: "Password reset challenge context expired. Please submit again."
+      };
+    }
+    try {
+      const { response, payload } = await requestResetEmailCode(
+        pendingPasswordResetChallenge.email,
+        pendingPasswordResetChallenge.options || {},
+        false,
+        { captchaUuid, captchaCode }
+      );
+      const normalizedPayload = payload || {
+        success: false,
+        message: "Verification failed. Please retry."
+      };
+      if (!response.ok && !normalizedPayload.message) {
+        normalizedPayload.message = "Verification failed. Please retry.";
+      }
+      if (normalizedPayload.challengeType) {
+        pendingPasswordResetChallenge.challengeType = normalizedPayload.challengeType || "";
+        pendingPasswordResetChallenge.challengeSubType = normalizedPayload.challengeSubType || "";
+        pendingPasswordResetChallenge.riskLevel = normalizedPayload.riskLevel || pendingPasswordResetChallenge.riskLevel || "";
+      }
+      return normalizedPayload;
+    } catch (_) {
+      return {
+        success: false,
+        message: "Verification failed. Please retry."
+      };
     }
   }
 
@@ -349,8 +575,46 @@
     return headers;
   }
 
-  function fetchWithPreAuth(options) {
-    return options.preAuthClientApi?.fetchWithPreAuth || window.ShoppingPreAuthClient?.fetchWithPreAuth || fetch;
+  function fetchWithPreAuth(options = {}) {
+    const client = options.preAuthClientApi || window.ShoppingPreAuthClient;
+    if (client?.fetchWithPreAuth) {
+      return client.fetchWithPreAuth.bind(client);
+    }
+    return () => Promise.reject(new Error("Pre-authentication client is unavailable."));
+  }
+
+  function resolveDeviceFingerprint(options) {
+    return options.preAuthClientApi?.buildDeviceFingerprint?.()
+      || window.ShoppingPreAuthClient?.buildDeviceFingerprint?.()
+      || "";
+  }
+
+  function triggerCaptchaFailureAnimation() {
+    globalThis.ShoppingLoginVisuals?.triggerLoginError?.();
+  }
+
+  async function waitForCaptchaSuccessFeedback(startedAt, minMs = CAPTCHA_SUCCESS_FEEDBACK_MIN_MS) {
+    const elapsed = Date.now() - Number(startedAt || Date.now());
+    const remaining = Math.max(0, Number(minMs || 0) - elapsed);
+    if (remaining <= 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+
+  async function waitForNextPaint() {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  function getElementDisplaySize(element, fallbackWidth = 0, fallbackHeight = 0) {
+    if (!element) {
+      return { width: fallbackWidth, height: fallbackHeight };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      width: Math.max(1, Math.round(rect.width || element.width || fallbackWidth || 1)),
+      height: Math.max(1, Math.round(rect.height || element.height || fallbackHeight || 1))
+    };
   }
 
   function readEmail() {

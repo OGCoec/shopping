@@ -76,8 +76,17 @@ CREATE TABLE IF NOT EXISTS user_coupon (
 CREATE INDEX IF NOT EXISTS idx_user_coupon_user_status_valid
     ON user_coupon (user_id, status, valid_end_at);
 
+CREATE INDEX IF NOT EXISTS idx_user_coupon_user_received_created
+    ON user_coupon (user_id, received_at DESC, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_coupon_user_status_received_created
+    ON user_coupon (user_id, status, received_at DESC, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_user_coupon_template_user
     ON user_coupon (coupon_template_id, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_coupon_template_received_created
+    ON user_coupon (coupon_template_id, received_at DESC, created_at DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_user_coupon_user_template
     ON user_coupon (user_id, coupon_template_id);

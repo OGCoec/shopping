@@ -33,7 +33,6 @@
 
 | Header | 含义 |
 | --- | --- |
-| `X-WebRTC-IP` | WebRTC 探测到的主 IP。 |
 | `X-WebRTC-IPs` | WebRTC 探测到的候选 IP 列表，支持逗号或空白分隔。 |
 | `X-WebRTC-Status` | 探测状态，当前 `ok` 表示拿到了可验证的公网 IP 信号。 |
 
@@ -54,11 +53,11 @@ AND httpIp 与 webRtcIps 不命中 trustedExitIpGroups
 
 - HTML 导航请求会被重定向到 `/shopping/auth/network-check-failed`。
 - API 请求返回 `403` JSON，错误码为 `WEBRTC_IP_MISMATCH`。
-- PreAuth binding 会保存本次 `webRtcIp`、`webRtcStatus`、`webRtcMismatchCount`。
+- PreAuth binding 会保存本次 `webRtcIps`、`webRtcStatus`、`webRtcMismatchCount`。
 
 ### 2.3 trustedExitIpGroups 例外
 
-`TrustedExitIpMatcher` 支持可信出口 IP 组。只要 `httpIp` 和任意 `webRtcIp` 出现在同一个组里，就不认为是不一致。
+`TrustedExitIpMatcher` 支持可信出口 IP 组。只要 `httpIp` 和任意 `webRtcIps` 候选出现在同一个组里，就不认为是不一致。
 
 该配置用于处理合法的双出口、Cloudflare/隧道、代理回源等场景，避免把已知可信链路误判为 VPN。
 

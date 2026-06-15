@@ -11,6 +11,7 @@
   const sendCodeButton = document.getElementById("admin-firstlogin-send-code");
   const submitButton = document.getElementById("admin-firstlogin-submit");
   const statusNode = document.getElementById("admin-firstlogin-status");
+  const securityUrls = window.ShoppingSecurityUrls;
 
   let cooldownTimer = null;
 
@@ -101,7 +102,11 @@
         emailCode: codeInput.value.trim()
       });
       api.setStatus(statusNode, "初始化成功。", "ok");
-      const redirectPath = response.data?.redirectPath || "/shopping/admin/login";
+      const redirectPath = securityUrls?.safeSameOriginPath?.(
+        response.data?.redirectPath,
+        "/shopping/admin/login",
+        ["/shopping/admin/"]
+      ) || "/shopping/admin/login";
       if (transition?.beginExit) {
         await transition.beginExit({ source: form, to: redirectPath });
         return;

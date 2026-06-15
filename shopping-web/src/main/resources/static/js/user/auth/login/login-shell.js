@@ -39,6 +39,26 @@
 
   const routes = authRoutes || fallbackAuthRoutes;
 
+  function preAuthClient() {
+    return typeof globalThis !== "undefined" ? globalThis.ShoppingPreAuthClient : null;
+  }
+
+  function fetchRouteFragment(path) {
+    const client = preAuthClient();
+    const options = {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        Accept: "text/html"
+      }
+    };
+    if (client?.fetchWithPreAuth) {
+      return client.fetchWithPreAuth(path, options);
+    }
+    return fetch(path, options);
+  }
+
   function resolveRouteTarget(routeTarget) {
     const rawRouteTarget = typeof routeTarget === "string" ? routeTarget.trim() : "";
     const fallbackPathname = "/shopping/user/log-in";
@@ -99,7 +119,7 @@
       if (fragment.loaded) return;
 
       if (!fragment.loadingTask) {
-        fragment.loadingTask = fetch(fragment.path, { method: "GET", cache: "no-store" })
+        fragment.loadingTask = fetchRouteFragment(fragment.path)
           .then((response) => {
             if (!response.ok) {
               throw new Error(`片段加载失败: ${fragment.path}`);

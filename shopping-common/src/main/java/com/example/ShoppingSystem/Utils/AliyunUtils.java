@@ -18,7 +18,7 @@ import com.aliyun.sdk.service.oss2.models.CopyObjectRequest;
 import com.aliyun.sdk.service.oss2.models.DeleteObjectRequest;
 import com.aliyun.sdk.service.oss2.models.PutObjectRequest;
 import com.aliyun.sdk.service.oss2.transport.BinaryData;
-import com.example.ShoppingSystem.common.proxy.LocalProxyResolver;
+import com.example.ShoppingSystem.common.proxy.OutboundRouteResolver;
 import com.google.gson.Gson;
 import darabonba.core.client.ClientOverrideConfiguration;
 import org.slf4j.Logger;
@@ -41,23 +41,32 @@ public class AliyunUtils {
     public static final String HONG_KONG_OSS_REGION = "cn-hongkong";
     public static final String HONG_KONG_OSS_ENDPOINT = "https://oss-cn-hongkong.aliyuncs.com";
 
-    private final LocalProxyResolver localProxyResolver;
+    private static final String SMS_ENDPOINT_HOST = "dypnsapi.aliyuncs.com";
+    private static final int SMS_ENDPOINT_PORT = 443;
+
+    private final OutboundRouteResolver outboundRouteResolver;
     private final boolean smsProxyEnabled;
     private final String smsProxyHost;
     private final int smsProxyPort;
+    private final String smsProxyRouteMode;
+    private final int smsProxyRouteProbeTimeoutMs;
     private final String smsAccessKeyId;
     private final String smsAccessKeySecret;
 
-    public AliyunUtils(LocalProxyResolver localProxyResolver,
+    public AliyunUtils(OutboundRouteResolver outboundRouteResolver,
                        @Value("${aliyun.sms.proxy.enabled:true}") boolean smsProxyEnabled,
                        @Value("${aliyun.sms.proxy.host:127.0.0.1}") String smsProxyHost,
                        @Value("${aliyun.sms.proxy.port:7892}") int smsProxyPort,
+                       @Value("${aliyun.sms.proxy.route-mode:auto}") String smsProxyRouteMode,
+                       @Value("${aliyun.sms.proxy.route-probe-timeout-ms:1500}") int smsProxyRouteProbeTimeoutMs,
                        @Value("${aliyun.sms.access-key-id:}") String smsAccessKeyId,
                        @Value("${aliyun.sms.access-key-secret:}") String smsAccessKeySecret) {
-        this.localProxyResolver = localProxyResolver;
+        this.outboundRouteResolver = outboundRouteResolver;
         this.smsProxyEnabled = smsProxyEnabled;
         this.smsProxyHost = smsProxyHost;
         this.smsProxyPort = smsProxyPort;
+        this.smsProxyRouteMode = smsProxyRouteMode;
+        this.smsProxyRouteProbeTimeoutMs = smsProxyRouteProbeTimeoutMs;
         this.smsAccessKeyId = smsAccessKeyId;
         this.smsAccessKeySecret = smsAccessKeySecret;
     }
@@ -73,7 +82,7 @@ public class AliyunUtils {
                 .credentialsProvider(provider)
                 .overrideConfiguration(
                         ClientOverrideConfiguration.create()
-                                .setEndpointOverride("dypnsapi.aliyuncs.com")
+                                .setEndpointOverride(SMS_ENDPOINT_HOST)
                 );
         HttpClient smsHttpClient = buildSmsHttpClient();
         if (smsHttpClient != null) {
@@ -101,17 +110,35 @@ public class AliyunUtils {
         if (!smsProxyEnabled) {
             return null;
         }
-        LocalProxyResolver.ProxySelection proxySelection =
-                localProxyResolver.resolveOrConfigured(smsProxyHost, smsProxyPort);
-        InetSocketAddress proxyAddress = proxySelection.address();
+        OutboundRouteResolver.RouteSelection routeSelection = outboundRouteResolver.selectRoute(
+                "Aliyun SMS HTTP",
+                SMS_ENDPOINT_HOST,
+                SMS_ENDPOINT_PORT,
+                smsProxyHost,
+                smsProxyPort,
+                smsProxyRouteMode,
+                smsProxyRouteProbeTimeoutMs,
+                OutboundRouteResolver.ProxyProtocol.HTTP_CONNECT
+        );
+        if (routeSelection.direct()) {
+            log.info("Aliyun SMS HTTP DIRECT route selected, target={}:{}, reachable={}, reason={}",
+                    SMS_ENDPOINT_HOST,
+                    SMS_ENDPOINT_PORT,
+                    routeSelection.reachable(),
+                    routeSelection.reason());
+            return null;
+        }
+        InetSocketAddress proxyAddress = routeSelection.address();
         if (proxyAddress == null) {
             return null;
         }
-        log.info("Aliyun SMS HTTP proxy selected: host={}, port={}, reachable={}, reason={}",
+        log.info("Aliyun SMS HTTP proxy selected: host={}, port={}, target={}:{}, reachable={}, reason={}",
                 proxyAddress.getHostString(),
                 proxyAddress.getPort(),
-                proxySelection.reachable(),
-                proxySelection.reason());
+                SMS_ENDPOINT_HOST,
+                SMS_ENDPOINT_PORT,
+                routeSelection.reachable(),
+                routeSelection.reason());
         return new ApacheAsyncHttpClientBuilder()
                 .connectionTimeout(Duration.ofSeconds(10))
                 .responseTimeout(Duration.ofSeconds(10))

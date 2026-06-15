@@ -1,0 +1,851 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="XSS Stored Product Smoke" enabled="true">
+      <stringProp name="TestPlan.comments">Stores XSS text payloads through product/SPU/SKU admin APIs and verifies dangerous image URLs are rejected.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">true</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Stored Text XSS Flow" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">${__P(PAYLOAD_LOOPS,7)}</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(THREADS,1)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(RAMP_UP,1)}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="XSS Payload TSV" enabled="true">
+          <stringProp name="delimiter">\t</stringProp>
+          <stringProp name="fileEncoding">UTF-8</stringProp>
+          <stringProp name="filename">${__P(PAYLOAD_TSV,loadtest/data/xss-payloads.tsv)}</stringProp>
+          <boolProp name="ignoreFirstLine">true</boolProp>
+          <boolProp name="quotedData">false</boolProp>
+          <boolProp name="recycle">false</boolProp>
+          <stringProp name="shareMode">shareMode.all</stringProp>
+          <boolProp name="stopThread">true</boolProp>
+          <stringProp name="variableNames">payloadId,payload</stringProp>
+        </CSVDataSet>
+        <hashTree/>
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Access Token CSV" enabled="true">
+          <stringProp name="delimiter">,</stringProp>
+          <stringProp name="fileEncoding">UTF-8</stringProp>
+          <stringProp name="filename">${__P(TOKEN_CSV,loadtest-output/xss-users-token.csv)}</stringProp>
+          <boolProp name="ignoreFirstLine">true</boolProp>
+          <boolProp name="quotedData">true</boolProp>
+          <boolProp name="recycle">true</boolProp>
+          <stringProp name="shareMode">shareMode.all</stringProp>
+          <boolProp name="stopThread">true</boolProp>
+          <stringProp name="variableNames">userId,accessToken</stringProp>
+        </CSVDataSet>
+        <hashTree/>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Admin HTTP Headers" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Accept</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Cookie</stringProp>
+              <stringProp name="Header.value">${__P(ADMIN_COOKIE,)}</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Stored Flow Safety Assertion" enabled="true">
+          <stringProp name="cacheKey">xss-stored-flow-safety</stringProp>
+          <stringProp name="filename"></stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="script"><![CDATA[
+import java.util.Locale
+
+def code = (prev.getResponseCode() ?: '0') as int
+def label = prev.getSampleLabel() ?: ''
+def body = prev.getResponseDataAsString() ?: ''
+def contentType = (prev.getContentType() ?: '').toLowerCase(Locale.ROOT)
+def lowerBody = body.toLowerCase(Locale.ROOT)
+
+if (code >= 500) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("HTTP ${code} for ${label}, payloadId=${vars.get('payloadId') ?: vars.get('caseId')}")
+    return
+}
+
+if ((label.startsWith('Admin') || label.startsWith('Create') || label.startsWith('Update') || label.startsWith('Preupload')) &&
+        (code == 401 || code == 403 || lowerBody.contains('admin_auth_required'))) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("Admin sampler is unauthenticated. Pass -JADMIN_COOKIE or use run-xss-stored-product.ps1 -AdminCookie.")
+    return
+}
+
+if (!contentType.contains('json')) {
+    def dangerousTokens = ['<script', 'onerror=', 'onload=', 'javascript:alert', 'data:text/html']
+    for (def token : dangerousTokens) {
+        if (lowerBody.contains(token)) {
+            AssertionResult.setFailure(true)
+            AssertionResult.setFailureMessage("Executable XSS token '${token}' appeared in non-JSON response from ${label}")
+            return
+        }
+    }
+}
+]]></stringProp>
+          <stringProp name="scriptLanguage">groovy</stringProp>
+        </JSR223Assertion>
+        <hashTree/>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Initialize Stored XSS Variables" enabled="true">
+          <stringProp name="cacheKey">xss-stored-init</stringProp>
+          <stringProp name="filename"></stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="script"><![CDATA[
+import java.text.SimpleDateFormat
+import java.util.UUID
+
+def adminCookie = (props.get('ADMIN_COOKIE') ?: '').trim()
+def categoryId = (props.get('CATEGORY_ID') ?: '').trim()
+def suppliedSpuId = (props.get('SPU_ID') ?: '').trim()
+def allowExisting = (props.get('ALLOW_UPDATE_EXISTING_SPU') ?: 'false').equalsIgnoreCase('true')
+def testImage = (props.get('TEST_IMAGE') ?: 'loadtest/data/xss-test-image.svg').trim()
+
+if (!adminCookie) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseMessage('ADMIN_COOKIE is required for stored XSS admin API tests.')
+    return
+}
+if (!categoryId) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseMessage('CATEGORY_ID is required for stored XSS product update tests.')
+    return
+}
+if (suppliedSpuId && !allowExisting) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseMessage('SPU_ID was provided but ALLOW_UPDATE_EXISTING_SPU=true was not set. Use an isolated test product only.')
+    return
+}
+if (!suppliedSpuId && !new File(testImage).isFile()) {
+    SampleResult.setSuccessful(false)
+    SampleResult.setResponseMessage("TEST_IMAGE does not exist: ${testImage}")
+    return
+}
+
+def runId = (props.get('RUN_ID') ?: new SimpleDateFormat('yyyyMMddHHmmss').format(new Date())).trim()
+def safePayloadId = ((vars.get('payloadId') ?: 'payload') as String).replaceAll('[^A-Za-z0-9_-]', '_')
+def suffix = UUID.randomUUID().toString().substring(0, 8)
+def unique = "${runId}-${safePayloadId}-${suffix}"
+def payload = vars.get('payload') ?: ''
+
+vars.put('categoryId', categoryId)
+vars.put('spuId', suppliedSpuId)
+vars.put('xssPayload', payload)
+vars.put('xssProductName', "xss-product-${unique}".take(120))
+vars.put('xssSkuCode', "xss-sku-${unique}".take(64))
+vars.put('xssSkuName', "xss-sku-name-${unique}".take(120))
+vars.put('mainImageUrl', (props.get('MAIN_IMAGE_URL') ?: '/shopping/images/test.png').trim())
+vars.put('safeImageUrl', (props.get('MAIN_IMAGE_URL') ?: '/shopping/images/test.png').trim())
+SampleResult.setSuccessful(true)
+SampleResult.setResponseMessage("payloadId=${safePayloadId}")
+]]></stringProp>
+          <stringProp name="scriptLanguage">groovy</stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+        <IfController guiclass="IfControllerPanel" testclass="IfController" testname="Create Test SPU When SPU_ID Missing" enabled="true">
+          <stringProp name="IfController.condition">${__groovy((vars.get('spuId') ?: '').trim().length() == 0)}</stringProp>
+          <boolProp name="IfController.evaluateAll">false</boolProp>
+          <boolProp name="IfController.useExpression">true</boolProp>
+        </IfController>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Preupload Product Main Image" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments"/>
+            </elementProp>
+            <elementProp name="HTTPsampler.Files" elementType="HTTPFileArgs">
+              <collectionProp name="HTTPFileArgs.files">
+                <elementProp name="" elementType="HTTPFileArg">
+                  <stringProp name="File.path">${__P(TEST_IMAGE,loadtest/data/xss-test-image.svg)}</stringProp>
+                  <stringProp name="File.paramname">file</stringProp>
+                  <stringProp name="File.mimetype">${__P(TEST_IMAGE_MIME,image/svg+xml)}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/admin/api/products/images/preupload</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">true</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+            <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Preupload Image Session" enabled="true">
+              <stringProp name="cacheKey">xss-capture-preupload</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+def body = prev.getResponseDataAsString() ?: ''
+try {
+    def json = new JsonSlurper().parseText(body)
+    vars.put('uploadSessionId', (json.data?.uploadSessionId ?: '').toString())
+    vars.put('tempUrl', (json.data?.tempUrl ?: '').toString())
+} catch (Throwable ignored) {
+}
+if ((prev.getResponseCode() ?: '') != '200' || !(vars.get('uploadSessionId') ?: '').trim() || !(vars.get('tempUrl') ?: '').trim()) {
+    prev.setSuccessful(false)
+    prev.setResponseMessage((prev.getResponseMessage() ?: '') + ' failed to capture uploadSessionId/tempUrl')
+}
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Create Product With Text Payload" enabled="true">
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value">${requestBody}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+            <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+            <stringProp name="HTTPSampler.path">/shopping/admin/api/products/spu</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+            <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+            <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="JSON Content-Type" enabled="true">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Content-Type</stringProp>
+                  <stringProp name="Header.value">application/json</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree/>
+            <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Build Create Product Body" enabled="true">
+              <stringProp name="cacheKey">xss-build-create-product</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+import groovy.json.JsonOutput
+
+def body = [
+    categoryId: (vars.get('categoryId') as Long),
+    name: vars.get('xssProductName'),
+    subtitle: vars.get('xssPayload'),
+    brandName: vars.get('xssPayload'),
+    mainImageTempUrl: vars.get('tempUrl'),
+    uploadSessionId: vars.get('uploadSessionId'),
+    status: 'ACTIVE'
+]
+vars.put('requestBody', JsonOutput.toJson(body))
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PreProcessor>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Created SPU" enabled="true">
+              <stringProp name="cacheKey">xss-capture-created-spu</stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+def body = prev.getResponseDataAsString() ?: ''
+try {
+    def json = new JsonSlurper().parseText(body)
+    vars.put('spuId', (json.data?.id ?: '').toString())
+    vars.put('mainImageUrl', (json.data?.mainImageUrl ?: vars.get('mainImageUrl') ?: '').toString())
+} catch (Throwable ignored) {
+}
+if ((prev.getResponseCode() ?: '') != '200' || !(vars.get('spuId') ?: '').trim()) {
+    prev.setSuccessful(false)
+    prev.setResponseMessage((prev.getResponseMessage() ?: '') + ' failed to capture created SPU id')
+}
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Update Product Detail With Text Payload" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">${requestBody}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/admin/api/products/spu/${spuId}</stringProp>
+          <stringProp name="HTTPSampler.method">PUT</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="JSON Content-Type" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Content-Type</stringProp>
+                <stringProp name="Header.value">application/json</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Build Detail Update Body" enabled="true">
+            <stringProp name="cacheKey">xss-build-detail-update</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonOutput
+
+def imageUrl = (vars.get('mainImageUrl') ?: vars.get('safeImageUrl') ?: '/shopping/images/test.png').trim()
+def body = [
+    categoryId: (vars.get('categoryId') as Long),
+    name: vars.get('xssProductName'),
+    subtitle: vars.get('xssPayload'),
+    brandName: vars.get('xssPayload'),
+    mainImageUrl: imageUrl,
+    status: 'ACTIVE',
+    imageUrls: [[url: imageUrl, sort: 1]],
+    detailImageUrls: [[url: imageUrl, sort: 1]],
+    attributes: [xss: vars.get('xssPayload')],
+    description: vars.get('xssPayload'),
+    afterSale: vars.get('xssPayload'),
+    skus: [],
+    imageUploadSessions: []
+]
+vars.put('requestBody', JsonOutput.toJson(body))
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Create SKU With Text Payload" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">${requestBody}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/admin/api/products/spu/${spuId}/sku</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="JSON Content-Type" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Content-Type</stringProp>
+                <stringProp name="Header.value">application/json</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Build SKU Create Body" enabled="true">
+            <stringProp name="cacheKey">xss-build-sku-create</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonOutput
+
+def imageUrl = (vars.get('mainImageUrl') ?: vars.get('safeImageUrl') ?: '/shopping/images/test.png').trim()
+def body = [
+    skuCode: vars.get('xssSkuCode'),
+    skuName: vars.get('xssPayload'),
+    specJson: [xss: vars.get('xssPayload')],
+    skuImageUrls: [[url: imageUrl, sort: 1]],
+    priceYuan: 1.00,
+    originalPriceYuan: 2.00,
+    stockQuantity: 10,
+    status: 'ACTIVE',
+    imageUploadSessions: []
+]
+vars.put('requestBody', JsonOutput.toJson(body))
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Created SKU" enabled="true">
+            <stringProp name="cacheKey">xss-capture-created-sku</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+def body = prev.getResponseDataAsString() ?: ''
+try {
+    def json = new JsonSlurper().parseText(body)
+    vars.put('skuId', (json.data?.id ?: '').toString())
+} catch (Throwable ignored) {
+}
+if ((prev.getResponseCode() ?: '') != '200' || !(vars.get('skuId') ?: '').trim()) {
+    prev.setSuccessful(false)
+    prev.setResponseMessage((prev.getResponseMessage() ?: '') + ' failed to capture created SKU id')
+} else {
+    props.put('XSS_LAST_SPU_ID', vars.get('spuId') ?: '')
+    props.put('XSS_LAST_CATEGORY_ID', vars.get('categoryId') ?: '')
+    props.put('XSS_LAST_MAIN_IMAGE_URL', vars.get('mainImageUrl') ?: vars.get('safeImageUrl') ?: '')
+    props.put('XSS_LAST_SKU_ID', vars.get('skuId') ?: '')
+    props.put('XSS_LAST_SKU_CODE', vars.get('xssSkuCode') ?: '')
+    props.put('XSS_LAST_SKU_NAME', vars.get('xssSkuName') ?: '')
+    def resultFile = (props.get('XSS_RESULT_FILE') ?: '').trim()
+    if (resultFile) {
+        def file = new File(resultFile)
+        file.parentFile?.mkdirs()
+        file.text = "spuId=${vars.get('spuId') ?: ''}\ncategoryId=${vars.get('categoryId') ?: ''}\nskuId=${vars.get('skuId') ?: ''}\n"
+    }
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PostProcessor>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Admin Read Stored Product Detail" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/admin/api/products/spu/${spuId}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Public Read Stored Product Detail" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/api/products/${spuId}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Public Access Token Header" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Authorization</stringProp>
+                <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Public Search Stored Product Payload" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="keyword" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                <stringProp name="Argument.name">keyword</stringProp>
+                <stringProp name="Argument.value">${payload}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+                <boolProp name="HTTPArgument.use_equals">true</boolProp>
+              </elementProp>
+              <elementProp name="page" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                <stringProp name="Argument.name">page</stringProp>
+                <stringProp name="Argument.value">1</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+                <boolProp name="HTTPArgument.use_equals">true</boolProp>
+              </elementProp>
+              <elementProp name="pageSize" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">true</boolProp>
+                <stringProp name="Argument.name">pageSize</stringProp>
+                <stringProp name="Argument.value">5</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+                <boolProp name="HTTPArgument.use_equals">true</boolProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/api/products/search</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Public Access Token Header" enabled="true">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Authorization</stringProp>
+                <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Dangerous Product Image URL Rejection" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">${__P(IMAGE_PAYLOAD_LOOPS,8)}</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Dangerous Image URL TSV" enabled="true">
+          <stringProp name="delimiter">\t</stringProp>
+          <stringProp name="fileEncoding">UTF-8</stringProp>
+          <stringProp name="filename">${__P(IMAGE_PAYLOAD_TSV,loadtest/data/xss-image-url-payloads.tsv)}</stringProp>
+          <boolProp name="ignoreFirstLine">true</boolProp>
+          <boolProp name="quotedData">false</boolProp>
+          <boolProp name="recycle">false</boolProp>
+          <stringProp name="shareMode">shareMode.all</stringProp>
+          <boolProp name="stopThread">true</boolProp>
+          <stringProp name="variableNames">caseId,fieldName,imageUrl,expectedCode</stringProp>
+        </CSVDataSet>
+        <hashTree/>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Admin JSON Headers" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Accept</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Cookie</stringProp>
+              <stringProp name="Header.value">${__P(ADMIN_COOKIE,)}</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Reject Dangerous Product Image URL" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">${requestBody}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/admin/api/products/spu/${spuId}</stringProp>
+          <stringProp name="HTTPSampler.method">PUT</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Build Dangerous Image URL Body" enabled="true">
+            <stringProp name="cacheKey">xss-build-dangerous-image-url</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonOutput
+
+def spuId = (props.get('XSS_LAST_SPU_ID') ?: props.get('SPU_ID') ?: '').trim()
+def categoryId = (props.get('XSS_LAST_CATEGORY_ID') ?: props.get('CATEGORY_ID') ?: '').trim()
+def safeImage = (props.get('XSS_LAST_MAIN_IMAGE_URL') ?: props.get('MAIN_IMAGE_URL') ?: '/shopping/images/test.png').trim()
+def field = (vars.get('fieldName') ?: '').trim()
+def dangerousUrl = vars.get('imageUrl') ?: ''
+
+vars.put('spuId', spuId)
+vars.put('categoryId', categoryId)
+vars.put('safeImageUrl', safeImage)
+
+def mainImageUrl = field == 'mainImageUrl' ? dangerousUrl : safeImage
+def imageUrls = [[url: safeImage, sort: 1]]
+def detailImageUrls = [[url: safeImage, sort: 1]]
+def skus = []
+if (field == 'imageUrls') {
+    imageUrls = [[url: dangerousUrl, sort: 1]]
+}
+if (field == 'detailImageUrls') {
+    detailImageUrls = [[url: dangerousUrl, sort: 1]]
+}
+if (field == 'skuImageUrls') {
+    skus = [[
+        skuCode: "reject-${vars.get('caseId')}".take(64),
+        skuName: "reject-${vars.get('caseId')}".take(120),
+        specJson: [caseId: vars.get('caseId')],
+        skuImageUrls: [[url: dangerousUrl, sort: 1]],
+        priceYuan: 1.00,
+        originalPriceYuan: 2.00,
+        stockQuantity: 1,
+        status: 'ACTIVE'
+    ]]
+}
+
+def body = [
+    categoryId: categoryId as Long,
+    name: "xss-image-reject-${vars.get('caseId')}".take(120),
+    subtitle: 'dangerous image url rejection',
+    brandName: 'xss',
+    mainImageUrl: mainImageUrl,
+    status: 'ACTIVE',
+    imageUrls: imageUrls,
+    detailImageUrls: detailImageUrls,
+    attributes: [caseId: vars.get('caseId'), fieldName: field],
+    description: 'dangerous image url rejection',
+    afterSale: 'dangerous image url rejection',
+    skus: skus,
+    imageUploadSessions: []
+]
+vars.put('requestBody', JsonOutput.toJson(body))
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Dangerous Image URL Must Be Rejected" enabled="true">
+            <stringProp name="cacheKey">xss-dangerous-image-url-assertion</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+def expectedCode = vars.get('expectedCode') ?: 'ADMIN_PRODUCT_IMAGE_URL_INVALID'
+def actualCode = ''
+try {
+    def json = new JsonSlurper().parseText(prev.getResponseDataAsString() ?: '')
+    actualCode = (json.code ?: '').toString()
+} catch (Throwable ignored) {
+}
+if ((prev.getResponseCode() ?: '') == '400' && actualCode == expectedCode) {
+    prev.setSuccessful(true)
+    prev.setResponseMessage("Dangerous image URL rejected as expected. caseId=${vars.get('caseId')}, field=${vars.get('fieldName')}")
+    return
+}
+if ((prev.getResponseCode() ?: '') != '400' || actualCode != expectedCode) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("Dangerous image URL was not rejected as expected. caseId=${vars.get('caseId')}, field=${vars.get('fieldName')}, http=${prev.getResponseCode()}, code=${actualCode}")
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Safe Product Image URL Control" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">${__P(SAFE_IMAGE_PAYLOAD_LOOPS,2)}</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">1</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <stringProp name="ThreadGroup.duration"></stringProp>
+        <stringProp name="ThreadGroup.delay"></stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Safe Image URL TSV" enabled="true">
+          <stringProp name="delimiter">\t</stringProp>
+          <stringProp name="fileEncoding">UTF-8</stringProp>
+          <stringProp name="filename">${__P(SAFE_IMAGE_PAYLOAD_TSV,loadtest/data/xss-safe-image-url-payloads.tsv)}</stringProp>
+          <boolProp name="ignoreFirstLine">true</boolProp>
+          <boolProp name="quotedData">false</boolProp>
+          <boolProp name="recycle">false</boolProp>
+          <stringProp name="shareMode">shareMode.all</stringProp>
+          <boolProp name="stopThread">true</boolProp>
+          <stringProp name="variableNames">caseId,fieldName,imageUrl</stringProp>
+        </CSVDataSet>
+        <hashTree/>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Admin JSON Headers" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Accept</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Cookie</stringProp>
+              <stringProp name="Header.value">${__P(ADMIN_COOKIE,)}</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Accept Safe Product Image URL" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">${requestBody}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">${__P(HOST,localhost)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
+          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
+          <stringProp name="HTTPSampler.path">/shopping/admin/api/products/spu/${spuId}</stringProp>
+          <stringProp name="HTTPSampler.method">PUT</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
+          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Build Safe Image URL Body" enabled="true">
+            <stringProp name="cacheKey">xss-build-safe-image-url</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonOutput
+
+def spuId = (props.get('XSS_LAST_SPU_ID') ?: props.get('SPU_ID') ?: '').trim()
+def categoryId = (props.get('XSS_LAST_CATEGORY_ID') ?: props.get('CATEGORY_ID') ?: '').trim()
+def imageUrl = (vars.get('imageUrl') ?: '/shopping/images/test.png').trim()
+def field = (vars.get('fieldName') ?: 'mainImageUrl').trim()
+def skuId = (props.get('XSS_LAST_SKU_ID') ?: '').trim()
+def skuCode = (props.get('XSS_LAST_SKU_CODE') ?: "safe-${vars.get('caseId')}").take(64)
+def skuName = (props.get('XSS_LAST_SKU_NAME') ?: "safe-${vars.get('caseId')}").take(120)
+
+vars.put('spuId', spuId)
+def mainImageUrl = field == 'mainImageUrl' ? imageUrl : (props.get('XSS_LAST_MAIN_IMAGE_URL') ?: '/shopping/images/test.png')
+def imageUrls = field == 'imageUrls' ? [[url: imageUrl, sort: 1]] : [[url: mainImageUrl, sort: 1]]
+def detailImageUrls = field == 'detailImageUrls' ? [[url: imageUrl, sort: 1]] : [[url: mainImageUrl, sort: 1]]
+def skuImageUrls = field == 'skuImageUrls' ? [[url: imageUrl, sort: 1]] : [[url: mainImageUrl, sort: 1]]
+def sku = [
+    skuCode: skuCode,
+    skuName: skuName,
+    specJson: [safe: true, caseId: vars.get('caseId')],
+    skuImageUrls: skuImageUrls,
+    priceYuan: 1.00,
+    originalPriceYuan: 2.00,
+    stockQuantity: 10,
+    status: 'ACTIVE'
+]
+if (skuId) {
+    sku.id = skuId
+}
+def body = [
+    categoryId: categoryId as Long,
+    name: "xss-safe-image-${vars.get('caseId')}".take(120),
+    subtitle: 'safe image url control',
+    brandName: 'xss',
+    mainImageUrl: mainImageUrl,
+    status: 'ACTIVE',
+    imageUrls: imageUrls,
+    detailImageUrls: detailImageUrls,
+    attributes: [caseId: vars.get('caseId'), fieldName: field],
+    description: 'safe image url control',
+    afterSale: 'safe image url control',
+    skus: [sku],
+    imageUploadSessions: []
+]
+vars.put('requestBody', JsonOutput.toJson(body))
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Safe Image URL Must Be Accepted" enabled="true">
+            <stringProp name="cacheKey">xss-safe-image-url-assertion</stringProp>
+            <stringProp name="filename"></stringProp>
+            <stringProp name="parameters"></stringProp>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+def businessCode = ''
+try {
+    def json = new JsonSlurper().parseText(prev.getResponseDataAsString() ?: '')
+    businessCode = (json.code ?: '').toString()
+} catch (Throwable ignored) {
+}
+if ((prev.getResponseCode() ?: '') != '200' || businessCode != 'ADMIN_OK') {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("Safe image URL was not accepted. caseId=${vars.get('caseId')}, field=${vars.get('fieldName')}, http=${prev.getResponseCode()}, code=${businessCode}")
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

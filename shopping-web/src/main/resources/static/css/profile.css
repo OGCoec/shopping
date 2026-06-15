@@ -26,6 +26,24 @@ html {
 }
 
 body {
+  --pointer-x: 0;
+  --pointer-y: 0;
+  --wash-shift-x: 0px;
+  --wash-shift-y: 0px;
+  --grid-shift-x: 0px;
+  --grid-shift-y: 0px;
+  --motion-shift-x: 0px;
+  --motion-shift-y: 0px;
+  --panel-shift-x: 0px;
+  --panel-shift-y: 0px;
+  --motion-angle: 135deg;
+  --motion-hue: 28;
+  --motion-alpha: 0.035;
+  --motion-panel-alpha: 0.03;
+  --motion-card-alpha: 0.04;
+  --motion-grid-opacity: 0.2;
+  position: relative;
+  overflow-x: hidden;
   min-height: 100vh;
   margin: 0;
   color: var(--silicone-text);
@@ -40,19 +58,40 @@ body {
 body::before {
   position: fixed;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
   content: "";
   background:
     linear-gradient(115deg, rgba(255, 255, 255, 0.42), transparent 32%),
     radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.5), transparent 34rem);
   opacity: 0.72;
+  transform: translate3d(var(--wash-shift-x), var(--wash-shift-y), 0);
+  will-change: transform;
+}
+
+body::after {
+  position: fixed;
+  inset: -48px;
+  z-index: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(rgba(120, 103, 82, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 103, 82, 0.1) 1px, transparent 1px);
+  background-size: 42px 42px, 42px 42px;
+  opacity: var(--motion-grid-opacity);
+  transform: translate3d(var(--grid-shift-x), var(--grid-shift-y), 0);
+  will-change: transform;
 }
 
 .profile-shell {
   position: relative;
+  z-index: 1;
   width: min(1080px, calc(100% - 32px));
   margin: 0 auto;
   padding: 48px 0;
+  transform: translate3d(var(--panel-shift-x), var(--panel-shift-y), 0);
+  will-change: transform;
 }
 
 .profile-panel {
@@ -60,6 +99,11 @@ body::before {
   border: 1px solid rgba(255, 255, 255, 0.74);
   border-radius: 34px;
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-panel-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
     linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 248, 238, 0.58)),
     var(--silicone-cream);
   box-shadow:
@@ -78,6 +122,11 @@ body::before {
   padding: 28px 32px;
   border-bottom: 1px solid var(--silicone-line);
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
     radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.74), transparent 18rem),
     linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(255, 247, 236, 0.2));
 }
@@ -112,6 +161,11 @@ button {
   border-radius: 999px;
   padding: 0 16px;
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 60%
+    ),
     linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(244, 235, 224, 0.62));
   box-shadow:
     0 10px 22px rgba(93, 72, 49, 0.1),
@@ -132,6 +186,11 @@ button {
 button:hover {
   border-color: rgba(255, 255, 255, 0.95);
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 60%
+    ),
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(246, 236, 224, 0.74));
   box-shadow:
     0 14px 28px rgba(93, 72, 49, 0.14),
@@ -153,6 +212,11 @@ button.danger {
 
 button.danger:hover {
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 60%
+    ),
     linear-gradient(145deg, rgba(255, 245, 242, 0.96), rgba(255, 214, 205, 0.52));
 }
 
@@ -175,6 +239,11 @@ button.danger:hover {
   padding: 28px 32px;
   border-bottom: 1px solid var(--silicone-line);
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
     radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.78), transparent 15rem),
     radial-gradient(circle at 88% 74%, rgba(123, 184, 255, 0.2), transparent 16rem),
     rgba(255, 255, 255, 0.3);
@@ -279,6 +348,11 @@ button.danger:hover {
   padding: 22px 32px;
   border-bottom: 1px solid var(--silicone-line);
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 62%
+    ),
     linear-gradient(145deg, rgba(255, 255, 255, 0.34), rgba(255, 247, 237, 0.18));
 }
 
@@ -308,6 +382,11 @@ dd {
   gap: 18px;
   padding: 24px 32px;
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
     radial-gradient(circle at 80% 50%, rgba(155, 228, 202, 0.22), transparent 18rem),
     rgba(255, 255, 255, 0.36);
 }
@@ -339,6 +418,11 @@ dd {
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 28px;
   background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 78%, 68%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
     radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.8), transparent 14rem),
     rgba(255, 250, 243, 0.88);
   box-shadow:

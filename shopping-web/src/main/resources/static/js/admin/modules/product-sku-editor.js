@@ -11,9 +11,17 @@
       imagePayload,
       normalizeImageItems,
       imageItemUrl,
-      escapeAttribute,
+      appendImageOrPlaceholder,
       buildSkuNumericPayload
     } = imageUtils;
+
+    function appendSkuTitle(container, sku) {
+      const name = document.createElement("strong");
+      name.textContent = sku.skuName || "未命名 SKU";
+      const code = document.createElement("span");
+      code.textContent = sku.skuCode || "-";
+      container.append(name, code);
+    }
 
     function isSaving(context) {
       return typeof context.isSaving === "function" ? context.isSaving() : Boolean(context.saving);
@@ -1051,13 +1059,11 @@
         const preview = document.createElement("div");
         preview.className = "admin-product-sku-card-preview";
         const firstImage = imagePayload(sku.skuImageUrls || [])[0] || "";
-        preview.innerHTML = firstImage
-          ? `<img src="${escapeAttribute(firstImage)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />`
-          : "<span>-</span>";
+        appendImageOrPlaceholder(preview, firstImage, sku.skuName || "SKU");
 
         const name = document.createElement("div");
         name.className = "admin-product-sku-card-title";
-        name.innerHTML = `<strong>${escapeHtml(sku.skuName || "未命名 SKU")}</strong><span>${escapeHtml(sku.skuCode || "-")}</span>`;
+        appendSkuTitle(name, sku);
         const status = document.createElement("strong");
         status.className = "admin-product-sku-card-status";
         status.textContent = hotItem?.status || "未设置";
@@ -1229,12 +1235,10 @@
       const preview = document.createElement("div");
       preview.className = "admin-product-sku-card-preview";
       const firstImage = imagePayload(sku.skuImageUrls || [])[0] || "";
-      preview.innerHTML = firstImage
-        ? `<img src="${escapeAttribute(firstImage)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />`
-        : "<span>-</span>";
+      appendImageOrPlaceholder(preview, firstImage, sku.skuName || "SKU");
       const title = document.createElement("div");
       title.className = "admin-product-sku-card-title";
-      title.innerHTML = `<strong>${escapeHtml(sku.skuName || "未命名 SKU")}</strong><span>${escapeHtml(sku.skuCode || "-")}</span>`;
+      appendSkuTitle(title, sku);
       const status = document.createElement("select");
       status.className = "admin-product-sku-card-status";
       ["ACTIVE", "DISABLED"].forEach((value) => {

@@ -1,67 +1,53 @@
 package com.example.ShoppingSystem.service.user.auth.register.impl;
 
-import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
-import com.example.ShoppingSystem.service.captcha.thirdparty.ThirdPartyCaptchaService;
-import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaVerifyRequest;
 import org.springframework.stereotype.Service;
 
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_TIANAI;
-
 /**
- * 注册验证码校验服务。
- */
+ * 娉ㄥ唽楠岃瘉鐮佹牎楠屾湇鍔°€? */
 @Service
 public class CaptchaVerificationService {
 
-    private final HutoolCaptchaService hutoolCaptchaService;
-    private final TianaiCaptchaService tianaiCaptchaService;
-    private final ThirdPartyCaptchaService thirdPartyCaptchaService;
+    private static final String REGISTER_CAPTCHA_NAMESPACE = "register";
 
-    public CaptchaVerificationService(HutoolCaptchaService hutoolCaptchaService,
-                                      TianaiCaptchaService tianaiCaptchaService,
-                                      ThirdPartyCaptchaService thirdPartyCaptchaService) {
-        this.hutoolCaptchaService = hutoolCaptchaService;
-        this.tianaiCaptchaService = tianaiCaptchaService;
-        this.thirdPartyCaptchaService = thirdPartyCaptchaService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
+
+    public CaptchaVerificationService(CaptchaStrategyRegistry captchaStrategyRegistry) {
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
     }
 
     /**
-     * 按 challengeType 执行服务端验证码校验。
-     */
+     * 鎸?challengeType 鎵ц鏈嶅姟绔獙璇佺爜鏍￠獙銆?     */
+    public boolean verifyRequiredCaptcha(String challengeType,
+                                         String challengeSubType,
+                                         String publicIp,
+                                         String captchaUuid,
+                                         String captchaCode) {
+        return captchaStrategyRegistry.verify(new CaptchaVerifyRequest(
+                challengeType,
+                challengeSubType,
+                REGISTER_CAPTCHA_NAMESPACE,
+                captchaUuid,
+                captchaCode,
+                publicIp
+        ));
+    }
+
     public boolean verifyRequiredCaptcha(String challengeType,
                                          String publicIp,
                                          String captchaUuid,
                                          String captchaCode) {
-        return switch (challengeType) {
-            case CHALLENGE_HUTOOL_SHEAR -> hutoolCaptchaService.validateCaptcha("register", captchaUuid, captchaCode);
-            case CHALLENGE_TIANAI -> tianaiCaptchaService.validateCaptcha(captchaUuid, captchaCode);
-            case CHALLENGE_CLOUDFLARE_TURNSTILE -> thirdPartyCaptchaService.validateTurnstile(captchaCode, publicIp);
-            case CHALLENGE_HCAPTCHA -> thirdPartyCaptchaService.validateHCaptcha(captchaCode, publicIp);
-            case CHALLENGE_GOOGLE_RECAPTCHA_V2, CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY ->
-                    thirdPartyCaptchaService.validateRecaptcha(captchaCode, publicIp);
-            default -> false;
-        };
+        return verifyRequiredCaptcha(challengeType, null, publicIp, captchaUuid, captchaCode);
     }
 
     /**
-     * 根据挑战类型返回前端渲染所需 siteKey。
-     */
+     * 鏍规嵁鎸戞垬绫诲瀷杩斿洖鍓嶇娓叉煋鎵€闇€ siteKey銆?     */
+    public String resolveChallengeSiteKey(String challengeType, String challengeSubType) {
+        return captchaStrategyRegistry.siteKey(challengeType, challengeSubType);
+    }
+
     public String resolveChallengeSiteKey(String challengeType) {
-        if (CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)) {
-            return thirdPartyCaptchaService.getTurnstileSiteKey();
-        }
-        if (CHALLENGE_HCAPTCHA.equals(challengeType)) {
-            return thirdPartyCaptchaService.getHCaptchaSiteKey();
-        }
-        if (CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
-                || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType)) {
-            return thirdPartyCaptchaService.getRecaptchaSiteKey();
-        }
-        return null;
+        return resolveChallengeSiteKey(challengeType, null);
     }
 }

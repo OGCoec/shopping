@@ -9,6 +9,22 @@ body {
 }
 
 body {
+  --pointer-x: 0;
+  --pointer-y: 0;
+  --wash-shift-x: 0px;
+  --wash-shift-y: 0px;
+  --grid-shift-x: 0px;
+  --grid-shift-y: 0px;
+  --motion-shift-x: 0px;
+  --motion-shift-y: 0px;
+  --panel-shift-x: 0px;
+  --panel-shift-y: 0px;
+  --motion-angle: 135deg;
+  --motion-hue: 205;
+  --motion-alpha: 0.04;
+  --motion-panel-alpha: 0.035;
+  --motion-card-alpha: 0.045;
+  --motion-grid-opacity: 0.24;
   --order-ink: #111827;
   --order-muted: #64748b;
   --order-line: rgba(15, 23, 42, 0.12);
@@ -29,6 +45,22 @@ body {
   pointer-events: none;
 }
 
+.order-page-background::after {
+  position: absolute;
+  inset: -80px;
+  z-index: 2;
+  content: "";
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-alpha)) 0%,
+      rgba(255, 255, 255, 0) 48%
+    );
+  mix-blend-mode: soft-light;
+  transform: translate3d(var(--motion-shift-x), var(--motion-shift-y), 0);
+  will-change: transform;
+}
+
 .order-page-background__wash,
 .order-page-background__dots {
   position: absolute;
@@ -38,13 +70,21 @@ body {
 .order-page-background__wash {
   background:
     linear-gradient(135deg, rgba(219, 234, 254, 0.72), rgba(236, 253, 245, 0.56) 54%, rgba(255, 247, 237, 0.7));
+  transform: translate3d(var(--wash-shift-x), var(--wash-shift-y), 0) scale(1.04);
+  transform-origin: center;
+  will-change: transform;
 }
 
 .order-page-background__dots {
-  background-image: url("/shopping/images/noomo/transitionDots.png");
+  background-image:
+    linear-gradient(rgba(43, 94, 154, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(43, 94, 154, 0.12) 1px, transparent 1px),
+    url("/shopping/images/noomo/transitionDots.png");
   background-repeat: repeat;
-  background-size: 6.4%;
-  opacity: 0.16;
+  background-size: 44px 44px, 44px 44px, 6.4%;
+  opacity: var(--motion-grid-opacity);
+  transform: translate3d(var(--grid-shift-x), var(--grid-shift-y), 0);
+  will-change: transform;
 }
 
 .order-page {
@@ -91,7 +131,13 @@ body {
   place-items: center;
   border: 1px solid var(--order-line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.54);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.54);
   color: var(--order-ink);
   cursor: pointer;
   font: inherit;
@@ -105,13 +151,25 @@ body {
 
 .order-primary-button {
   border-color: rgba(22, 101, 52, 0.28);
-  background: rgba(22, 163, 74, 0.88);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 72%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 60%
+    ),
+    rgba(22, 163, 74, 0.88);
   color: #ffffff;
 }
 
 .order-danger-button {
   border-color: rgba(185, 28, 28, 0.26);
-  background: rgba(254, 242, 242, 0.8);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(254, 242, 242, 0.8);
   color: #991b1b;
 }
 
@@ -134,9 +192,17 @@ body {
 .order-panel {
   border: 1px solid rgba(255, 255, 255, 0.48);
   border-radius: 8px;
-  background: var(--order-panel);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-panel-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    var(--order-panel);
   box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+  transform: translate3d(var(--panel-shift-x), var(--panel-shift-y), 0);
   backdrop-filter: blur(16px);
+  will-change: transform;
 }
 
 .order-status {
@@ -239,7 +305,13 @@ body {
 .order-detail-status-panel {
   border: 1px solid var(--order-line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.56);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.56);
 }
 
 .order-card {
@@ -515,7 +587,13 @@ body {
   gap: 8px;
   border: 1px solid var(--order-line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.5);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.5);
   padding: 12px;
 }
 

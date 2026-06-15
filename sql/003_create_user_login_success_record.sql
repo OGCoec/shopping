@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS user_login_success_record (
 CREATE INDEX IF NOT EXISTS idx_user_login_success_record_user_id
     ON user_login_success_record (user_id);
 
+CREATE INDEX IF NOT EXISTS idx_user_login_success_record_user_login_at
+    ON user_login_success_record (user_id, login_at ASC);
+
 CREATE INDEX IF NOT EXISTS idx_user_login_success_record_login_type
     ON user_login_success_record (login_type);
 

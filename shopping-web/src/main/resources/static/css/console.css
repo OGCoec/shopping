@@ -11,6 +11,20 @@ body {
 body {
   --pointer-x: 0;
   --pointer-y: 0;
+  --wash-shift-x: 0px;
+  --wash-shift-y: 0px;
+  --grid-shift-x: 0px;
+  --grid-shift-y: 0px;
+  --motion-shift-x: 0px;
+  --motion-shift-y: 0px;
+  --panel-shift-x: 0px;
+  --panel-shift-y: 0px;
+  --motion-angle: 135deg;
+  --motion-hue: 205;
+  --motion-alpha: 0.04;
+  --motion-panel-alpha: 0.035;
+  --motion-card-alpha: 0.045;
+  --motion-grid-opacity: 0.24;
   overflow-x: hidden;
   overflow-y: auto;
   background:
@@ -33,6 +47,22 @@ body.console-detail-open {
   pointer-events: none;
 }
 
+.console-noomo-background::after {
+  position: absolute;
+  inset: -80px;
+  z-index: 2;
+  content: "";
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-alpha)) 0%,
+      rgba(255, 255, 255, 0) 48%
+    );
+  mix-blend-mode: soft-light;
+  transform: translate3d(var(--motion-shift-x), var(--motion-shift-y), 0);
+  will-change: transform;
+}
+
 .console-noomo-background__wash,
 .console-noomo-background__dots {
   position: absolute;
@@ -46,25 +76,20 @@ body.console-detail-open {
     radial-gradient(circle at 18% 42%, rgba(178, 205, 255, 0.72) 0%, rgba(229, 235, 253, 0.56) 44%, rgba(248, 243, 250, 0.9) 82%),
     radial-gradient(circle at 75% 36%, rgba(255, 229, 249, 0.46) 0%, rgba(243, 246, 255, 0.5) 42%, rgba(255, 255, 255, 0.76) 78%),
     linear-gradient(90deg, #dbe7ff 0%, #f4f6ff 52%, #f8f0f7 100%);
-  transform: translate3d(
-    calc(var(--pointer-x) * -22px),
-    calc(var(--pointer-y) * -16px),
-    0
-  ) scale(1.04);
+  transform: translate3d(var(--wash-shift-x), var(--wash-shift-y), 0) scale(1.04);
   transform-origin: center;
 }
 
 .console-noomo-background__dots {
   z-index: 1;
-  background-image: url("/shopping/images/noomo/transitionDots.png");
+  background-image:
+    linear-gradient(rgba(43, 94, 154, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(43, 94, 154, 0.12) 1px, transparent 1px),
+    url("/shopping/images/noomo/transitionDots.png");
   background-repeat: repeat;
-  background-size: 6.4%;
-  opacity: 0.3;
-  transform: translate3d(
-    calc(var(--pointer-x) * 42px),
-    calc(var(--pointer-y) * 30px),
-    0
-  );
+  background-size: 44px 44px, 44px 44px, 6.4%;
+  opacity: var(--motion-grid-opacity);
+  transform: translate3d(var(--grid-shift-x), var(--grid-shift-y), 0);
 }
 
 .console-avatar-link {
@@ -97,14 +122,29 @@ body.console-detail-open {
 .console-category-panel,
 .console-product-panel {
   border: 1px solid rgba(255, 255, 255, 0.34);
-  background: rgba(255, 255, 255, 0.24);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-panel-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.24);
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(16px);
 }
 
+.console-toolbar,
+.console-category-panel,
+.console-product-panel,
+.console-product-card,
+.console-empty-state {
+  translate: var(--panel-shift-x) var(--panel-shift-y);
+  will-change: translate;
+}
+
 .console-toolbar {
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   min-height: 86px;
@@ -123,6 +163,7 @@ body.console-detail-open {
 }
 
 .console-search-form {
+  align-items: flex-end;
   flex: 1;
   min-width: 0;
 }
@@ -163,9 +204,11 @@ body.console-detail-open {
 .console-primary-button,
 .console-ghost-button,
 .console-category-button {
+  appearance: none;
   border: 0;
   font: inherit;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .console-primary-button,
@@ -173,17 +216,27 @@ body.console-detail-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  height: 42px;
   min-height: 42px;
   border-radius: 8px;
   padding: 0 15px;
   font-size: 14px;
   font-weight: 800;
+  line-height: 1;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .console-primary-button {
   border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(22, 101, 52, 0.78);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 72%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 60%
+    ),
+    rgba(22, 101, 52, 0.78);
   color: #ffffff;
   box-shadow: 0 10px 22px rgba(22, 101, 52, 0.16);
   backdrop-filter: blur(12px);
@@ -191,7 +244,13 @@ body.console-detail-open {
 
 .console-ghost-button {
   border: 1px solid rgba(255, 255, 255, 0.42);
-  background: rgba(255, 255, 255, 0.32);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.32);
   color: #334155;
   backdrop-filter: blur(12px);
 }
@@ -200,6 +259,13 @@ body.console-detail-open {
 .console-ghost-button:hover,
 .console-category-button:hover {
   transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.console-primary-button:focus,
+.console-ghost-button:focus,
+.console-category-button:focus {
+  text-decoration: none;
 }
 
 .console-primary-button:disabled,
@@ -291,7 +357,13 @@ body.console-detail-open {
 }
 
 .console-category-button.is-selected {
-  background: rgba(219, 234, 254, 0.44);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 62%
+    ),
+    rgba(219, 234, 254, 0.44);
   color: #1d4ed8;
   font-weight: 800;
 }
@@ -361,7 +433,13 @@ body.console-detail-open {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.3);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.3);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
   color: inherit;
   cursor: pointer;
@@ -453,7 +531,13 @@ body.console-detail-open {
   place-items: center;
   border: 1px dashed rgba(255, 255, 255, 0.44);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.24);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.24);
   color: #64748b;
   font-weight: 800;
 }

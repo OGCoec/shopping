@@ -80,15 +80,13 @@ public class OrderRedisSnapshotService {
                             OrderRedisKeys.orderItemKey(context.orderNo()),
                             OrderRedisKeys.userOrderKey(context.userId()),
                             OrderRedisKeys.ORDER_EXPIRE_ZSET_KEY,
-                            OrderRedisKeys.ORDER_PERSIST_DIRTY_ZSET_KEY,
                             OrderRedisKeys.ORDER_ALL_ZSET_KEY
                     ),
                     objectMapper.writeValueAsString(order),
                     objectMapper.writeValueAsString(items),
                     context.orderNo(),
                     String.valueOf(context.now().toInstant().toEpochMilli()),
-                    String.valueOf(context.expireAt().toInstant().toEpochMilli()),
-                    String.valueOf(context.now().toInstant().toEpochMilli())
+                    String.valueOf(context.expireAt().toInstant().toEpochMilli())
             );
         } catch (JsonProcessingException e) {
             throw new OrderServiceException("ORDER_REDIS_PAYLOAD_INVALID", "Order Redis payload is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
@@ -183,7 +181,6 @@ public class OrderRedisSnapshotService {
                 expireScript,
                 List.of(
                         OrderRedisKeys.orderDetailKey(orderNo),
-                        OrderRedisKeys.ORDER_PERSIST_DIRTY_ZSET_KEY,
                         OrderRedisKeys.ORDER_EXPIRE_ZSET_KEY,
                         OrderRedisKeys.ORDER_CLOSING_ZSET_KEY
                 ),

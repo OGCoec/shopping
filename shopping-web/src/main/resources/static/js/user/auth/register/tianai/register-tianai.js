@@ -15,6 +15,7 @@
   const preAuthFetch = preAuthClientApi && typeof preAuthClientApi.fetchWithPreAuth === "function"
     ? preAuthClientApi.fetchWithPreAuth
     : fetch;
+  const securityUrls = globalThis.ShoppingSecurityUrls;
 
   const {
     normalizeTianaiRotateProgress,
@@ -42,17 +43,50 @@
     };
   }
 
-  function buildConcatLayerMarkup(renderData, options = {}) {
+  function safeCaptchaImageUrl(value) {
+    return securityUrls?.safeImageUrl?.(value, "", { allowData: true, allowBlob: true }) || "";
+  }
+
+  function setCaptchaImageSrc(node, value) {
+    if (!node) {
+      return;
+    }
+    const safeUrl = safeCaptchaImageUrl(value);
+    if (safeUrl) {
+      node.src = safeUrl;
+      return;
+    }
+    node.removeAttribute("src");
+  }
+
+  function createConcatLayer(id, topPercent, heightPercent, imageUrl) {
+    const layer = document.createElement("div");
+    layer.id = id;
+    layer.style.position = "absolute";
+    layer.style.top = `${topPercent}%`;
+    layer.style.left = "0";
+    layer.style.width = "100%";
+    layer.style.height = `${heightPercent}%`;
+    layer.style.backgroundSize = "100% 100%";
+    layer.style.backgroundRepeat = "repeat-x";
+    layer.style.backgroundPosition = "0px 0px";
+    const safeUrl = safeCaptchaImageUrl(imageUrl);
+    if (safeUrl) {
+      layer.style.backgroundImage = `url("${safeUrl.replace(/"/g, "%22")}")`;
+    }
+    return layer;
+  }
+
+  function renderConcatLayers(container, renderData, options = {}) {
     const totalHeight = Math.max(renderData.topHeight + renderData.bottomHeight, 1);
     const topPercent = (renderData.topHeight / totalHeight) * 100;
     const bottomPercent = 100 - topPercent;
     const topId = options.topId || "ti-concat-top";
     const bottomId = options.bottomId || "ti-concat-bottom";
-
-    return `
-      <div id="${topId}" style="position:absolute; top:0; left:0; width:100%; height:${topPercent}%; background-image:url(${renderData.topImage}); background-size:100% 100%; background-repeat:repeat-x; background-position:0px 0px;"></div>
-      <div id="${bottomId}" style="position:absolute; top:${topPercent}%; left:0; width:100%; height:${bottomPercent}%; background-image:url(${renderData.bottomImage}); background-size:100% 100%; background-repeat:repeat-x; background-position:0px 0px;"></div>
-    `;
+    container.replaceChildren(
+      createConcatLayer(topId, 0, topPercent, renderData.topImage),
+      createConcatLayer(bottomId, topPercent, bottomPercent, renderData.bottomImage)
+    );
   }
 
   function resetCaptchaImageVisibility(bgImgNode, tpl, hideBackground) {
@@ -202,12 +236,12 @@
       }
 
       const markers = document.getElementById(getDomId("tianai-click-markers"));
-      if (markers) markers.innerHTML = "";
+      if (markers) markers.replaceChildren();
 
       const concatContainer = document.getElementById(getConcatContainerId());
       if (concatContainer) {
         concatContainer.style.display = "none";
-        concatContainer.innerHTML = "";
+        concatContainer.replaceChildren();
         delete concatContainer.dataset.movingLayer;
       }
     }
@@ -243,18 +277,18 @@
         if (currentTianaiSubType === "WORD_IMAGE_CLICK") {
           document.getElementById(getDomId("tianai-click-area")).style.display = "block";
           updateTianaiActionButtons(false);
-          document.getElementById(getDomId("tianai-click-bg")).src = payload.backgroundImage || "";
+          setCaptchaImageSrc(document.getElementById(getDomId("tianai-click-bg")), payload.backgroundImage);
           const clickTpl = document.getElementById(getDomId("tianai-click-tpl"));
-          if (clickTpl) clickTpl.src = payload.templateImage || "";
+          setCaptchaImageSrc(clickTpl, payload.templateImage);
           setupClickTracking();
           return;
         }
 
         document.getElementById(getDomId("tianai-slider-area")).style.display = "block";
-        document.getElementById(getDomId("tianai-slider-bg")).src = payload.backgroundImage || "";
+        setCaptchaImageSrc(document.getElementById(getDomId("tianai-slider-bg")), payload.backgroundImage);
 
         const tpl = document.getElementById(getDomId("tianai-slider-tpl"));
-        tpl.src = payload.templateImage || "";
+        setCaptchaImageSrc(tpl, payload.templateImage);
 
         const bgImgNode = document.getElementById(getDomId("tianai-slider-bg"));
         let concatContainer = document.getElementById(getConcatContainerId());
@@ -274,7 +308,7 @@
           }
           concatContainer.style.display = "block";
           concatContainer.dataset.movingLayer = renderData.movingLayer;
-          concatContainer.innerHTML = buildConcatLayerMarkup(renderData, {
+          renderConcatLayers(concatContainer, renderData, {
             topId: getConcatTopId(),
             bottomId: getConcatBottomId()
           });
@@ -666,7 +700,7 @@
 
   return {
     getConcatRenderData,
-    buildConcatLayerMarkup,
+    renderConcatLayers,
     resetCaptchaImageVisibility,
     createRegisterTianai
   };

@@ -81,5 +81,9 @@ public interface PaymentRefundMapper {
     List<Map<String, Object>> claimDispatchBatch(@Param("limit") int limit,
                                                  @Param("maxRetry") int maxRetry);
 
+    List<Map<String, Object>> claimDispatchBatchByRefundNos(@Param("refundsJson") String refundsJson,
+                                                            @Param("maxRetry") int maxRetry,
+                                                            @Param("processingTimeoutMs") long processingTimeoutMs);
+
     int batchWriteDispatchResults(@Param("resultsJson") String resultsJson);
 }

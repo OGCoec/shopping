@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.service.user.auth.risk.impl;
 
 import cn.hutool.core.util.StrUtil;
+import com.example.ShoppingSystem.common.transaction.AfterCommitExecutor;
 import com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper;
 import com.example.ShoppingSystem.redisdata.BotDefenseRedisKeys;
 import com.example.ShoppingSystem.service.user.auth.register.risk.impl.IpL6CountingBloomDecisionService;
@@ -18,6 +19,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -50,6 +52,7 @@ public class AutomationRiskGateServiceImpl implements AutomationRiskGateService 
     private final IpReputationProfileMapper ipReputationProfileMapper;
     private final IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService;
     private final ObjectProvider<IpRiskCacheInvalidator> ipRiskCacheInvalidatorProvider;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:v2:}")
     private String ipRiskRedisKeyPrefix;
@@ -58,12 +61,14 @@ public class AutomationRiskGateServiceImpl implements AutomationRiskGateService 
                                          DeviceRiskProfileWriteService deviceRiskProfileWriteService,
                                          IpReputationProfileMapper ipReputationProfileMapper,
                                          IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService,
-                                         ObjectProvider<IpRiskCacheInvalidator> ipRiskCacheInvalidatorProvider) {
+                                         ObjectProvider<IpRiskCacheInvalidator> ipRiskCacheInvalidatorProvider,
+                                         TransactionTemplate transactionTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
         this.ipReputationProfileMapper = ipReputationProfileMapper;
         this.ipL6CountingBloomDecisionService = ipL6CountingBloomDecisionService;
         this.ipRiskCacheInvalidatorProvider = ipRiskCacheInvalidatorProvider;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Override
@@ -161,14 +166,22 @@ public class AutomationRiskGateServiceImpl implements AutomationRiskGateService 
         }
         try {
             OffsetDateTime now = OffsetDateTime.now();
-            Integer updatedScore = normalizedIp.contains(":")
+            Integer updatedScore = transactionTemplate.execute(status -> normalizedIp.contains(":")
                     ? ipReputationProfileMapper.applyIpv6AutomationPenalty(normalizedIp, penaltyScore, now)
-                    : ipReputationProfileMapper.applyIpv4AutomationPenalty(normalizedIp, penaltyScore, now);
+                    : ipReputationProfileMapper.applyIpv4AutomationPenalty(normalizedIp, penaltyScore, now));
             if (updatedScore == null) {
                 return;
             }
-            invalidateIpRiskCache(normalizedIp);
-            ipL6CountingBloomDecisionService.syncMembershipByScore(normalizedIp, Math.max(0, updatedScore));
+            int resolvedScore = Math.max(0, updatedScore);
+            AfterCommitExecutor.run(() -> {
+                try {
+                    invalidateIpRiskCache(normalizedIp);
+                    ipL6CountingBloomDecisionService.syncMembershipByScore(normalizedIp, resolvedScore);
+                } catch (Exception e) {
+                    log.warn("Automation IP penalty cache sync failed, ip={}, reason={}, error={}",
+                            normalizedIp, reason, e.getMessage());
+                }
+            });
         } catch (Exception e) {
             log.warn("Automation IP penalty failed, ip={}, reason={}, error={}", normalizedIp, reason, e.getMessage());
         }

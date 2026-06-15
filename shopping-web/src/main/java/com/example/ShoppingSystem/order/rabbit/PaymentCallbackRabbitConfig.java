@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.order.rabbit;
 
 import com.example.ShoppingSystem.order.service.PaymentCallbackDispatchProperties;
+import com.example.ShoppingSystem.order.service.PaymentCallbackStreamProperties;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
@@ -19,7 +20,11 @@ import java.util.Map;
 
 @Configuration
 @EnableRabbit
-@EnableConfigurationProperties({PaymentCallbackRabbitProperties.class, PaymentCallbackDispatchProperties.class})
+@EnableConfigurationProperties({
+        PaymentCallbackRabbitProperties.class,
+        PaymentCallbackDispatchProperties.class,
+        PaymentCallbackStreamProperties.class
+})
 public class PaymentCallbackRabbitConfig {
 
     @Bean

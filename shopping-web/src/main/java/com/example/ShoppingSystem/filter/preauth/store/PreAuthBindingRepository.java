@@ -42,7 +42,7 @@ public class PreAuthBindingRepository {
     private static final String FIELD_LAST_PENALTY_AT = "lastPenaltyAt";
     private static final String FIELD_LAST_PENALTY_SCORE = "lastPenaltyScore";
     private static final String FIELD_LAST_PENALTY_REASON = "lastPenaltyReason";
-    private static final String FIELD_WEBRTC_IP = "webRtcIp";
+    private static final String FIELD_WEBRTC_IPS = "webRtcIps";
     private static final String FIELD_WEBRTC_STATUS = "webRtcStatus";
     private static final String FIELD_WEBRTC_SEEN_AT = "webRtcSeenAt";
     private static final String FIELD_WEBRTC_MISMATCH_COUNT = "webRtcMismatchCount";
@@ -95,7 +95,7 @@ public class PreAuthBindingRepository {
                     parseLong(toStringValue(raw.get(FIELD_LAST_PENALTY_AT)), 0L),
                     parseInt(toStringValue(raw.get(FIELD_LAST_PENALTY_SCORE)), 0),
                     toStringValue(raw.get(FIELD_LAST_PENALTY_REASON)),
-                    toStringValue(raw.get(FIELD_WEBRTC_IP)),
+                    toStringValue(raw.get(FIELD_WEBRTC_IPS)),
                     toStringValue(raw.get(FIELD_WEBRTC_STATUS)),
                     parseLong(toStringValue(raw.get(FIELD_WEBRTC_SEEN_AT)), 0L),
                     parseInt(toStringValue(raw.get(FIELD_WEBRTC_MISMATCH_COUNT)), 0)
@@ -128,7 +128,7 @@ public class PreAuthBindingRepository {
         hash.put(FIELD_LAST_PENALTY_AT, String.valueOf(Math.max(0L, binding.lastPenaltyAtEpochMillis())));
         hash.put(FIELD_LAST_PENALTY_SCORE, String.valueOf(Math.max(0, binding.lastPenaltyScore())));
         hash.put(FIELD_LAST_PENALTY_REASON, normalizeNullable(binding.lastPenaltyReason()));
-        hash.put(FIELD_WEBRTC_IP, normalizeNullable(binding.webRtcIp()));
+        hash.put(FIELD_WEBRTC_IPS, normalizeNullable(binding.webRtcIps()));
         hash.put(FIELD_WEBRTC_STATUS, normalizeNullable(binding.webRtcStatus()));
         hash.put(FIELD_WEBRTC_SEEN_AT, String.valueOf(Math.max(0L, binding.webRtcSeenAtEpochMillis())));
         hash.put(FIELD_WEBRTC_MISMATCH_COUNT, String.valueOf(Math.max(0, binding.webRtcMismatchCount())));

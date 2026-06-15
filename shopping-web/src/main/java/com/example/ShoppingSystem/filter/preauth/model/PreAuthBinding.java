@@ -28,7 +28,7 @@ public record PreAuthBinding(String token,
                              long lastPenaltyAtEpochMillis,
                              int lastPenaltyScore,
                              String lastPenaltyReason,
-                             String webRtcIp,
+                             String webRtcIps,
                              String webRtcStatus,
                              long webRtcSeenAtEpochMillis,
                              int webRtcMismatchCount) {
@@ -85,7 +85,7 @@ public record PreAuthBinding(String token,
         );
     }
 
-    public PreAuthBinding withWebRtcState(String nextWebRtcIp,
+    public PreAuthBinding withWebRtcState(String nextWebRtcIps,
                                           String nextWebRtcStatus,
                                           long nextWebRtcSeenAtEpochMillis,
                                           int nextWebRtcMismatchCount) {
@@ -112,7 +112,43 @@ public record PreAuthBinding(String token,
                 lastPenaltyAtEpochMillis,
                 lastPenaltyScore,
                 lastPenaltyReason,
-                nextWebRtcIp,
+                nextWebRtcIps,
+                nextWebRtcStatus,
+                nextWebRtcSeenAtEpochMillis,
+                nextWebRtcMismatchCount
+        );
+    }
+
+    public PreAuthBinding withRiskAndWebRtcState(int nextScore,
+                                                 String nextRiskLevel,
+                                                 String nextWebRtcIps,
+                                                 String nextWebRtcStatus,
+                                                 long nextWebRtcSeenAtEpochMillis,
+                                                 int nextWebRtcMismatchCount) {
+        return new PreAuthBinding(
+                token,
+                fpHash,
+                navigationFpHash,
+                uaHash,
+                currentIp,
+                recentIps,
+                changeCount,
+                ipScore,
+                deviceScore,
+                nextScore,
+                nextRiskLevel,
+                currentIpSeenAtEpochMillis,
+                currentCountry,
+                currentRegion,
+                currentCity,
+                currentLatitude,
+                currentLongitude,
+                sameCityIpChangeCount,
+                lastPenalizedIpTransition,
+                lastPenaltyAtEpochMillis,
+                lastPenaltyScore,
+                lastPenaltyReason,
+                nextWebRtcIps,
                 nextWebRtcStatus,
                 nextWebRtcSeenAtEpochMillis,
                 nextWebRtcMismatchCount

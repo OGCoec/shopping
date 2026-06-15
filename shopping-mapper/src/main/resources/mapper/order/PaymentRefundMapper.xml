@@ -212,38 +212,49 @@ inserted AS (
     ON CONFLICT (idempotency_key) DO NOTHING
     RETURNING *
 ),
-existing AS (
+refund_rows AS (
+    SELECT raw.rn,
+           raw.callback_no,
+           inserted.*
+    FROM raw
+    INNER JOIN inserted ON inserted.idempotency_key = raw.idempotency_key
+    UNION ALL
     SELECT raw.rn,
            raw.callback_no,
            r.*
     FROM raw
     INNER JOIN payment_refund_record r ON r.idempotency_key = raw.idempotency_key
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM inserted
+        WHERE inserted.idempotency_key = raw.idempotency_key
+    )
 )
         ]]>
-SELECT existing.callback_no AS "callbackNo",
-       existing.id,
-       existing.refund_no AS "refundNo",
-       existing.order_no AS "orderNo",
-       existing.user_id AS "userId",
-       existing.payment_provider AS "paymentProvider",
-       existing.external_trade_no AS "externalTradeNo",
-       existing.external_refund_no AS "externalRefundNo",
-       existing.payment_callback_id AS "paymentCallbackId",
-       existing.paid_amount_yuan AS "paidAmountYuan",
-       existing.refund_amount_yuan AS "refundAmountYuan",
-       existing.currency,
-       existing.status,
-       existing.source,
-       existing.reason_code AS "reasonCode",
-       existing.reason_detail AS "reasonDetail",
-       existing.order_status_when_detected AS "orderStatusWhenDetected",
-       existing.detected_at AS "detectedAt",
-       existing.detection_batch_no AS "detectionBatchNo",
-       existing.version,
-       existing.created_at AS "createdAt",
-       existing.updated_at AS "updatedAt"
-FROM existing
-ORDER BY existing.rn
+SELECT refund_rows.callback_no AS "callbackNo",
+       refund_rows.id,
+       refund_rows.refund_no AS "refundNo",
+       refund_rows.order_no AS "orderNo",
+       refund_rows.user_id AS "userId",
+       refund_rows.payment_provider AS "paymentProvider",
+       refund_rows.external_trade_no AS "externalTradeNo",
+       refund_rows.external_refund_no AS "externalRefundNo",
+       refund_rows.payment_callback_id AS "paymentCallbackId",
+       refund_rows.paid_amount_yuan AS "paidAmountYuan",
+       refund_rows.refund_amount_yuan AS "refundAmountYuan",
+       refund_rows.currency,
+       refund_rows.status,
+       refund_rows.source,
+       refund_rows.reason_code AS "reasonCode",
+       refund_rows.reason_detail AS "reasonDetail",
+       refund_rows.order_status_when_detected AS "orderStatusWhenDetected",
+       refund_rows.detected_at AS "detectedAt",
+       refund_rows.detection_batch_no AS "detectionBatchNo",
+       refund_rows.version,
+       refund_rows.created_at AS "createdAt",
+       refund_rows.updated_at AS "updatedAt"
+FROM refund_rows
+ORDER BY refund_rows.rn
     </select>
 
     <select id="findByIdempotencyKey" resultType="map">
@@ -406,6 +417,120 @@ updated AS (
         ]]>
 SELECT <include refid="RefundColumns"/>
 FROM updated
+    </select>
+
+    <select id="claimDispatchBatchByRefundNos" resultType="map">
+        <![CDATA[
+WITH raw AS (
+    SELECT row_number() OVER () AS rn,
+           stream_message_id,
+           refund_no
+    FROM jsonb_to_recordset(CAST(#{refundsJson} AS jsonb)) AS refund(
+        stream_message_id text,
+        refund_no text
+    )
+),
+deduped AS (
+    SELECT DISTINCT ON (refund_no) *
+    FROM raw
+    WHERE refund_no IS NOT NULL
+      AND refund_no <> ''
+    ORDER BY refund_no, rn
+),
+picked AS (
+    SELECT r.id
+    FROM payment_refund_record r
+    INNER JOIN deduped d ON d.refund_no = r.refund_no
+    WHERE (
+        r.status = 'REFUND_PENDING'
+        OR (
+            r.status = 'REFUND_FAILED'
+            AND r.retry_count < #{maxRetry}
+            AND (r.next_retry_at IS NULL OR r.next_retry_at <= NOW())
+        )
+        OR (
+            r.status = 'REFUNDING'
+            AND r.updated_at <= NOW() - (#{processingTimeoutMs} * INTERVAL '1 millisecond')
+        )
+    )
+    ORDER BY r.created_at ASC, r.id ASC
+    FOR UPDATE SKIP LOCKED
+),
+updated AS (
+    UPDATE payment_refund_record r
+    SET status = 'REFUNDING',
+        refund_started_at = COALESCE(refund_started_at, NOW()),
+        last_error_code = NULL,
+        last_error_message = NULL,
+        updated_at = NOW(),
+        version = r.version + 1
+    FROM picked
+    WHERE r.id = picked.id
+    RETURNING r.*
+),
+stream_rows AS (
+    SELECT raw.stream_message_id,
+           raw.rn,
+           FALSE AS stream_ack_only,
+           updated.*
+    FROM raw
+    INNER JOIN updated ON updated.refund_no = raw.refund_no
+    UNION ALL
+    SELECT raw.stream_message_id,
+           raw.rn,
+           TRUE AS stream_ack_only,
+           r.*
+    FROM raw
+    INNER JOIN payment_refund_record r ON r.refund_no = raw.refund_no
+    WHERE r.status IN ('REFUNDED', 'REFUND_REJECTED', 'REFUND_CANCELLED')
+       OR (r.status = 'REFUND_FAILED' AND r.retry_count >= #{maxRetry})
+)
+        ]]>
+SELECT stream_message_id AS "streamMessageId",
+       stream_ack_only AS "streamAckOnly",
+       (NOT stream_ack_only) AS "streamClaimed",
+       id,
+       refund_no AS "refundNo",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       payment_provider AS "paymentProvider",
+       external_trade_no AS "externalTradeNo",
+       external_refund_no AS "externalRefundNo",
+       payment_callback_id AS "paymentCallbackId",
+       paid_amount_yuan AS "paidAmountYuan",
+       refund_amount_yuan AS "refundAmountYuan",
+       currency,
+       status,
+       source,
+       reason_code AS "reasonCode",
+       reason_detail AS "reasonDetail",
+       order_status_when_detected AS "orderStatusWhenDetected",
+       detected_at AS "detectedAt",
+       detection_batch_no AS "detectionBatchNo",
+       approved_admin_id AS "approvedAdminId",
+       approved_at AS "approvedAt",
+       rejected_admin_id AS "rejectedAdminId",
+       rejected_at AS "rejectedAt",
+       reject_reason AS "rejectReason",
+       refunded_admin_id AS "refundedAdminId",
+       refunded_at AS "refundedAt",
+       refund_started_at AS "refundStartedAt",
+       retry_count AS "retryCount",
+       next_retry_at AS "nextRetryAt",
+       last_error_code AS "lastErrorCode",
+       last_error_message AS "lastErrorMessage",
+       refund_proof_no AS "refundProofNo",
+       refund_proof_url AS "refundProofUrl",
+       admin_remark AS "adminRemark",
+       user_message AS "userMessage",
+       snapshot_json::text AS "snapshotJson",
+       extra_json::text AS "extraJson",
+       idempotency_key AS "idempotencyKey",
+       version,
+       created_at AS "createdAt",
+       updated_at AS "updatedAt"
+FROM stream_rows
+ORDER BY rn
     </select>
 
     <update id="batchWriteDispatchResults">

@@ -212,6 +212,9 @@ app:
   order:
     loadtest:
       bypass-guards: ${ORDER_LOADTEST_BYPASS_GUARDS:false}
+  product:
+    loadtest:
+      bypass-guards: ${PRODUCT_LOADTEST_BYPASS_GUARDS:false}
   # GitHub 登录业务配置。
   github:
     # GitHub 登录回调地址。
@@ -350,6 +353,18 @@ app:
       prefetch: 5
       # IP 风险写回最大重试次数。
       max-retry-count: 3
+    webrtc-risk:
+      exchange: ${WEBRTC_RISK_EXCHANGE:risk.webrtc.exchange}
+      queue: ${WEBRTC_RISK_QUEUE:risk.webrtc.check.queue}
+      retry-queue: ${WEBRTC_RISK_RETRY_QUEUE:risk.webrtc.retry.queue}
+      dead-letter-queue: ${WEBRTC_RISK_DLQ:risk.webrtc.dlq}
+      routing-key: ${WEBRTC_RISK_ROUTING_KEY:risk.webrtc.check}
+      retry-routing-key: ${WEBRTC_RISK_RETRY_ROUTING_KEY:risk.webrtc.retry}
+      dead-routing-key: ${WEBRTC_RISK_DEAD_ROUTING_KEY:risk.webrtc.dead}
+      concurrency: ${WEBRTC_RISK_CONCURRENCY:2}
+      max-concurrency: ${WEBRTC_RISK_MAX_CONCURRENCY:8}
+      prefetch: ${WEBRTC_RISK_PREFETCH:5}
+      max-retry-count: ${WEBRTC_RISK_MAX_RETRY_COUNT:3}
     coupon-claim:
       exchange: ${COUPON_CLAIM_EXCHANGE:coupon.claim.exchange}
       queue: ${COUPON_CLAIM_QUEUE:coupon.claim.queue}
@@ -368,6 +383,14 @@ app:
       dead-letter-queue: ${ORDER_EXPIRE_DLQ:order.expire.dlq}
       delay-routing-key: ${ORDER_EXPIRE_DELAY_ROUTING_KEY:order.expire.delay}
       dead-routing-key: ${ORDER_EXPIRE_DEAD_ROUTING_KEY:order.expire.dead}
+      payment-check-exchange: ${ORDER_PAYMENT_CHECK_EXCHANGE:order.payment.expire.delay.exchange}
+      payment-check-queue: ${ORDER_PAYMENT_CHECK_QUEUE:order.payment.expire.check.queue}
+      payment-check-routing-key: ${ORDER_PAYMENT_CHECK_ROUTING_KEY:order.payment.expire.check}
+      payment-check-delays-millis: ${ORDER_PAYMENT_CHECK_DELAYS_MILLIS:10000,10000,10000,15000,15000,30000,30000,60000,120000}
+      closing-finalize-exchange: ${ORDER_CLOSING_FINALIZE_EXCHANGE:order.closing.finalize.delay.exchange}
+      closing-finalize-queue: ${ORDER_CLOSING_FINALIZE_QUEUE:order.closing.finalize.check.queue}
+      closing-finalize-routing-key: ${ORDER_CLOSING_FINALIZE_ROUTING_KEY:order.closing.finalize.check}
+      closing-finalize-delays-millis: ${ORDER_CLOSING_FINALIZE_DELAYS_MILLIS:30000,30000,60000,60000,120000}
       ttl-millis: ${ORDER_EXPIRE_TTL_MILLIS:300000}
       closing-grace-millis: ${ORDER_EXPIRE_CLOSING_GRACE_MILLIS:300000}
       concurrency: ${ORDER_EXPIRE_CONCURRENCY:2}
@@ -379,6 +402,7 @@ app:
       dead-letter-queue: ${PAYMENT_REFUND_DLQ:payment.refund.dispatch.dlq}
       routing-key: ${PAYMENT_REFUND_ROUTING_KEY:payment.refund.dispatch}
       dead-routing-key: ${PAYMENT_REFUND_DEAD_ROUTING_KEY:payment.refund.dead}
+      listener-enabled: ${PAYMENT_REFUND_RABBIT_LISTENER_ENABLED:false}
       concurrency: ${PAYMENT_REFUND_CONCURRENCY:1}
       max-concurrency: ${PAYMENT_REFUND_MAX_CONCURRENCY:4}
       prefetch: ${PAYMENT_REFUND_PREFETCH:10}
@@ -388,10 +412,20 @@ app:
       dead-letter-queue: ${PAYMENT_CALLBACK_DLQ:payment.callback.dispatch.dlq}
       routing-key: ${PAYMENT_CALLBACK_ROUTING_KEY:payment.callback.dispatch}
       dead-routing-key: ${PAYMENT_CALLBACK_DEAD_ROUTING_KEY:payment.callback.dead}
+      listener-enabled: ${PAYMENT_CALLBACK_RABBIT_LISTENER_ENABLED:false}
       concurrency: ${PAYMENT_CALLBACK_CONCURRENCY:1}
       max-concurrency: ${PAYMENT_CALLBACK_MAX_CONCURRENCY:4}
       prefetch: ${PAYMENT_CALLBACK_PREFETCH:10}
   refund:
+    stream:
+      enabled: ${PAYMENT_REFUND_STREAM_ENABLED:true}
+      key: ${PAYMENT_REFUND_STREAM_KEY:shopping:payment:refund:stream}
+      group: ${PAYMENT_REFUND_STREAM_GROUP:payment-refund-flusher}
+      flush-interval-millis: ${PAYMENT_REFUND_STREAM_FLUSH_INTERVAL_MILLIS:5000}
+      batch-size: ${PAYMENT_REFUND_STREAM_BATCH_SIZE:100}
+      pending-idle-timeout-ms: ${PAYMENT_REFUND_STREAM_PENDING_IDLE_TIMEOUT_MS:5000}
+      processing-timeout-ms: ${PAYMENT_REFUND_STREAM_PROCESSING_TIMEOUT_MS:120000}
+      dedupe-ttl-hours: ${PAYMENT_REFUND_STREAM_DEDUPE_TTL_HOURS:168}
     dispatch:
       enabled: ${PAYMENT_REFUND_DISPATCH_ENABLED:true}
       interval-millis: ${PAYMENT_REFUND_DISPATCH_INTERVAL_MILLIS:5000}
@@ -399,7 +433,19 @@ app:
       consumer-batch-size: ${PAYMENT_REFUND_CONSUMER_BATCH_SIZE:20}
       max-retry: ${PAYMENT_REFUND_MAX_RETRY:3}
       retry-backoff-base-millis: ${PAYMENT_REFUND_RETRY_BACKOFF_BASE_MILLIS:5000}
+      db-scan-enabled: ${PAYMENT_REFUND_DB_SCAN_ENABLED:false}
+      fallback-db-scan-interval-millis: ${PAYMENT_REFUND_FALLBACK_DB_SCAN_INTERVAL_MILLIS:300000}
   payment-callback:
+    stream:
+      enabled: ${PAYMENT_CALLBACK_STREAM_ENABLED:true}
+      key: ${PAYMENT_CALLBACK_STREAM_KEY:shopping:payment:callback:stream}
+      group: ${PAYMENT_CALLBACK_STREAM_GROUP:payment-callback-flusher}
+      flush-interval-millis: ${PAYMENT_CALLBACK_STREAM_FLUSH_INTERVAL_MILLIS:5000}
+      batch-size: ${PAYMENT_CALLBACK_STREAM_BATCH_SIZE:100}
+      pending-idle-timeout-ms: ${PAYMENT_CALLBACK_STREAM_PENDING_IDLE_TIMEOUT_MS:60000}
+      processing-timeout-ms: ${PAYMENT_CALLBACK_STREAM_PROCESSING_TIMEOUT_MS:120000}
+      dedupe-ttl-hours: ${PAYMENT_CALLBACK_STREAM_DEDUPE_TTL_HOURS:72}
+      received-order-marker-ttl-millis: ${PAYMENT_CALLBACK_RECEIVED_ORDER_MARKER_TTL_MILLIS:600000}
     dispatch:
       enabled: ${PAYMENT_CALLBACK_DISPATCH_ENABLED:true}
       interval-millis: ${PAYMENT_CALLBACK_DISPATCH_INTERVAL_MILLIS:5000}
@@ -407,6 +453,8 @@ app:
       consumer-batch-size: ${PAYMENT_CALLBACK_CONSUMER_BATCH_SIZE:50}
       max-retry: ${PAYMENT_CALLBACK_MAX_RETRY:3}
       retry-backoff-base-millis: ${PAYMENT_CALLBACK_RETRY_BACKOFF_BASE_MILLIS:5000}
+      db-scan-enabled: ${PAYMENT_CALLBACK_DB_SCAN_ENABLED:false}
+      fallback-db-scan-interval-millis: ${PAYMENT_CALLBACK_FALLBACK_DB_SCAN_INTERVAL_MILLIS:300000}
   # 短信验证码业务配置。
   sms-code:
     # 阿里云短信模板编号。
@@ -454,6 +502,10 @@ aliyun:
       host: ${ALIYUN_SMS_PROXY_HOST:127.0.0.1}
       # 阿里云短信代理端口。
       port: ${ALIYUN_SMS_PROXY_PORT:7892}
+      # 阿里云短信代理路由模式：auto/direct/proxy。
+      route-mode: ${ALIYUN_SMS_PROXY_ROUTE_MODE:auto}
+      # 阿里云短信代理路由探测超时时间，单位毫秒。
+      route-probe-timeout-ms: ${ALIYUN_SMS_PROXY_ROUTE_PROBE_TIMEOUT_MS:1500}
 
 # Elasticsearch 连接配置。
 elasticsearch:
@@ -545,7 +597,7 @@ local-proxy:
   # 本地代理主机。
   host: ${LOCAL_PROXY_HOST:127.0.0.1}
   # 可用本地代理端口列表。
-  ports: ${LOCAL_PROXY_PORTS:7897}
+  ports: ${LOCAL_PROXY_PORTS:7892,7897}
   # 本地代理连接超时时间，单位毫秒。
   connect-timeout-ms: ${LOCAL_PROXY_CONNECT_TIMEOUT_MS:300}
 
@@ -557,6 +609,10 @@ mail:
     auto-switch:
       # 是否启用邮件代理自动切换。
       enabled: ${MAIL_PROXY_AUTO_SWITCH_ENABLED:true}
+    # 邮件代理路由模式：auto/direct/proxy。
+    route-mode: ${MAIL_PROXY_ROUTE_MODE:auto}
+    # 邮件代理路由探测超时时间，单位毫秒。
+    route-probe-timeout-ms: ${MAIL_PROXY_ROUTE_PROBE_TIMEOUT_MS:1500}
 
 # 管理员后台配置。
 admin:
@@ -628,6 +684,14 @@ login:
 
 # 风控封号邮箱 Counting Bloom 配置。
 risk:
+  webrtc:
+    enabled: ${WEBRTC_RISK_ENABLED:true}
+    report-dedup-ttl-seconds: ${WEBRTC_RISK_REPORT_DEDUP_TTL_SECONDS:60}
+    idempotency-ttl-minutes: ${WEBRTC_RISK_IDEMPOTENCY_TTL_MINUTES:90}
+    state-ttl-minutes: ${WEBRTC_RISK_STATE_TTL_MINUTES:30}
+    report-dedup-key-prefix: ${WEBRTC_RISK_REPORT_DEDUP_KEY_PREFIX:risk:webrtc:report:dedup:}
+    idempotency-key-prefix: ${WEBRTC_RISK_IDEMPOTENCY_KEY_PREFIX:risk:webrtc:idempotency:}
+    state-key-prefix: ${WEBRTC_RISK_STATE_KEY_PREFIX:risk:webrtc:state:}
   terminated-account-email-counting-bloom:
     # 是否启用封号邮箱 Counting Bloom。
     enabled: true
@@ -849,6 +913,11 @@ shopping:
       hash-count: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_HASH_COUNT:7}
       counter-bytes: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_COUNTER_BYTES:1}
       page-size: ${SHOPPING_ADMIN_PRODUCT_SPU_BLOOM_PAGE_SIZE:2000}
+    product-image-security:
+      allowed-hosts: ${SHOPPING_PRODUCT_IMAGE_ALLOWED_HOSTS:shopping6655.oss-cn-hongkong.aliyuncs.com}
+      allowed-path-prefixes:
+        - /shopping/
+      allow-local-http: ${SHOPPING_PRODUCT_IMAGE_ALLOW_LOCAL_HTTP:true}
   datasource:
     risk-read:
       enabled: ${SHOPPING_RISK_READ_DB_ENABLED:true}

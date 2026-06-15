@@ -7,7 +7,6 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   const HEADER_PREAUTH_TOKEN = "X-Pre-Auth-Token"; // legacy, no longer used by default
   const HEADER_DEVICE_FINGERPRINT = "X-Device-Fingerprint";
-  const HEADER_WEBRTC_IP = "X-WebRTC-IP";
   const HEADER_WEBRTC_IPS = "X-WebRTC-IPs";
   const HEADER_WEBRTC_STATUS = "X-WebRTC-Status";
   const HEADER_CSRF_TOKEN = "X-XSRF-TOKEN";
@@ -17,14 +16,16 @@
   const PHONE_BINDING_PATH = "/shopping/user/security/phone";
   const NETWORK_CHECK_FAILED_PATH = "/shopping/auth/network-check-failed";
   const USER_LOGIN_PATH = "/shopping/user/log-in";
-  const WEBRTC_ERROR_CODES = new Set(["WEBRTC_IP_MISMATCH", "WEBRTC_SIGNAL_REQUIRED"]);
+  const WEBRTC_ERROR_CODES = new Set(["WEBRTC_IP_MISMATCH", "WEBRTC_SIGNAL_REQUIRED", "WEBRTC_SIGNAL_UNVERIFIED"]);
   const WAF_PENDING_REQUEST_KEY = "shopping.preauth.waf.pending-request";
   const WAF_REPLAY_EVENT_NAME = "shopping:preauth:waf-request-replayed";
   const DEVICE_SEED_KEY = "shopping.preauth.device-seed";
   const WEBRTC_SIGNAL_TTL_MILLIS = 60_000;
-  const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 5_000;
+  const WEBRTC_SIGNAL_TIMEOUT_MILLIS = 8_000;
 
   const PREAUTH_BOOTSTRAP_URL = "/shopping/auth/preauth/bootstrap";
+  const WEBRTC_REPORT_URL = "/shopping/auth/preauth/webrtc/report";
+  const WEBRTC_STATE_URL = "/shopping/auth/preauth/webrtc/state";
 
   const PREAUTH_REFRESHABLE_ERRORS = new Set([
     "PREAUTH_MISSING",
@@ -41,6 +42,10 @@
   let webRtcSignalTask = null;
   let cachedWebRtcSignal = null;
   let cachedWebRtcSignalAt = 0;
+  let webRtcReportTask = null;
+  let pendingForcedWebRtcSignal = null;
+  let lastReportedWebRtcSignature = "";
+  let lastReportedWebRtcAt = 0;
 
   function getNativeFetch() {
     if (typeof fetch !== "function") {
@@ -168,6 +173,28 @@
 
   function isBrowserRuntime() {
     return typeof window !== "undefined" && typeof sessionStorage !== "undefined";
+  }
+
+  function safeSameOriginPath(value, fallback, allowedPrefixes = ["/shopping/"]) {
+    const securityUrls = globalThis?.ShoppingSecurityUrls;
+    if (securityUrls && typeof securityUrls.safeSameOriginPath === "function") {
+      return securityUrls.safeSameOriginPath(value, fallback, allowedPrefixes);
+    }
+    const fallbackPath = fallback || "/shopping/";
+    const raw = String(value || "").trim();
+    if (!raw || raw.includes("\\") || raw.startsWith("//")) {
+      return fallbackPath;
+    }
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.origin !== window.location.origin) {
+        return fallbackPath;
+      }
+      const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      return allowedPrefixes.some((prefix) => path.startsWith(prefix)) ? path : fallbackPath;
+    } catch (_) {
+      return fallbackPath;
+    }
   }
 
   function toSerializableHeaders(headers) {
@@ -329,7 +356,7 @@
       return;
     }
     persistWafPendingRequest(url, options || {});
-    const finalUrl = (verifyUrl && String(verifyUrl).trim()) || buildDefaultWafVerifyUrl();
+    const finalUrl = safeSameOriginPath(verifyUrl, buildDefaultWafVerifyUrl(), ["/shopping/auth/waf/verify"]);
     window.location.assign(finalUrl);
   }
 
@@ -337,7 +364,7 @@
     if (!isBrowserRuntime()) {
       return;
     }
-    const target = payload?.redirectPath || PHONE_BINDING_PATH;
+    const target = safeSameOriginPath(payload?.redirectPath, PHONE_BINDING_PATH);
     if (window.location.pathname === PHONE_BINDING_PATH) {
       return;
     }
@@ -431,18 +458,101 @@
     }
   }
 
-  async function applyWebRtcHeaders(headers) {
+  function applyWebRtcHeaders(headers) {
     if (!headers || typeof headers.set !== "function") {
       return;
     }
-    const signal = await resolveWebRtcSignal();
-    headers.set(HEADER_WEBRTC_STATUS, signal.status || "error");
-    if (signal.ip) {
-      headers.set(HEADER_WEBRTC_IP, signal.ip);
+    const signal = currentCachedWebRtcSignal();
+    if (signal) {
+      headers.set(HEADER_WEBRTC_STATUS, signal.status || "error");
+      if (Array.isArray(signal.ips) && signal.ips.length > 0) {
+        headers.set(HEADER_WEBRTC_IPS, signal.ips.join(","));
+      }
     }
-    if (Array.isArray(signal.ips) && signal.ips.length > 0) {
-      headers.set(HEADER_WEBRTC_IPS, signal.ips.join(","));
+    scheduleWebRtcSignalReport();
+  }
+
+  function currentCachedWebRtcSignal() {
+    const now = Date.now();
+    if (cachedWebRtcSignal && now - cachedWebRtcSignalAt < WEBRTC_SIGNAL_TTL_MILLIS) {
+      return cachedWebRtcSignal;
     }
+    return null;
+  }
+
+  function scheduleWebRtcSignalReport(options = {}) {
+    if (!isBrowserRuntime()) {
+      return;
+    }
+    resolveWebRtcSignal()
+      .then((signal) => reportWebRtcSignal(signal, options))
+      .catch(() => {
+      });
+  }
+
+  function forceReportWebRtcSignal() {
+    if (!isBrowserRuntime()) {
+      return Promise.resolve(false);
+    }
+    const cachedSignal = currentCachedWebRtcSignal();
+    const signalTask = cachedSignal ? Promise.resolve(cachedSignal) : resolveWebRtcSignal();
+    return signalTask
+      .then((signal) => reportWebRtcSignal(signal, { force: true }))
+      .catch(() => false);
+  }
+
+  function reportWebRtcSignal(signal, options = {}) {
+    const normalized = normalizeWebRtcSignal(signal);
+    const signature = `${normalized.status || "error"}|${(normalized.ips || []).join(",")}`;
+    const now = Date.now();
+    const force = Boolean(options.force);
+    if (!force && signature === lastReportedWebRtcSignature && now - lastReportedWebRtcAt < WEBRTC_SIGNAL_TTL_MILLIS) {
+      return Promise.resolve(false);
+    }
+    if (webRtcReportTask) {
+      if (force) {
+        pendingForcedWebRtcSignal = normalized;
+        return webRtcReportTask.finally(() => {
+          const nextSignal = pendingForcedWebRtcSignal;
+          pendingForcedWebRtcSignal = null;
+          return nextSignal ? reportWebRtcSignal(nextSignal, { force: true }) : false;
+        });
+      }
+      return webRtcReportTask;
+    }
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      [HEADER_DEVICE_FINGERPRINT]: buildDeviceFingerprint()
+    });
+    applyCsrfHeader(headers);
+    webRtcReportTask = getNativeFetch()(WEBRTC_REPORT_URL, {
+      method: "POST",
+      headers,
+      credentials: "same-origin",
+      keepalive: true,
+      body: JSON.stringify({
+        webRtcIps: normalized.ips || [],
+        webRtcStatus: normalized.status || "error",
+        durationMillis: normalized.durationMillis == null ? null : normalized.durationMillis,
+        diagnosticReason: normalized.diagnosticReason || ""
+      })
+    })
+      .then(async (response) => {
+        const payload = await parseJsonSafely(response.clone());
+        if (response.ok && payload?.queued === true) {
+          lastReportedWebRtcSignature = signature;
+          lastReportedWebRtcAt = Date.now();
+          return true;
+        }
+        return false;
+      })
+      .catch(() => false)
+      .finally(() => {
+        webRtcReportTask = null;
+      });
+    return webRtcReportTask;
   }
 
   async function resolveWebRtcSignal() {
@@ -453,7 +563,9 @@
     if (webRtcSignalTask) {
       return webRtcSignalTask;
     }
-    webRtcSignalTask = detectWebRtcSignal()
+    webRtcSignalTask = fetchReusableWebRtcStateSignal()
+      .catch(() => null)
+      .then((serverSignal) => serverSignal || detectWebRtcSignal())
       .then((signal) => {
         cachedWebRtcSignal = normalizeWebRtcSignal(signal);
         cachedWebRtcSignalAt = Date.now();
@@ -470,10 +582,56 @@
     return webRtcSignalTask;
   }
 
+  async function fetchReusableWebRtcStateSignal() {
+    if (!isBrowserRuntime()) {
+      return null;
+    }
+    const headers = new Headers({
+      "Accept": "application/json",
+      "X-Requested-With": "XMLHttpRequest"
+    });
+    applyCsrfHeader(headers);
+    const response = await getNativeFetch()(WEBRTC_STATE_URL, {
+      method: "GET",
+      headers,
+      credentials: "same-origin"
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await parseJsonSafely(response.clone());
+    if (!payload || payload.success !== true || payload.reusable !== true) {
+      return null;
+    }
+    const ips = normalizeIpList(payload.webRtcIps);
+    const status = payload.webRtcStatus ? String(payload.webRtcStatus).trim().toLowerCase() : "ok";
+    if (status !== "ok" || ips.length === 0) {
+      return null;
+    }
+    return {
+      ip: ips[0],
+      ips,
+      status,
+      durationMillis: 0,
+      diagnosticReason: payload.reason || "server_state_reusable",
+      serverReusable: true
+    };
+  }
+
   function detectWebRtcSignal() {
     return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const unsupportedSignal = () => {
+        const signal = normalizeWebRtcSignal({
+          ip: "",
+          status: "unsupported",
+          durationMillis: Date.now() - startedAt
+        });
+        signal.diagnosticReason = resolveWebRtcDiagnosticReason(signal);
+        return signal;
+      };
       if (!isBrowserRuntime()) {
-        resolve({ ip: "", status: "unsupported" });
+        resolve(unsupportedSignal());
         return;
       }
 
@@ -481,7 +639,7 @@
         || window.webkitRTCPeerConnection
         || window.mozRTCPeerConnection;
       if (typeof PeerConnection !== "function") {
-        resolve({ ip: "", status: "unsupported" });
+        resolve(unsupportedSignal());
         return;
       }
 
@@ -511,7 +669,10 @@
           }
         } catch (_) {
         }
-        resolve(normalizeWebRtcSignal(signal));
+        const normalizedSignal = normalizeWebRtcSignal(signal);
+        normalizedSignal.durationMillis = Date.now() - startedAt;
+        normalizedSignal.diagnosticReason = resolveWebRtcDiagnosticReason(normalizedSignal);
+        resolve(normalizedSignal);
       };
       const timer = window.setTimeout(() => {
         finish(buildCurrentSignal("timeout"));
@@ -566,17 +727,39 @@
     const status = signal && signal.status ? String(signal.status).trim().toLowerCase() : "error";
     const ips = normalizeIpList(signal && signal.ips);
     const primaryIp = normalizeIpLiteral(signal && signal.ip ? String(signal.ip) : "");
+    const durationMillis = Number.isFinite(Number(signal && signal.durationMillis))
+      ? Math.max(0, Math.round(Number(signal.durationMillis)))
+      : null;
+    const diagnosticReason = signal && signal.diagnosticReason ? String(signal.diagnosticReason).trim() : "";
+    const serverReusable = signal && signal.serverReusable === true;
     if (primaryIp && !ips.includes(primaryIp)) {
       ips.unshift(primaryIp);
     }
     const ip = primaryIp || ips[0] || "";
     if (!ip && status === "ok") {
-      return { ip: "", ips: [], status: "private_only" };
+      return { ip: "", ips: [], status: "private_only", durationMillis, diagnosticReason, serverReusable };
     }
     if (["ok", "timeout", "unsupported", "private_only", "error"].includes(status)) {
-      return { ip, ips, status };
+      return { ip, ips, status, durationMillis, diagnosticReason, serverReusable };
     }
-    return { ip, ips, status: "error" };
+    return { ip, ips, status: "error", durationMillis, diagnosticReason, serverReusable };
+  }
+
+  function resolveWebRtcDiagnosticReason(signal) {
+    const status = signal && signal.status ? String(signal.status) : "";
+    if (status === "ok") {
+      return "public_candidate_found";
+    }
+    if (status === "private_only") {
+      return "private_candidate_only";
+    }
+    if (status === "unsupported") {
+      return "rtc_peer_connection_unsupported";
+    }
+    if (status === "timeout") {
+      return "no_public_candidate_before_timeout";
+    }
+    return status || "error";
   }
 
   function normalizeIpList(rawIps) {
@@ -683,7 +866,7 @@
         [HEADER_DEVICE_FINGERPRINT]: buildDeviceFingerprint()
       });
       applyCsrfHeader(requestHeaders);
-      await applyWebRtcHeaders(requestHeaders);
+      applyWebRtcHeaders(requestHeaders);
 
       const response = await getNativeFetch()(PREAUTH_BOOTSTRAP_URL, {
         method: "POST",
@@ -698,12 +881,14 @@
         }
       }
       if (response.status === 409) {
-        const payload = await parseJsonSafely(response) || {};
+        const payload = await parseJsonSafely(response.clone()) || {};
+        if (handleNetworkCheckFailurePayload(payload)) {
+          return payload;
+        }
         const errorCode = payload && payload.error ? String(payload.error) : "";
         if (errorCode === WAF_REQUIRED_ERROR_CODE) {
           if (isBrowserRuntime()) {
-            const verifyUrl = payload && payload.verifyUrl ? String(payload.verifyUrl).trim() : "";
-            window.location.assign(verifyUrl || buildDefaultWafVerifyUrl());
+            window.location.assign(safeSameOriginPath(payload?.verifyUrl, buildDefaultWafVerifyUrl(), ["/shopping/auth/waf/verify"]));
           }
           return payload;
         }
@@ -715,6 +900,8 @@
       const payload = await parseJsonSafely(response) || {};
       bootstrapped = true;
       lastBootstrapPayload = payload;
+      forceReportWebRtcSignal().catch(() => {
+      });
       return payload;
     })();
 
@@ -767,7 +954,7 @@
     const requestOptions = cloneOptions(options);
     requestOptions.headers.set(HEADER_DEVICE_FINGERPRINT, buildDeviceFingerprint());
     applyCsrfHeader(requestOptions.headers);
-    await applyWebRtcHeaders(requestOptions.headers);
+    applyWebRtcHeaders(requestOptions.headers);
     if (!bootstrapped) {
       try {
         await bootstrapPreAuthToken(false);
@@ -784,6 +971,9 @@
     }
     if (response.status === 409) {
       const wafPayload = await parseJsonSafely(response.clone());
+      if (handleNetworkCheckFailurePayload(wafPayload)) {
+        return response;
+      }
       const errorCode = wafPayload && wafPayload.error ? String(wafPayload.error) : "";
       if (errorCode === WAF_REQUIRED_ERROR_CODE) {
         redirectToWafVerify(wafPayload?.verifyUrl, url, options);
@@ -808,11 +998,22 @@
     const retryOptions = cloneOptions(options);
     retryOptions.headers.set(HEADER_DEVICE_FINGERPRINT, buildDeviceFingerprint());
     applyCsrfHeader(retryOptions.headers);
-    await applyWebRtcHeaders(retryOptions.headers);
+    applyWebRtcHeaders(retryOptions.headers);
     response = await getNativeFetch()(url, retryOptions);
     if (response.status === 403) {
       const networkPayload = await parseJsonSafely(response.clone());
       handleNetworkCheckFailurePayload(networkPayload);
+      return response;
+    }
+    if (response.status === 409) {
+      const payload = await parseJsonSafely(response.clone());
+      if (handleNetworkCheckFailurePayload(payload)) {
+        return response;
+      }
+      const errorCode = payload && payload.error ? String(payload.error) : "";
+      if (errorCode === WAF_REQUIRED_ERROR_CODE) {
+        redirectToWafVerify(payload?.verifyUrl, url, options);
+      }
     }
     return response;
   }
@@ -834,14 +1035,17 @@
   return {
     HEADER_PREAUTH_TOKEN,
     HEADER_DEVICE_FINGERPRINT,
-    HEADER_WEBRTC_IP,
     HEADER_WEBRTC_IPS,
     HEADER_WEBRTC_STATUS,
     WAF_REPLAY_EVENT_NAME,
     buildDeviceFingerprint,
     bootstrapPreAuthToken,
+    forceReportWebRtcSignal,
     fetchRegisterPasswordCryptoKey,
     fetchWithPreAuth,
+    isNetworkCheckFailurePayload,
+    redirectToNetworkCheckFailed,
+    handleNetworkCheckFailurePayload,
     readStoredToken,
     writeStoredToken
   };

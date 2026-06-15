@@ -65,6 +65,9 @@ CREATE TABLE IF NOT EXISTS user_risk_score_event (
 CREATE INDEX IF NOT EXISTS idx_user_risk_score_event_user_created_at
     ON user_risk_score_event (user_id, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_user_risk_score_event_user_created_id
+    ON user_risk_score_event (user_id, created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_user_risk_score_event_event_type
     ON user_risk_score_event (event_type);
 

@@ -67,6 +67,14 @@
     let phoneLoginSmsCooldownDialCode = "";
     let phoneLoginSmsCooldownPhone = "";
 
+    function safePath(value, fallback = "/shopping/user/console", allowedPrefixes = ["/shopping/"]) {
+      const securityUrls = globalThis.ShoppingSecurityUrls;
+      if (securityUrls && typeof securityUrls.safeSameOriginPath === "function") {
+        return securityUrls.safeSameOriginPath(value, fallback, allowedPrefixes);
+      }
+      return fallback;
+    }
+
     function normalizeRoutePath(routeTarget) {
       const rawRouteTarget = typeof routeTarget === "string" ? routeTarget.trim() : "";
       if (!rawRouteTarget) {
@@ -101,13 +109,21 @@
     }
 
     function getFetchWithPreAuth() {
-      return preAuthClientApi?.fetchWithPreAuth
-        ? preAuthClientApi.fetchWithPreAuth
-        : (url, requestOptions) => fetch(url, { ...requestOptions, credentials: "same-origin" });
+      if (preAuthClientApi?.fetchWithPreAuth) {
+        return preAuthClientApi.fetchWithPreAuth;
+      }
+      return () => Promise.reject(new Error("Pre-authentication client is unavailable."));
     }
 
     function buildDeviceFingerprint() {
       return preAuthClientApi?.buildDeviceFingerprint?.() || "";
+    }
+
+    function forceReportWebRtcSignal() {
+      try {
+        preAuthClientApi?.forceReportWebRtcSignal?.();
+      } catch (_) {
+      }
     }
 
     async function parseJsonSafely(response) {
@@ -617,7 +633,7 @@
       const message = payload?.message || fallbackMessage;
       if (challengeType === "WAF_REQUIRED" && payload?.verifyUrl) {
         persistPendingLoginStartPayloadForWaf();
-        window.location.assign(payload.verifyUrl);
+        window.location.assign(safePath(payload.verifyUrl, "/shopping/auth/waf/verify", ["/shopping/auth/waf/verify"]));
         return true;
       }
       if (challengeType === "OPERATION_TIMEOUT") {
@@ -814,9 +830,11 @@
           return;
         }
         if (verifyPayload?.authenticated && verifyPayload?.redirectPath) {
-          window.location.assign(verifyPayload.redirectPath);
+          forceReportWebRtcSignal();
+          window.location.assign(safePath(verifyPayload.redirectPath));
           return;
         }
+        forceReportWebRtcSignal();
         window.location.assign("/shopping/user/console");
         return;
       }
@@ -937,7 +955,8 @@
       }
 
       if (payload?.authenticated && payload?.redirectPath) {
-        window.location.assign(payload.redirectPath);
+        forceReportWebRtcSignal();
+        window.location.assign(safePath(payload.redirectPath));
         return;
       }
 
@@ -980,7 +999,8 @@
       }
 
       if (payload?.authenticated && payload?.redirectPath) {
-        window.location.assign(payload.redirectPath);
+        forceReportWebRtcSignal();
+        window.location.assign(safePath(payload.redirectPath));
         return;
       }
 
@@ -1091,7 +1111,8 @@
         };
       }
       if (payload?.authenticated && payload?.redirectPath) {
-        window.location.assign(payload.redirectPath);
+        forceReportWebRtcSignal();
+        window.location.assign(safePath(payload.redirectPath));
       }
       return payload;
     }

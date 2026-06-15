@@ -5,8 +5,8 @@ import com.example.ShoppingSystem.Utils.HybridSemaphoreIdWorker;
 import com.example.ShoppingSystem.mapper.order.OrderMapper;
 import com.example.ShoppingSystem.order.dto.OrderCreateRequest;
 import com.example.ShoppingSystem.order.dto.OrderCreateResponse;
-import com.example.ShoppingSystem.order.rabbit.OrderExpireMessage;
 import com.example.ShoppingSystem.order.rabbit.OrderExpireMessagePublisher;
+import com.example.ShoppingSystem.order.rabbit.OrderExpireRabbitProperties;
 import com.example.ShoppingSystem.order.redis.OrderRedisKeys;
 import com.example.ShoppingSystem.order.service.inventory.OrderInventoryDeductResult;
 import com.example.ShoppingSystem.order.service.inventory.OrderInventoryStrategy;
@@ -32,7 +32,6 @@ public class OrderCreateService {
 
     private static final Logger log = LoggerFactory.getLogger(OrderCreateService.class);
 
-    private static final Duration ORDER_EXPIRE_DURATION = Duration.ofMinutes(5);
     private static final Duration IDEMPOTENCY_TTL = Duration.ofMinutes(10);
 
     private final OrderMapper orderMapper;
@@ -44,6 +43,7 @@ public class OrderCreateService {
     private final OrderRedisSnapshotService orderRedisSnapshotService;
     private final StringRedisTemplate stringRedisTemplate;
     private final OrderExpireMessagePublisher orderExpireMessagePublisher;
+    private final OrderExpireRabbitProperties orderExpireRabbitProperties;
     private final Map<OrderInventoryType, OrderInventoryStrategy> inventoryStrategies;
     private final boolean orderLoadtestBypassGuards;
 
@@ -56,6 +56,7 @@ public class OrderCreateService {
                               OrderRedisSnapshotService orderRedisSnapshotService,
                               StringRedisTemplate stringRedisTemplate,
                               OrderExpireMessagePublisher orderExpireMessagePublisher,
+                              OrderExpireRabbitProperties orderExpireRabbitProperties,
                               List<OrderInventoryStrategy> strategies,
                               @Value("${app.order.loadtest.bypass-guards:false}") boolean orderLoadtestBypassGuards) {
         this.orderMapper = orderMapper;
@@ -67,6 +68,7 @@ public class OrderCreateService {
         this.orderRedisSnapshotService = orderRedisSnapshotService;
         this.stringRedisTemplate = stringRedisTemplate;
         this.orderExpireMessagePublisher = orderExpireMessagePublisher;
+        this.orderExpireRabbitProperties = orderExpireRabbitProperties;
         this.orderLoadtestBypassGuards = orderLoadtestBypassGuards;
         this.inventoryStrategies = strategies.stream()
                 .collect(Collectors.toUnmodifiableMap(OrderInventoryStrategy::type, Function.identity()));
@@ -92,7 +94,7 @@ public class OrderCreateService {
 
         byte[] orderNoBytes = hybridSemaphoreIdWorker.nextId();
         String orderNo = HybridIdCodec.toBase62(orderNoBytes);
-        OffsetDateTime expireAt = now.plus(ORDER_EXPIRE_DURATION);
+        OffsetDateTime expireAt = now.plus(Duration.ofMillis(paymentCheckWindowMillis()));
         if (!acquireIdempotency(redisIdempotencyKey, orderNo)) {
             String oldOrderNo = stringRedisTemplate.opsForValue().get(redisIdempotencyKey);
             OrderCreateResponse replay = oldOrderNo == null
@@ -218,15 +220,18 @@ public class OrderCreateService {
 
     private void publishExpireMessage(String orderNo, Long userId, OffsetDateTime expireAt) {
         try {
-            orderExpireMessagePublisher.publish(new OrderExpireMessage(
+            orderExpireMessagePublisher.publishPaymentCheck(
                     orderNo,
                     userId,
-                    expireAt.toInstant().toEpochMilli(),
-                    OrderExpireMessage.PHASE_PAYMENT_EXPIRE
-            ));
+                    expireAt.toInstant().toEpochMilli()
+            );
         } catch (Exception e) {
             log.warn("[Order] expire message publish failed, orderNo={}", orderNo, e);
         }
+    }
+
+    private long paymentCheckWindowMillis() {
+        return Math.max(1L, orderExpireRabbitProperties.paymentCheckWindowMillis());
     }
 
     private int normalizeQuantity(Integer rawQuantity) {

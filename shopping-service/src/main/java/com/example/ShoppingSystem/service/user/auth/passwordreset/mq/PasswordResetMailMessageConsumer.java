@@ -48,7 +48,8 @@ public class PasswordResetMailMessageConsumer {
                     message == null ? null : message.getType(),
                     message == null ? null : message.getEmail(),
                     message == null ? null : message.getRetryCount(),
-                    e.getMessage());
+                    e.getMessage(),
+                    e);
             handleFailure(message, e);
         }
     }

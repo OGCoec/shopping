@@ -50,6 +50,12 @@ CREATE INDEX IF NOT EXISTS idx_user_risk_account_termination_user_id
 CREATE INDEX IF NOT EXISTS idx_user_risk_account_termination_terminated_at
     ON user_risk_account_termination (terminated_at);
 
+CREATE INDEX IF NOT EXISTS idx_user_risk_account_termination_expire_order
+    ON user_risk_account_termination (terminated_at, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_risk_account_termination_admin_order
+    ON user_risk_account_termination (terminated_at DESC, id DESC);
+
 COMMENT ON TABLE user_risk_account_termination IS '风控强制注销账号拦截表';
 COMMENT ON COLUMN user_risk_account_termination.id IS '注销记录 ID，由业务侧雪花 ID 生成';
 COMMENT ON COLUMN user_risk_account_termination.user_id IS '业务用户 ID，不设置物理外键';

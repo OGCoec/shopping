@@ -83,6 +83,7 @@ public class AdminProductSpuService {
     private static final String IMAGE_SESSION_PREFIX = "admin:product:spu:image:session:";
     private static final String IMAGE_CLEANUP_SET_KEY = "admin:product:spu:image:cleanup";
     private static final int CLEANUP_BATCH_SIZE = 100;
+    private static final int CLEANUP_MAX_BATCHES_PER_RUN = 5;
 
     private final ProductSpuMapper productSpuMapper;
     private final ProductCategoryMapper productCategoryMapper;
@@ -99,6 +100,7 @@ public class AdminProductSpuService {
     private final AdminProductSpuSearchService productSearchService;
     private final AdminProductSpuIndexService productIndexService;
     private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
+    private final ProductImageUrlValidator productImageUrlValidator;
 
     public AdminProductSpuService(ProductSpuMapper productSpuMapper,
                                   ProductCategoryMapper productCategoryMapper,
@@ -114,7 +116,8 @@ public class AdminProductSpuService {
                                   PublicProductDetailCacheService publicDetailCacheService,
                                   AdminProductSpuSearchService productSearchService,
                                   AdminProductSpuIndexService productIndexService,
-                                  ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
+                                  ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor,
+                                  ProductImageUrlValidator productImageUrlValidator) {
         this.productSpuMapper = productSpuMapper;
         this.productCategoryMapper = productCategoryMapper;
         this.snowflakeIdWorker = snowflakeIdWorker;
@@ -130,6 +133,7 @@ public class AdminProductSpuService {
         this.productSearchService = productSearchService;
         this.productIndexService = productIndexService;
         this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
+        this.productImageUrlValidator = productImageUrlValidator;
     }
 
     public AdminProductSpuPageResponse page(Integer page, Integer pageSize, String name, Long categoryId, String status) {
@@ -543,19 +547,35 @@ public class AdminProductSpuService {
     @Scheduled(fixedDelayString = "${shopping.admin.product-image-cleanup-delay-ms:600000}",
             initialDelayString = "${shopping.admin.product-image-cleanup-initial-delay-ms:120000}")
     public void cleanupPendingImages() {
-        List<String> objectKeys;
-        try {
-            objectKeys = stringRedisTemplate.opsForSet().pop(IMAGE_CLEANUP_SET_KEY, CLEANUP_BATCH_SIZE);
-        } catch (Exception e) {
-            log.warn("[商品管理] 读取商品图片补偿清理队列失败", e);
-            return;
+        int batchCount = 0;
+        int totalRequested = 0;
+        int totalFailed = 0;
+        while (batchCount < CLEANUP_MAX_BATCHES_PER_RUN) {
+            List<String> objectKeys;
+            try {
+                objectKeys = stringRedisTemplate.opsForSet().pop(IMAGE_CLEANUP_SET_KEY, CLEANUP_BATCH_SIZE);
+            } catch (Exception e) {
+                log.warn("[商品管理] 读取商品图片补偿清理队列失败", e);
+                break;
+            }
+            if (objectKeys == null || objectKeys.isEmpty()) {
+                break;
+            }
+            batchCount++;
+            totalRequested += objectKeys.size();
+            List<String> failedKeys = deleteObjectKeys(objectKeys);
+            if (!failedKeys.isEmpty()) {
+                totalFailed += failedKeys.size();
+                addCleanupKeys(failedKeys);
+                break;
+            }
+            if (objectKeys.size() < CLEANUP_BATCH_SIZE) {
+                break;
+            }
         }
-        if (objectKeys == null || objectKeys.isEmpty()) {
-            return;
-        }
-        List<String> failedKeys = deleteObjectKeys(objectKeys);
-        if (!failedKeys.isEmpty()) {
-            addCleanupKeys(failedKeys);
+        if (batchCount > 0) {
+            log.info("[Product admin] image cleanup finished, batches={}, requested={}, failed={}, batchSize={}, maxBatches={}",
+                    batchCount, totalRequested, totalFailed, CLEANUP_BATCH_SIZE, CLEANUP_MAX_BATCHES_PER_RUN);
         }
     }
 
@@ -654,7 +674,7 @@ public class AdminProductSpuService {
         String name = normalizeRequiredText(request.name(), "商品名称", MAX_NAME_LENGTH);
         String subtitle = normalizeNullableText(request.subtitle(), "商品副标题", MAX_SUBTITLE_LENGTH);
         String brandName = normalizeNullableText(request.brandName(), "品牌名称", MAX_BRAND_NAME_LENGTH);
-        String mainImageUrl = normalizeNullableText(request.mainImageUrl(), "商品主图", MAX_IMAGE_URL_LENGTH);
+        String mainImageUrl = normalizeNullableImageUrl(request.mainImageUrl(), "商品主图");
         String status = normalizeStatus(request.status(), "");
         JsonNode imageUrls = normalizeImageUrlArray(request.imageUrls(), "商品展示图片", true);
         JsonNode detailImageUrls = normalizeImageUrlArray(request.detailImageUrls(), "商品详情图片", false);
@@ -1095,6 +1115,7 @@ public class AdminProductSpuService {
             if (url.isEmpty()) {
                 return;
             }
+            url = normalizeImageUrl(url, label);
             if (seen != null && !seen.add(url)) {
                 return;
             }
@@ -1115,6 +1136,20 @@ public class AdminProductSpuService {
             return urlNode != null && urlNode.isTextual() ? normalizeText(urlNode.asText()) : "";
         }
         return "";
+    }
+
+    private String normalizeImageUrl(String raw, String label) {
+        String value = normalizeText(raw);
+        if (value.isEmpty()) {
+            return "";
+        }
+        if (value.length() > MAX_IMAGE_URL_LENGTH) {
+            throw new AdminServiceException(
+                    "ADMIN_PRODUCT_TEXT_TOO_LONG",
+                    label + "不能超过 " + MAX_IMAGE_URL_LENGTH + " 个字符。",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return productImageUrlValidator.validateImageUrl(value, label);
     }
 
     private JsonNode normalizeJsonNode(JsonNode node, boolean array, String label) {
@@ -1692,6 +1727,11 @@ public class AdminProductSpuService {
                     HttpStatus.BAD_REQUEST);
         }
         return value.isEmpty() ? null : value;
+    }
+
+    private String normalizeNullableImageUrl(String raw, String label) {
+        String value = normalizeNullableText(raw, label, MAX_IMAGE_URL_LENGTH);
+        return productImageUrlValidator.validateNullableImageUrl(value, label);
     }
 
     private String normalizeOptionalText(String raw, int maxLength, String label) {

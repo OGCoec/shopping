@@ -80,11 +80,17 @@ ALTER TABLE device_risk_profile
 CREATE INDEX IF NOT EXISTS idx_device_risk_profile_current_score
     ON device_risk_profile (current_score);
 
+CREATE INDEX IF NOT EXISTS idx_device_risk_profile_score_id
+    ON device_risk_profile (current_score ASC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_device_risk_profile_risk_level
     ON device_risk_profile (risk_level);
 
 CREATE INDEX IF NOT EXISTS idx_device_risk_profile_last_seen_at
     ON device_risk_profile (last_seen_at);
+
+CREATE INDEX IF NOT EXISTS idx_device_risk_profile_last_seen_id
+    ON device_risk_profile (last_seen_at DESC NULLS LAST, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_device_risk_profile_last_login_ip
     ON device_risk_profile (last_login_ip);

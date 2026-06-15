@@ -2,14 +2,10 @@ package com.example.ShoppingSystem.order.service;
 
 import com.example.ShoppingSystem.Utils.HybridIdCodec;
 import com.example.ShoppingSystem.Utils.HybridSemaphoreIdWorker;
-import com.example.ShoppingSystem.mapper.order.PaymentCallbackInboxMapper;
 import com.example.ShoppingSystem.order.dto.OrderPaymentCallbackReceivedResponse;
 import com.example.ShoppingSystem.order.dto.OrderPaymentCallbackRequest;
-import com.example.ShoppingSystem.order.rabbit.PaymentCallbackMessagePublisher;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -23,21 +19,19 @@ import java.util.UUID;
 @Service
 public class PaymentCallbackReceiveService {
 
-    private static final Logger log = LoggerFactory.getLogger(PaymentCallbackReceiveService.class);
-
     private static final String DEFAULT_PROVIDER = "SIMULATED";
 
-    private final PaymentCallbackInboxMapper paymentCallbackInboxMapper;
-    private final PaymentCallbackMessagePublisher paymentCallbackMessagePublisher;
+    private final PaymentCallbackStreamService paymentCallbackStreamService;
+    private final PaymentCallbackPendingMarkerService paymentCallbackPendingMarkerService;
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker;
     private final ObjectMapper objectMapper;
 
-    public PaymentCallbackReceiveService(PaymentCallbackInboxMapper paymentCallbackInboxMapper,
-                                         PaymentCallbackMessagePublisher paymentCallbackMessagePublisher,
+    public PaymentCallbackReceiveService(PaymentCallbackStreamService paymentCallbackStreamService,
+                                         PaymentCallbackPendingMarkerService paymentCallbackPendingMarkerService,
                                          HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
                                          ObjectMapper objectMapper) {
-        this.paymentCallbackInboxMapper = paymentCallbackInboxMapper;
-        this.paymentCallbackMessagePublisher = paymentCallbackMessagePublisher;
+        this.paymentCallbackStreamService = paymentCallbackStreamService;
+        this.paymentCallbackPendingMarkerService = paymentCallbackPendingMarkerService;
         this.hybridSemaphoreIdWorker = hybridSemaphoreIdWorker;
         this.objectMapper = objectMapper;
     }
@@ -49,7 +43,7 @@ public class PaymentCallbackReceiveService {
         OffsetDateTime paidAt = request == null || request.paidAt() == null ? OffsetDateTime.now() : request.paidAt();
         BigDecimal paidAmount = normalizePaidAmount(request == null ? null : request.paidAmountYuan());
         String idempotencyKey = stableIdempotencyKey("payment:callback", orderNo, externalTradeNo);
-        Map<String, Object> row = paymentCallbackInboxMapper.upsertCallbackIdempotent(
+        PaymentCallbackStreamService.EnqueueResult result = paymentCallbackStreamService.enqueue(
                 nextCallbackNo(),
                 orderNo,
                 externalTradeNo,
@@ -57,32 +51,16 @@ public class PaymentCallbackReceiveService {
                 paidAt,
                 paidAmount,
                 idempotencyKey,
-                rawPayloadJson(request, orderNo, externalTradeNo, paymentProvider, paidAt, paidAmount)
+                rawPayloadJson(request, orderNo, externalTradeNo, paymentProvider, paidAt, paidAmount),
+                OffsetDateTime.now()
         );
-        if (row == null || row.isEmpty()) {
-            throw new OrderServiceException("ORDER_PAYMENT_CALLBACK_RECEIVE_FAILED", "Payment callback receive failed.", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-        publishDispatchQuietly(OrderRowMapper.text(row, "callbackNo"), OrderRowMapper.text(row, "status"));
+        paymentCallbackPendingMarkerService.markReceived(orderNo, result.callbackNo());
         return new OrderPaymentCallbackReceivedResponse(
-                OrderRowMapper.text(row, "callbackNo"),
-                OrderRowMapper.text(row, "orderNo"),
-                OrderRowMapper.text(row, "externalTradeNo"),
-                OrderRowMapper.text(row, "status")
+                result.callbackNo(),
+                orderNo,
+                externalTradeNo,
+                PaymentCallbackInboxStatus.RECEIVED
         );
-    }
-
-    private void publishDispatchQuietly(String callbackNo, String status) {
-        if (callbackNo == null || callbackNo.isBlank()) {
-            return;
-        }
-        if (!PaymentCallbackInboxStatus.RECEIVED.equals(status) && !PaymentCallbackInboxStatus.FAILED.equals(status)) {
-            return;
-        }
-        try {
-            paymentCallbackMessagePublisher.publish(callbackNo);
-        } catch (Exception e) {
-            log.warn("[PaymentCallback] dispatch message publish failed, callbackNo={}", callbackNo, e);
-        }
     }
 
     private String rawPayloadJson(OrderPaymentCallbackRequest request,

@@ -55,7 +55,7 @@ public class WebRtcIpConsistencyService {
         if (!signal.hasReport()) {
             if (requiresVerifiedWebRtcSignal(request)) {
                 logDecision(request, "BLOCK_SIGNAL_MISSING", httpIp, signal, false);
-                return CheckResult.blockRequired(httpIp, signal.webRtcIp(), signal.joinedWebRtcIps(), signal.status());
+                return CheckResult.blockRequired(httpIp, signal.joinedWebRtcIps(), signal.status());
             }
             logDecision(request, "ALLOW_SIGNAL_MISSING", httpIp, signal, true);
             return CheckResult.allow();
@@ -64,7 +64,7 @@ public class WebRtcIpConsistencyService {
         if (!signal.hasPublicIp() && requiresVerifiedWebRtcSignal(request)) {
             persistSignal(request, signal, false);
             logDecision(request, "BLOCK_SIGNAL_UNVERIFIED", httpIp, signal, false);
-            return CheckResult.blockRequired(httpIp, signal.webRtcIp(), signal.joinedWebRtcIps(), signal.status());
+            return CheckResult.blockRequired(httpIp, signal.joinedWebRtcIps(), signal.status());
         }
         boolean strictMatch = signal.hasPublicIp()
                 && StrUtil.isNotBlank(httpIp)
@@ -81,7 +81,7 @@ public class WebRtcIpConsistencyService {
         persistSignal(request, signal, mismatch);
         if (mismatch) {
             logDecision(request, "BLOCK_IP_MISMATCH", httpIp, signal, false);
-            return CheckResult.block(httpIp, signal.webRtcIp(), signal.joinedWebRtcIps(), signal.status());
+            return CheckResult.block(httpIp, signal.joinedWebRtcIps(), signal.status());
         }
         logDecision(request, trustedExitMatch ? "ALLOW_TRUSTED_EXIT_GROUP" : "ALLOW_MATCH", httpIp, signal, true);
         return CheckResult.allow();
@@ -175,7 +175,7 @@ public class WebRtcIpConsistencyService {
 
     private PreAuthBinding withSignal(PreAuthBinding binding, Signal signal, boolean mismatch) {
         return binding.withWebRtcState(
-                signal.webRtcIp(),
+                signal.joinedWebRtcIps(),
                 signal.status(),
                 System.currentTimeMillis(),
                 Math.max(0, binding.webRtcMismatchCount()) + (mismatch ? 1 : 0)
@@ -186,18 +186,15 @@ public class WebRtcIpConsistencyService {
         if (request == null) {
             return Signal.missing();
         }
-        String rawIp = StrUtil.blankToDefault(request.getHeader(PreAuthHeaders.HEADER_WEBRTC_IP), "").trim();
         String rawIps = StrUtil.blankToDefault(request.getHeader(PreAuthHeaders.HEADER_WEBRTC_IPS), "").trim();
         String rawStatus = StrUtil.blankToDefault(request.getHeader(PreAuthHeaders.HEADER_WEBRTC_STATUS), "").trim();
         String status = normalizeStatus(rawStatus);
-        List<String> webRtcIps = normalizeIpCandidates(rawIp, rawIps);
-        String webRtcIp = webRtcIps.isEmpty() ? "" : webRtcIps.get(0);
-        return new Signal(webRtcIp, webRtcIps, status);
+        List<String> webRtcIps = normalizeIpCandidates(rawIps);
+        return new Signal(webRtcIps, status);
     }
 
-    private List<String> normalizeIpCandidates(String rawPrimaryIp, String rawCandidateIps) {
+    private List<String> normalizeIpCandidates(String rawCandidateIps) {
         Set<String> normalized = new LinkedHashSet<>();
-        addNormalizedIp(normalized, rawPrimaryIp);
         if (StrUtil.isNotBlank(rawCandidateIps)) {
             String[] parts = rawCandidateIps.split("[,\\s]+");
             for (String part : parts) {
@@ -229,17 +226,17 @@ public class WebRtcIpConsistencyService {
         return PreAuthIpNormalizer.normalizeIp(rawIp);
     }
 
-    private record Signal(String webRtcIp, List<String> webRtcIps, String status) {
+    private record Signal(List<String> webRtcIps, String status) {
         static Signal missing() {
-            return new Signal("", List.of(), "");
+            return new Signal(List.of(), "");
         }
 
         boolean hasReport() {
-            return !webRtcIps.isEmpty() || StrUtil.isNotBlank(webRtcIp) || StrUtil.isNotBlank(status);
+            return !webRtcIps.isEmpty() || StrUtil.isNotBlank(status);
         }
 
         boolean hasPublicIp() {
-            return STATUS_OK.equals(status) && (!webRtcIps.isEmpty() || StrUtil.isNotBlank(webRtcIp));
+            return STATUS_OK.equals(status) && !webRtcIps.isEmpty();
         }
 
         boolean matchesHttpIp(String httpIp) {
@@ -247,17 +244,11 @@ public class WebRtcIpConsistencyService {
             if (StrUtil.isBlank(normalizedHttpIp)) {
                 return false;
             }
-            if (webRtcIps.contains(normalizedHttpIp)) {
-                return true;
-            }
-            return StrUtil.equals(normalizedHttpIp, webRtcIp);
+            return webRtcIps.contains(normalizedHttpIp);
         }
 
         String joinedWebRtcIps() {
-            if (!webRtcIps.isEmpty()) {
-                return String.join(",", webRtcIps);
-            }
-            return StrUtil.blankToDefault(webRtcIp, "");
+            return String.join(",", webRtcIps);
         }
     }
 
@@ -265,37 +256,34 @@ public class WebRtcIpConsistencyService {
                               String errorCode,
                               String message,
                               String httpIp,
-                              String webRtcIp,
                               String webRtcIps,
                               String webRtcStatus) {
 
         static CheckResult allow() {
-            return new CheckResult(true, "", "", "", "", "", "");
+            return new CheckResult(true, "", "", "", "", "");
         }
 
-        static CheckResult block(String httpIp, String webRtcIp, String webRtcIps, String webRtcStatus) {
+        static CheckResult block(String httpIp, String webRtcIps, String webRtcStatus) {
             return new CheckResult(
                     false,
                     ERROR_CODE_MISMATCH,
                     ERROR_MESSAGE_MISMATCH,
                     httpIp,
-                    webRtcIp,
                     webRtcIps,
                     webRtcStatus
             );
         }
 
         static CheckResult blockRequired() {
-            return blockRequired("", "", "", "");
+            return blockRequired("", "", "");
         }
 
-        static CheckResult blockRequired(String httpIp, String webRtcIp, String webRtcIps, String webRtcStatus) {
+        static CheckResult blockRequired(String httpIp, String webRtcIps, String webRtcStatus) {
             return new CheckResult(
                     false,
                     ERROR_CODE_SIGNAL_REQUIRED,
                     ERROR_MESSAGE_SIGNAL_REQUIRED,
                     httpIp,
-                    webRtcIp,
                     webRtcIps,
                     webRtcStatus
             );

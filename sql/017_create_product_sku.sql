@@ -78,6 +78,12 @@ CREATE INDEX IF NOT EXISTS idx_product_sku_spu_id
 CREATE INDEX IF NOT EXISTS idx_product_sku_spu_status
     ON product_sku (spu_id, status);
 
+CREATE INDEX IF NOT EXISTS idx_product_sku_spu_created_id
+    ON product_sku (spu_id, created_at ASC, id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_product_sku_spu_status_created_id
+    ON product_sku (spu_id, status, created_at ASC, id ASC);
+
 CREATE INDEX IF NOT EXISTS idx_product_sku_price_yuan
     ON product_sku (price_yuan);
 

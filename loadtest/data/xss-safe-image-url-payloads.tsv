@@ -1,0 +1,3 @@
+caseId	fieldName	imageUrl
+safe_shopping_path	mainImageUrl	/shopping/images/test.png
+safe_local_http	mainImageUrl	http://localhost:6655/shopping/images/test.png

@@ -103,6 +103,9 @@ CREATE INDEX IF NOT EXISTS idx_trade_order_user_created
 CREATE INDEX IF NOT EXISTS idx_trade_order_user_status_created
     ON trade_order (user_id, status, created_at DESC, id DESC);
 
+CREATE INDEX IF NOT EXISTS idx_trade_order_created_id
+    ON trade_order (created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_trade_order_status_expire
     ON trade_order (status, expire_at, id);
 

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,17 +24,20 @@ public class PaymentRefundDispatchService {
     private final PaymentRefundMapper paymentRefundMapper;
     private final PaymentRefundProvider paymentRefundProvider;
     private final PaymentRefundDispatchProperties properties;
+    private final PaymentRefundStreamProperties streamProperties;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
 
     public PaymentRefundDispatchService(PaymentRefundMapper paymentRefundMapper,
                                         PaymentRefundProvider paymentRefundProvider,
                                         PaymentRefundDispatchProperties properties,
+                                        PaymentRefundStreamProperties streamProperties,
                                         ObjectMapper objectMapper,
                                         TransactionTemplate transactionTemplate) {
         this.paymentRefundMapper = paymentRefundMapper;
         this.paymentRefundProvider = paymentRefundProvider;
         this.properties = properties;
+        this.streamProperties = streamProperties;
         this.objectMapper = objectMapper;
         this.transactionTemplate = transactionTemplate;
     }
@@ -49,14 +53,63 @@ public class PaymentRefundDispatchService {
         if (claimed == null || claimed.isEmpty()) {
             return new DispatchSummary(0, 0);
         }
+        DispatchBatchResult result = dispatchClaimed(claimed);
+        log.info("[Refund] dispatch finished, claimed={}, written={}", claimed.size(), result.writtenCount());
+        return new DispatchSummary(claimed.size(), result.writtenCount());
+    }
+
+    public StreamDispatchSummary dispatchStreamRecords(List<PaymentRefundStreamRecord> records) {
+        if (!properties.isEnabled() || records == null || records.isEmpty()) {
+            return StreamDispatchSummary.empty();
+        }
+        List<Map<String, Object>> streamRows = transactionTemplate.execute(status ->
+                paymentRefundMapper.claimDispatchBatchByRefundNos(
+                        toStreamRefundRowsJson(records),
+                        Math.max(1, properties.getMaxRetry()),
+                        Math.max(1L, streamProperties.getProcessingTimeoutMs())
+                )
+        );
+        if (streamRows == null || streamRows.isEmpty()) {
+            return StreamDispatchSummary.empty();
+        }
+        List<String> ackStreamMessageIds = new ArrayList<>(streamRows.stream()
+                .filter(row -> booleanValue(row.get("streamAckOnly")))
+                .map(row -> OrderRowMapper.text(row, "streamMessageId"))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList());
+        List<Map<String, Object>> claimedRows = distinctRowsByRefundNo(streamRows.stream()
+                .filter(row -> booleanValue(row.get("streamClaimed")))
+                .toList());
+        if (claimedRows.isEmpty()) {
+            return new StreamDispatchSummary(0, 0, ackStreamMessageIds);
+        }
+        DispatchBatchResult result = dispatchClaimed(claimedRows);
+        Map<String, List<String>> streamIdsByRefundNo = streamRows.stream()
+                .filter(row -> booleanValue(row.get("streamClaimed")))
+                .collect(Collectors.groupingBy(
+                        row -> OrderRowMapper.text(row, "refundNo"),
+                        LinkedHashMap::new,
+                        Collectors.mapping(row -> OrderRowMapper.text(row, "streamMessageId"), Collectors.toList())
+                ));
+        terminalAckRefundNos(result.results()).stream()
+                .flatMap(refundNo -> streamIdsByRefundNo.getOrDefault(refundNo, List.of()).stream())
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .forEach(ackStreamMessageIds::add);
+        return new StreamDispatchSummary(claimedRows.size(), result.writtenCount(), ackStreamMessageIds.stream().distinct().toList());
+    }
+
+    private DispatchBatchResult dispatchClaimed(List<Map<String, Object>> claimed) {
         List<PaymentRefundDispatchItem> items = claimed.stream()
                 .map(this::toDispatchItem)
                 .toList();
         List<PaymentRefundDispatchResult> providerResults = refundWithProvider(items);
         List<PaymentRefundDispatchResult> completeResults = completeResults(items, providerResults);
-        int written = paymentRefundMapper.batchWriteDispatchResults(toResultsJson(completeResults));
-        log.info("[Refund] dispatch finished, claimed={}, written={}", claimed.size(), written);
-        return new DispatchSummary(claimed.size(), written);
+        int written = transactionTemplate.execute(status ->
+                paymentRefundMapper.batchWriteDispatchResults(toResultsJson(completeResults))
+        );
+        return new DispatchBatchResult(written, completeResults);
     }
 
     private List<PaymentRefundDispatchResult> refundWithProvider(List<PaymentRefundDispatchItem> items) {
@@ -170,7 +223,87 @@ public class PaymentRefundDispatchService {
         return Math.max(1, Math.min(value, 500));
     }
 
+    private String toStreamRefundRowsJson(List<PaymentRefundStreamRecord> records) {
+        List<Map<String, Object>> rows = records.stream()
+                .map(record -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("stream_message_id", record.streamMessageId());
+                    row.put("refund_no", text(record.body(), "refundNo"));
+                    return row;
+                })
+                .toList();
+        return toJson(rows);
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new OrderServiceException(
+                    "ORDER_REFUND_STREAM_PAYLOAD_INVALID",
+                    "Refund stream payload is invalid.",
+                    org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    private List<Map<String, Object>> distinctRowsByRefundNo(List<Map<String, Object>> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        return new ArrayList<>(rows.stream()
+                .filter(row -> !OrderRowMapper.text(row, "refundNo").isBlank())
+                .collect(Collectors.toMap(
+                        row -> OrderRowMapper.text(row, "refundNo"),
+                        Function.identity(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ))
+                .values());
+    }
+
+    private List<String> terminalAckRefundNos(List<PaymentRefundDispatchResult> results) {
+        if (results == null || results.isEmpty()) {
+            return List.of();
+        }
+        int maxRetry = Math.max(1, properties.getMaxRetry());
+        return results.stream()
+                .filter(result -> PaymentRefundStatus.REFUNDED.equals(result.status())
+                        || (PaymentRefundStatus.REFUND_FAILED.equals(result.status()) && result.retryCount() >= maxRetry))
+                .map(PaymentRefundDispatchResult::refundNo)
+                .filter(value -> value != null && !value.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private String text(Map<String, String> body, String key) {
+        if (body == null || key == null) {
+            return "";
+        }
+        String value = body.get(key);
+        return value == null ? "" : value.trim();
+    }
+
+    private boolean booleanValue(Object value) {
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        return value != null && Boolean.parseBoolean(String.valueOf(value));
+    }
+
     public record DispatchSummary(int claimedCount,
                                   int writtenCount) {
+    }
+
+    public record StreamDispatchSummary(int claimedCount,
+                                        int writtenCount,
+                                        List<String> ackStreamMessageIds) {
+        static StreamDispatchSummary empty() {
+            return new StreamDispatchSummary(0, 0, List.of());
+        }
+    }
+
+    private record DispatchBatchResult(int writtenCount,
+                                       List<PaymentRefundDispatchResult> results) {
     }
 }

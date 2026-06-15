@@ -30,6 +30,11 @@
     return callController("markPendingEnter", []);
   }
 
+  function safeAdminPath(value) {
+    return root.ShoppingSecurityUrls?.safeSameOriginPath?.(value, "/shopping/admin/login", ["/shopping/admin/"])
+      || "/shopping/admin/login";
+  }
+
   function beginExit(options) {
     const settings = typeof options === "string" ? { to: options } : (options || {});
     return loadController().then((controller) => {
@@ -38,7 +43,7 @@
       }
       markPendingEnterFallback();
       if (settings.to) {
-        window.location.assign(settings.to);
+        window.location.assign(safeAdminPath(settings.to));
       }
       return undefined;
     });

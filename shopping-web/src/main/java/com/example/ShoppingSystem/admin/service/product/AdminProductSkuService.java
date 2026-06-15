@@ -34,11 +34,14 @@ public class AdminProductSkuService {
 
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker;
     private final ObjectMapper objectMapper;
+    private final ProductImageUrlValidator productImageUrlValidator;
 
     public AdminProductSkuService(HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
-                                  ObjectMapper objectMapper) {
+                                  ObjectMapper objectMapper,
+                                  ProductImageUrlValidator productImageUrlValidator) {
         this.hybridSemaphoreIdWorker = hybridSemaphoreIdWorker;
         this.objectMapper = objectMapper;
+        this.productImageUrlValidator = productImageUrlValidator;
     }
 
     public List<NormalizedSkuUpdate> normalizeSkuUpdates(Long spuId, List<AdminProductSpuDetailSkuUpdateRequest> rawSkus) {
@@ -294,6 +297,7 @@ public class AdminProductSkuService {
                         label + "不能超过 " + MAX_IMAGE_URL_LENGTH + " 个字符。",
                         HttpStatus.BAD_REQUEST);
             }
+            url = productImageUrlValidator.validateImageUrl(url, label);
             normalized.add(url);
         });
         return normalized;

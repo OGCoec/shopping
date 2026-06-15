@@ -74,7 +74,7 @@ public class WebRtcIpConsistencyInterceptor implements HandlerInterceptor {
         body.put("message", result.message());
         body.put("path", request.getRequestURI());
         body.put("httpIp", result.httpIp());
-        body.put("webRtcIp", result.webRtcIp());
+        body.put("webRtcIps", result.webRtcIps());
         body.put("webRtcStatus", result.webRtcStatus());
         body.put("cfRay", StrUtil.blankToDefault(request.getHeader("CF-Ray"), ""));
         body.put("timestamp", OffsetDateTime.now().toString());
@@ -105,7 +105,7 @@ public class WebRtcIpConsistencyInterceptor implements HandlerInterceptor {
                 + "&message=" + encode(result.message())
                 + "&path=" + encode(path)
                 + "&httpIp=" + encode(result.httpIp())
-                + "&webRtcIp=" + encode(result.webRtcIp())
+                + "&webRtcIps=" + encode(result.webRtcIps())
                 + "&webRtcStatus=" + encode(result.webRtcStatus())
                 + "&cfRay=" + encode(StrUtil.blankToDefault(request.getHeader("CF-Ray"), ""));
     }

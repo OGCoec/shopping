@@ -10,7 +10,7 @@
       imageItemUrl,
       setImageItemUrl,
       escapeHtml,
-      escapeAttribute
+      appendImageOrPlaceholder
     } = imageUtils;
     const {
       actionButton,
@@ -26,7 +26,7 @@
     editor.className = "admin-product-detail-image-editor";
     const preview = document.createElement("div");
     preview.className = "admin-product-detail-edit-preview admin-product-main-image-preview";
-    preview.innerHTML = draft.mainImageUrl ? `<img src="${escapeAttribute(draft.mainImageUrl)}" alt="主图" />` : `<span>-</span>`;
+    appendImageOrPlaceholder(preview, draft.mainImageUrl, "主图");
     const actions = document.createElement("div");
     actions.className = "admin-product-detail-actions admin-product-main-image-actions";
     const hint = document.createElement("span");
@@ -73,16 +73,16 @@
       row.dataset.imageIndex = String(index);
       row.classList.toggle("is-main", Boolean(editorOptions.displayImages && index === 0));
       const url = imageItemUrl(item);
-      row.innerHTML = `
-        <div class="admin-product-detail-edit-preview">${url ? `<img src="${escapeAttribute(url)}" alt="${escapeAttribute(title)}" />` : "<span>-</span>"}</div>
-        <input type="url" value="${escapeAttribute(url)}" />
-      `;
-      const preview = row.querySelector(".admin-product-detail-edit-preview");
+      const preview = document.createElement("div");
+      preview.className = "admin-product-detail-edit-preview";
+      appendImageOrPlaceholder(preview, url, title);
       preview.classList.add("admin-product-image-drag-handle");
       preview.draggable = items.length > 1;
       preview.querySelector("img")?.setAttribute("draggable", "false");
       appendImageOrderBadge(preview, index, editorOptions.displayImages && index === 0 ? "主图 / #1" : `#${index + 1}`);
-      const input = row.querySelector("input");
+      const input = document.createElement("input");
+      input.type = "url";
+      input.value = url;
       input.draggable = false;
       input.addEventListener("input", () => {
         setImageItemUrl(item, input.value.trim());
@@ -90,6 +90,7 @@
           syncMainImageFromDisplayImages(editorOptions.draft);
         }
       });
+      row.append(preview, input);
       row.appendChild(imageEditorControls(items, index, rerender, async () => {
         await uploadSession.cancelByUrl(imageItemUrl(item));
         items.splice(index, 1);
@@ -194,7 +195,7 @@
       const url = imageItemUrl(item);
       const preview = document.createElement("div");
       preview.className = "admin-product-detail-edit-preview";
-      preview.innerHTML = url ? `<img src="${escapeAttribute(url)}" alt="${escapeAttribute(sku.skuName || "SKU")}" />` : "<span>-</span>";
+      appendImageOrPlaceholder(preview, url, sku.skuName || "SKU");
       appendImageOrderBadge(preview, index);
       const controls = imageOrderControls(sku.skuImageUrls, index, rerender, async () => {
         await uploadSession.cancelByUrl(url);

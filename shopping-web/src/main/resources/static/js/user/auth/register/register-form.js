@@ -35,6 +35,14 @@
     }
   }
 
+  function safeRegisterPath(value, fallback = "/shopping/user/create-account") {
+    const securityUrls = globalThis.ShoppingSecurityUrls;
+    if (securityUrls && typeof securityUrls.safeSameOriginPath === "function") {
+      return securityUrls.safeSameOriginPath(value, fallback, ["/shopping/user/"]);
+    }
+    return fallback;
+  }
+
   function checkRegisterPasswordStrength(password) {
     if (!password || password.length <= 6) return 0;
 
@@ -373,10 +381,11 @@
       if (errorCode !== "REGISTER_STEP_OUT_OF_ORDER") {
         clearPendingRegisterPayload();
       }
-      const redirectPath = typeof payload?.redirectPath === "string" ? payload.redirectPath.trim() : "";
-      if (!redirectPath) {
+      const rawRedirectPath = typeof payload?.redirectPath === "string" ? payload.redirectPath.trim() : "";
+      if (!rawRedirectPath) {
         return false;
       }
+      const redirectPath = safeRegisterPath(rawRedirectPath);
       const registerFlowNavigationApi = globalThis.ShoppingRegisterFlow;
       if (!registerFlowNavigationApi?.navigateWithinAuthShell?.(redirectPath, { replace: true })) {
         window.location.assign(redirectPath);

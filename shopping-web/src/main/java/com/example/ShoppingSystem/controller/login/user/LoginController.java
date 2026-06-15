@@ -15,9 +15,10 @@ import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
 import com.example.ShoppingSystem.loginflow.LoginFlowCookieFactory;
 import com.example.ShoppingSystem.loginflow.LoginFlowWebSupport;
 import com.example.ShoppingSystem.security.token.AuthTokenService;
-import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
-import com.example.ShoppingSystem.service.captcha.hutool.model.HutoolCaptchaResult;
-import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateRequest;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateResult;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaVerifyRequest;
 import com.example.ShoppingSystem.service.user.auth.login.LoginFlowSessionService;
 import com.example.ShoppingSystem.service.user.auth.login.UserPasswordLoginService;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowSession;
@@ -61,8 +62,7 @@ public class LoginController {
     private final LoginFlowSessionService loginFlowSessionService;
     private final LoginFlowCookieFactory loginFlowCookieFactory;
     private final PreAuthBindingService preAuthBindingService;
-    private final HutoolCaptchaService hutoolCaptchaService;
-    private final TianaiCaptchaService tianaiCaptchaService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
     private final AuthTokenService authTokenService;
     private final AuthRiskSnapshotService authRiskSnapshotService;
     private final AutomationRiskGateService automationRiskGateService;
@@ -71,8 +71,7 @@ public class LoginController {
                            LoginFlowSessionService loginFlowSessionService,
                            LoginFlowCookieFactory loginFlowCookieFactory,
                            PreAuthBindingService preAuthBindingService,
-                           HutoolCaptchaService hutoolCaptchaService,
-                           TianaiCaptchaService tianaiCaptchaService,
+                           CaptchaStrategyRegistry captchaStrategyRegistry,
                            AuthTokenService authTokenService,
                            AuthRiskSnapshotService authRiskSnapshotService,
                            AutomationRiskGateService automationRiskGateService) {
@@ -80,8 +79,7 @@ public class LoginController {
         this.loginFlowSessionService = loginFlowSessionService;
         this.loginFlowCookieFactory = loginFlowCookieFactory;
         this.preAuthBindingService = preAuthBindingService;
-        this.hutoolCaptchaService = hutoolCaptchaService;
-        this.tianaiCaptchaService = tianaiCaptchaService;
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
         this.authTokenService = authTokenService;
         this.authRiskSnapshotService = authRiskSnapshotService;
         this.automationRiskGateService = automationRiskGateService;
@@ -163,10 +161,15 @@ public class LoginController {
                                              @RequestParam(required = false) String email,
                                              @RequestParam(required = false) String deviceFingerprint) throws Exception {
         ensureLoginChallengeAlive(email, deviceFingerprint, CHALLENGE_HUTOOL_SHEAR, null);
-        HutoolCaptchaResult result = hutoolCaptchaService.generateCaptcha("login", uuid);
+        CaptchaGenerateResult result = captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                CHALLENGE_HUTOOL_SHEAR,
+                null,
+                "login",
+                uuid
+        ));
         return ResponseEntity.ok(RegisterCaptchaResponse.builder()
-                .uuid(result.getUuid())
-                .image(result.getImage())
+                .uuid(result.uuid())
+                .image(result.image())
                 .build());
     }
 
@@ -176,7 +179,7 @@ public class LoginController {
                                                          @RequestParam(required = false) String email,
                                                          @RequestParam(required = false) String deviceFingerprint) {
         ensureLoginChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_ROTATE);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateRotateCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_ROTATE, captchaId)));
     }
 
     @Operation(summary = "Get login Tianai slider captcha.")
@@ -185,7 +188,7 @@ public class LoginController {
                                                          @RequestParam(required = false) String email,
                                                          @RequestParam(required = false) String deviceFingerprint) {
         ensureLoginChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_SLIDER);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateSliderCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_SLIDER, captchaId)));
     }
 
     @Operation(summary = "Get login Tianai concat captcha.")
@@ -194,7 +197,7 @@ public class LoginController {
                                                          @RequestParam(required = false) String email,
                                                          @RequestParam(required = false) String deviceFingerprint) {
         ensureLoginChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_CONCAT);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateConcatCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_CONCAT, captchaId)));
     }
 
     @Operation(summary = "Get login Tianai word click captcha.")
@@ -203,13 +206,29 @@ public class LoginController {
                                                             @RequestParam(required = false) String email,
                                                             @RequestParam(required = false) String deviceFingerprint) {
         ensureLoginChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_WORD_IMAGE_CLICK);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateWordClickCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_WORD_IMAGE_CLICK, captchaId)));
     }
 
     @Operation(summary = "Verify Tianai rotate captcha.")
     @PostMapping("/tianai/rotate/check")
     public TianaiSimpleCheckResponse checkLoginTianaiRotateCaptcha(@RequestBody TianaiRotateCheckRequest body) {
-        return new TianaiSimpleCheckResponse(tianaiCaptchaService.validateRotateCaptcha(body.getCaptchaId(), body.getAngle()));
+        return new TianaiSimpleCheckResponse(captchaStrategyRegistry.verify(new CaptchaVerifyRequest(
+                CHALLENGE_TIANAI,
+                TIANAI_SUBTYPE_ROTATE,
+                "login",
+                body.getCaptchaId(),
+                body.getAngle() == null ? null : String.valueOf(body.getAngle()),
+                null
+        )));
+    }
+
+    private cloud.tianai.captcha.application.vo.ImageCaptchaVO generateTianaiCaptcha(String subType, String captchaId) {
+        return captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                CHALLENGE_TIANAI,
+                subType,
+                "login",
+                captchaId
+        )).tianaiCaptcha();
     }
 
     @Operation(summary = "Verify password factor.")

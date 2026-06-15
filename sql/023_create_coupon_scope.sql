@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS coupon_scope (
 CREATE INDEX IF NOT EXISTS idx_coupon_scope_template_id
     ON coupon_scope (coupon_template_id);
 
+CREATE INDEX IF NOT EXISTS idx_coupon_scope_template_created
+    ON coupon_scope (coupon_template_id, created_at ASC);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_coupon_scope_category
     ON coupon_scope (coupon_template_id, category_id)
     WHERE scope_target_type = 'CATEGORY';

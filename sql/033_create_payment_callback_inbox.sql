@@ -136,6 +136,9 @@ CREATE INDEX IF NOT EXISTS idx_payment_callback_inbox_dispatch
     ON payment_callback_inbox (status, next_retry_at, created_at, id)
     WHERE status IN ('RECEIVED', 'FAILED');
 
+CREATE INDEX IF NOT EXISTS idx_payment_callback_inbox_created_id
+    ON payment_callback_inbox (created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_payment_callback_inbox_order_no
     ON payment_callback_inbox (order_no, created_at DESC, id DESC);
 

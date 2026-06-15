@@ -8,6 +8,7 @@ import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.redisdata.PasswordResetRedisKeys;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetMailSender;
+import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetEmailCaptchaRiskGateService;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetService;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetCryptoKey;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetDecryptOutcome;
@@ -45,6 +46,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     private final ObjectMapper objectMapper;
     private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
     private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
+    private final PasswordResetEmailCaptchaRiskGateService passwordResetEmailCaptchaRiskGateService;
 
     public PasswordResetServiceImpl(UserLoginIdentityMapper userLoginIdentityMapper,
                                     StringRedisTemplate stringRedisTemplate,
@@ -53,7 +55,8 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                                     PasswordResetMailSender passwordResetMailSender,
                                     ObjectMapper objectMapper,
                                     DeviceRiskProfileWriteService deviceRiskProfileWriteService,
-                                    TerminatedAccountEmailBloomService terminatedAccountEmailBloomService) {
+                                    TerminatedAccountEmailBloomService terminatedAccountEmailBloomService,
+                                    PasswordResetEmailCaptchaRiskGateService passwordResetEmailCaptchaRiskGateService) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.stringRedisTemplate = stringRedisTemplate;
         this.passwordEncoder = passwordEncoder;
@@ -62,6 +65,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         this.objectMapper = objectMapper;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
         this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
+        this.passwordResetEmailCaptchaRiskGateService = passwordResetEmailCaptchaRiskGateService;
     }
 
     @Override
@@ -117,9 +121,12 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     public PasswordResetResult sendEmailCode(String email,
                                              String preAuthToken,
                                              String deviceFingerprint,
+                                             String clientIp,
                                              String riskLevel,
                                              boolean wafResumeRequest,
-                                             String baseUrl) {
+                                             String baseUrl,
+                                             String captchaUuid,
+                                             String captchaCode) {
         String normalizedEmail = normalizeEmail(email);
         PasswordResetResult terminatedResult = terminatedAccountFailureIfNecessary(normalizedEmail);
         if (terminatedResult != null) {
@@ -128,6 +135,20 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         PasswordResetResult riskResult = requireRiskPass(preAuthToken, riskLevel, wafResumeRequest);
         if (riskResult != null) {
             return riskResult;
+        }
+        if (StrUtil.isBlank(normalizedEmail)) {
+            return PasswordResetResult.fail("PASSWORD_RESET_EMAIL_INVALID", "Please enter a valid email address.");
+        }
+        PasswordResetResult captchaResult = passwordResetEmailCaptchaRiskGateService.checkOrVerify(
+                normalizedEmail,
+                deviceFingerprint,
+                riskLevel,
+                clientIp,
+                captchaUuid,
+                captchaCode
+        );
+        if (captchaResult != null) {
+            return captchaResult;
         }
         PasswordResetResult cooldownResult = markCooldownOrReject(normalizedEmail);
         if (cooldownResult != null) {

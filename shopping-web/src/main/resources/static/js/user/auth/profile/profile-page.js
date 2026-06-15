@@ -76,8 +76,13 @@
   }
 
   function normalizeAvatarUrl(value) {
-    const normalized = value === null || value === undefined ? "" : String(value).trim();
-    return /^https?:\/\//i.test(normalized) ? normalized : "";
+    return window.ShoppingSecurityUrls?.safeImageUrl?.(value, "", {
+      allowData: false,
+      allowBlob: false,
+      allowAnyHttps: true,
+      allowLocalHttp: true,
+      allowedPathPrefixes: ["/shopping/"]
+    }) || "";
   }
 
   function setStatus(message, isError) {

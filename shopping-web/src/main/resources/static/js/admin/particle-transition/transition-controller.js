@@ -17,6 +17,11 @@ import { prefersReducedMotion } from "./timing.js";
 export function createAdminParticleTransition(root) {
   let prewarmPromise = null;
 
+  function safeAdminPath(value) {
+    return root.ShoppingSecurityUrls?.safeSameOriginPath?.(value, "/shopping/admin/login", ["/shopping/admin/"])
+      || "/shopping/admin/login";
+  }
+
   function prewarm(source, options) {
     if (prefersReducedMotion()) {
       return Promise.resolve();
@@ -49,7 +54,7 @@ export function createAdminParticleTransition(root) {
     if (prefersReducedMotion()) {
       markPendingEnter();
       if (targetUrl) {
-        window.location.assign(targetUrl);
+        window.location.assign(safeAdminPath(targetUrl));
       }
       return;
     }
@@ -59,7 +64,7 @@ export function createAdminParticleTransition(root) {
       startPendingFallback();
     } finally {
       if (targetUrl) {
-        window.location.assign(targetUrl);
+        window.location.assign(safeAdminPath(targetUrl));
       }
     }
   }

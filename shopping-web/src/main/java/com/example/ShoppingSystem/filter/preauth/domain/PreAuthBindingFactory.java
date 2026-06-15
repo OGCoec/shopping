@@ -147,7 +147,7 @@ public class PreAuthBindingFactory {
                 existing.lastPenaltyAtEpochMillis(),
                 existing.lastPenaltyScore(),
                 existing.lastPenaltyReason(),
-                existing.webRtcIp(),
+                existing.webRtcIps(),
                 existing.webRtcStatus(),
                 existing.webRtcSeenAtEpochMillis(),
                 existing.webRtcMismatchCount()

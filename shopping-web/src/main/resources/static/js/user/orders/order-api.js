@@ -2,16 +2,9 @@
   root.ShoppingOrderApi = factory(root);
 })(typeof globalThis !== "undefined" ? globalThis : this, function (root) {
   const API_BASE = "/shopping/user/api/orders";
-  const LOGIN_PATH = "/shopping/user/log-in";
 
   function authClient() {
     return root.ShoppingAuthClient || null;
-  }
-
-  function redirectToLogin() {
-    if (root.location) {
-      root.location.assign(LOGIN_PATH);
-    }
   }
 
   function buildUrl(path, params) {
@@ -44,7 +37,6 @@
   async function request(path, options = {}) {
     const client = authClient();
     if (!client?.fetchWithAuth) {
-      redirectToLogin();
       throw new Error("Authentication client is unavailable.");
     }
 

@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.order.rabbit;
 
 import com.example.ShoppingSystem.order.service.PaymentRefundDispatchProperties;
+import com.example.ShoppingSystem.order.service.PaymentRefundStreamProperties;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
@@ -19,7 +20,11 @@ import java.util.Map;
 
 @Configuration
 @EnableRabbit
-@EnableConfigurationProperties({PaymentRefundRabbitProperties.class, PaymentRefundDispatchProperties.class})
+@EnableConfigurationProperties({
+        PaymentRefundRabbitProperties.class,
+        PaymentRefundDispatchProperties.class,
+        PaymentRefundStreamProperties.class
+})
 public class PaymentRefundRabbitConfig {
 
     @Bean

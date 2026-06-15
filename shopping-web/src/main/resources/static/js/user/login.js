@@ -218,6 +218,8 @@ if (phoneBtn) {
 
 function bindOAuthLogin(button, provider) {
   if (!button) return;
+  const providerId = String(provider || "").trim().toLowerCase();
+  if (!/^[a-z0-9_-]{1,32}$/.test(providerId)) return;
 
   button.addEventListener("click", async () => {
     const originalDisabled = button.disabled;
@@ -230,7 +232,7 @@ function bindOAuthLogin(button, provider) {
         triggerLoginError();
         return;
       }
-      window.location.href = `/oauth2/${provider}/login`;
+      window.location.href = `/oauth2/${providerId}/login`;
     } catch (_) {
       showEmailError?.("登录环境校验失败，请刷新页面后重试");
       triggerLoginError();

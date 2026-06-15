@@ -21,9 +21,10 @@ import com.example.ShoppingSystem.registerflow.RegisterFlowErrorResponse;
 import com.example.ShoppingSystem.registerflow.RegisterFlowWebSupport;
 import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
 import com.example.ShoppingSystem.security.token.AuthTokenService;
-import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
-import com.example.ShoppingSystem.service.captcha.hutool.model.HutoolCaptchaResult;
-import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateRequest;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateResult;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaVerifyRequest;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterCompletionService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterFlowSessionService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterPhoneBindingService;
@@ -67,6 +68,7 @@ public class RegisterController {
     private static final String REGISTER_COMPLETED_REDIRECT_PATH = "/shopping/user/console";
     private static final String SCENE_REGISTER_EMAIL_VERIFY_SUCCESS = "REGISTER_EMAIL_VERIFY_SUCCESS";
     private static final String SCENE_REGISTER_PHONE_BIND_SUCCESS = "REGISTER_PHONE_BIND_SUCCESS";
+    private static final String REGISTER_CAPTCHA_NAMESPACE = "register";
     private static final String CHALLENGE_HUTOOL_SHEAR = "HUTOOL_SHEAR_CAPTCHA";
     private static final String CHALLENGE_TIANAI = "TIANAI_CAPTCHA";
     private static final String TIANAI_SUBTYPE_SLIDER = "SLIDER";
@@ -78,8 +80,7 @@ public class RegisterController {
     private final RegisterCompletionService registerCompletionService;
     private final RegisterFlowSessionService registerFlowSessionService;
     private final RegisterPhoneBindingService registerPhoneBindingService;
-    private final HutoolCaptchaService hutoolCaptchaService;
-    private final TianaiCaptchaService tianaiCaptchaService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
     private final RegisterPasswordCryptoService registerPasswordCryptoService;
     private final RegisterFlowCookieFactory registerFlowCookieFactory;
     private final PreAuthBindingService preAuthBindingService;
@@ -91,8 +92,7 @@ public class RegisterController {
                               RegisterCompletionService registerCompletionService,
                               RegisterFlowSessionService registerFlowSessionService,
                               RegisterPhoneBindingService registerPhoneBindingService,
-                              HutoolCaptchaService hutoolCaptchaService,
-                              TianaiCaptchaService tianaiCaptchaService,
+                              CaptchaStrategyRegistry captchaStrategyRegistry,
                               RegisterPasswordCryptoService registerPasswordCryptoService,
                               RegisterFlowCookieFactory registerFlowCookieFactory,
                               PreAuthBindingService preAuthBindingService,
@@ -103,8 +103,7 @@ public class RegisterController {
         this.registerCompletionService = registerCompletionService;
         this.registerFlowSessionService = registerFlowSessionService;
         this.registerPhoneBindingService = registerPhoneBindingService;
-        this.hutoolCaptchaService = hutoolCaptchaService;
-        this.tianaiCaptchaService = tianaiCaptchaService;
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
         this.registerPasswordCryptoService = registerPasswordCryptoService;
         this.registerFlowCookieFactory = registerFlowCookieFactory;
         this.preAuthBindingService = preAuthBindingService;
@@ -227,10 +226,15 @@ public class RegisterController {
             throw new IllegalArgumentException("Current register challenge has expired, please resubmit.");
         }
 
-        HutoolCaptchaResult result = hutoolCaptchaService.generateCaptcha("register", uuid);
+        CaptchaGenerateResult result = captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                CHALLENGE_HUTOOL_SHEAR,
+                null,
+                REGISTER_CAPTCHA_NAMESPACE,
+                uuid
+        ));
         return ResponseEntity.ok(RegisterCaptchaResponse.builder()
-                .uuid(result.getUuid())
-                .image(result.getImage())
+                .uuid(result.uuid())
+                .image(result.image())
                 .build());
     }
 
@@ -253,7 +257,7 @@ public class RegisterController {
             return errorResponse;
         }
         ensureRegisterChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_ROTATE);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateRotateCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_ROTATE, captchaId)));
     }
 
     @Operation(summary = "Get Tianai slider captcha")
@@ -275,7 +279,7 @@ public class RegisterController {
             return errorResponse;
         }
         ensureRegisterChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_SLIDER);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateSliderCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_SLIDER, captchaId)));
     }
 
     @Operation(summary = "Get Tianai concat captcha")
@@ -297,7 +301,7 @@ public class RegisterController {
             return errorResponse;
         }
         ensureRegisterChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_CONCAT);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateConcatCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_CONCAT, captchaId)));
     }
 
     @Operation(summary = "Get Tianai word click captcha")
@@ -319,13 +323,29 @@ public class RegisterController {
             return errorResponse;
         }
         ensureRegisterChallengeAlive(email, deviceFingerprint, CHALLENGE_TIANAI, TIANAI_SUBTYPE_WORD_IMAGE_CLICK);
-        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(tianaiCaptchaService.generateWordClickCaptcha(captchaId)));
+        return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_WORD_IMAGE_CLICK, captchaId)));
     }
 
     @Operation(summary = "Verify Tianai rotate captcha")
     @PostMapping("/tianai/rotate/check")
     public TianaiSimpleCheckResponse checkTianaiRotateCaptcha(@RequestBody TianaiRotateCheckRequest request) {
-        return new TianaiSimpleCheckResponse(tianaiCaptchaService.validateRotateCaptcha(request.getCaptchaId(), request.getAngle()));
+        return new TianaiSimpleCheckResponse(captchaStrategyRegistry.verify(new CaptchaVerifyRequest(
+                CHALLENGE_TIANAI,
+                TIANAI_SUBTYPE_ROTATE,
+                REGISTER_CAPTCHA_NAMESPACE,
+                request.getCaptchaId(),
+                request.getAngle() == null ? null : String.valueOf(request.getAngle()),
+                null
+        )));
+    }
+
+    private cloud.tianai.captcha.application.vo.ImageCaptchaVO generateTianaiCaptcha(String subType, String captchaId) {
+        return captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                CHALLENGE_TIANAI,
+                subType,
+                REGISTER_CAPTCHA_NAMESPACE,
+                captchaId
+        )).tianaiCaptcha();
     }
 
     @Operation(summary = "Resolve whether register needs a challenge before sending email code")

@@ -93,6 +93,18 @@ ALTER TABLE ipv4_reputation_profile
 CREATE INDEX IF NOT EXISTS idx_ipv4_reputation_profile_current_score
     ON ipv4_reputation_profile (current_score);
 
+CREATE INDEX IF NOT EXISTS idx_ipv4_reputation_profile_admin_order
+    ON ipv4_reputation_profile (
+        current_score ASC,
+        is_tor DESC,
+        is_proxy DESC,
+        is_vpn DESC,
+        is_datacenter DESC,
+        last_seen_at DESC NULLS LAST,
+        queried_at DESC NULLS LAST,
+        ip ASC
+    );
+
 CREATE INDEX IF NOT EXISTS idx_ipv4_reputation_profile_last_seen_at
     ON ipv4_reputation_profile (last_seen_at);
 

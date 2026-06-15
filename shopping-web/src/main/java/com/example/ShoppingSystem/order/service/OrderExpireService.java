@@ -1,7 +1,6 @@
 package com.example.ShoppingSystem.order.service;
 
 import com.example.ShoppingSystem.mapper.order.OrderMapper;
-import com.example.ShoppingSystem.order.rabbit.OrderExpireMessage;
 import com.example.ShoppingSystem.order.rabbit.OrderExpireMessagePublisher;
 import com.example.ShoppingSystem.order.rabbit.OrderExpireRabbitProperties;
 import org.slf4j.Logger;
@@ -52,7 +51,7 @@ public class OrderExpireService {
             return false;
         }
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime closingDeadline = now.plus(Duration.ofMillis(closingGraceMillis()));
+        OffsetDateTime closingDeadline = now.plus(Duration.ofMillis(closingFinalizeWindowMillis()));
         OrderRedisStateChangeResult redisResult = orderRedisSnapshotService.startClosingExpired(
                 normalizedOrderNo,
                 now,
@@ -67,7 +66,8 @@ public class OrderExpireService {
             return true;
         }
         if ("ORDER_EXPIRE_1".equals(redisResult.code())) {
-            return startClosingPersistedOrder(normalizedOrderNo, now, closingDeadline);
+            log.warn("[Order] pending order cannot enter closing because Redis snapshot is missing, orderNo={}", normalizedOrderNo);
+            return false;
         }
         return false;
     }
@@ -97,18 +97,6 @@ public class OrderExpireService {
             return finalizePersistedClosingOrder(normalizedOrderNo, now);
         }
         return false;
-    }
-
-    private boolean startClosingPersistedOrder(String orderNo, OffsetDateTime now, OffsetDateTime closingDeadline) {
-        Map<String, Object> row = orderMapper.startClosingExpiredOrder(orderNo, now, closingDeadline);
-        if (row == null || row.isEmpty()) {
-            return false;
-        }
-        publishClosingFinalize(orderNo, OrderRowMapper.longValue(row, "userId"), closingDeadline);
-        if (log.isInfoEnabled()) {
-            log.info("[Order] persisted pending order entered closing grace, orderNo={}", orderNo);
-        }
-        return true;
     }
 
     private boolean finalizePersistedClosingOrder(String orderNo, OffsetDateTime now) {
@@ -145,18 +133,18 @@ public class OrderExpireService {
 
     private void publishClosingFinalize(String orderNo, Long userId, OffsetDateTime closingDeadline) {
         try {
-            orderExpireMessagePublisher.publishClosingFinalize(OrderExpireMessage.closingFinalize(
+            orderExpireMessagePublisher.publishClosingFinalizeCheck(
                     orderNo,
                     userId,
                     closingDeadline.toInstant().toEpochMilli()
-            ));
+            );
         } catch (Exception e) {
-            log.warn("[Order] closing finalize message publish failed, orderNo={}", orderNo, e);
+            log.warn("[Order] closing finalize check message publish failed, orderNo={}", orderNo, e);
         }
     }
 
-    private long closingGraceMillis() {
-        return Math.max(1L, orderExpireRabbitProperties.getClosingGraceMillis());
+    private long closingFinalizeWindowMillis() {
+        return Math.max(1L, orderExpireRabbitProperties.closingFinalizeWindowMillis());
     }
 
     private boolean hasUserCoupon(java.util.Map<String, Object> order) {

@@ -11,6 +11,7 @@
   const {
     escapeHtml,
     escapeAttribute,
+    safeImageUrl,
     normalizeSearchText,
     formatDate
   } = imageUtils;
@@ -553,9 +554,10 @@
 
     const imageCell = document.createElement("div");
     imageCell.className = "admin-product-spu-image-cell";
-    if (product.mainImageUrl) {
+    const safeMainImageUrl = safeImageUrl(product.mainImageUrl);
+    if (safeMainImageUrl) {
       const img = document.createElement("img");
-      img.src = product.mainImageUrl;
+      img.src = safeMainImageUrl;
       img.alt = product.name || "商品主图";
       imageCell.appendChild(img);
     } else {

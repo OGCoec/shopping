@@ -4,6 +4,7 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.Utils.JwtUtils;
 import com.example.ShoppingSystem.avatar.AvatarMetadataUtils;
+import com.example.ShoppingSystem.common.transaction.AfterCommitExecutor;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.entity.entity.UserProfile;
 import com.example.ShoppingSystem.filter.preauth.PreAuthHeaders;
@@ -19,10 +20,13 @@ import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,6 +41,8 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class AuthTokenService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthTokenService.class);
 
     private static final String ACCESS_TOKEN_TYPE = "access";
     private static final String CLAIM_TYPE = "typ";
@@ -74,6 +80,7 @@ public class AuthTokenService {
     private final PreAuthProperties preAuthProperties;
     private final DeviceRiskProfileWriteService deviceRiskProfileWriteService;
     private final UserAuthFailureRiskService userAuthFailureRiskService;
+    private final TransactionTemplate transactionTemplate;
 
     public AuthTokenService(JwtUtils jwtUtils,
                             StringRedisTemplate stringRedisTemplate,
@@ -83,7 +90,8 @@ public class AuthTokenService {
                             AuthTokenProperties properties,
                             PreAuthProperties preAuthProperties,
                             DeviceRiskProfileWriteService deviceRiskProfileWriteService,
-                            UserAuthFailureRiskService userAuthFailureRiskService) {
+                            UserAuthFailureRiskService userAuthFailureRiskService,
+                            TransactionTemplate transactionTemplate) {
         this.jwtUtils = jwtUtils;
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
@@ -93,6 +101,7 @@ public class AuthTokenService {
         this.preAuthProperties = preAuthProperties;
         this.deviceRiskProfileWriteService = deviceRiskProfileWriteService;
         this.userAuthFailureRiskService = userAuthFailureRiskService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     public void issueLoginTokens(Long userId,
@@ -259,9 +268,13 @@ public class AuthTokenService {
             return;
         }
         String nextTokenVersion = IdUtil.fastSimpleUUID().substring(0, 24);
-        userLoginIdentityMapper.updateTokenVersionByUserId(userId, nextTokenVersion);
-        deleteRefreshSessionsByUserId(userId);
-        stringRedisTemplate.delete(userContextKey(userId));
+        transactionTemplate.executeWithoutResult(status -> {
+            userLoginIdentityMapper.updateTokenVersionByUserId(userId, nextTokenVersion);
+            AfterCommitExecutor.run(() -> {
+                deleteRefreshSessionsByUserId(userId);
+                evictUserContext(userId);
+            });
+        });
         clearAuthCookies(response, request);
     }
 
@@ -302,7 +315,11 @@ public class AuthTokenService {
         if (userId == null) {
             return;
         }
-        stringRedisTemplate.delete(userContextKey(userId));
+        try {
+            stringRedisTemplate.delete(userContextKey(userId));
+        } catch (Exception e) {
+            log.warn("Failed to evict user context cache, userId={}, reason={}", userId, e.getMessage());
+        }
     }
 
     private UserLoginIdentity requireActiveIdentity(Long userId) {
@@ -448,7 +465,8 @@ public class AuthTokenService {
         String prefix = properties.getRefreshRedisKeyPrefix() + userId + ":";
         try {
             stringRedisTemplate.execute(DELETE_REFRESH_SESSIONS_SCRIPT, Collections.emptyList(), prefix);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("Failed to delete refresh sessions, userId={}, reason={}", userId, e.getMessage());
         }
     }
 

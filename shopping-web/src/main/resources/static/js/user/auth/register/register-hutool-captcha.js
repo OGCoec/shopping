@@ -8,6 +8,7 @@
   const preAuthFetch = preAuthClientApi && typeof preAuthClientApi.fetchWithPreAuth === "function"
     ? preAuthClientApi.fetchWithPreAuth
     : fetch;
+  const securityUrls = globalThis.ShoppingSecurityUrls;
 
   function createRegisterHutoolCaptcha(options) {
     const {
@@ -115,7 +116,12 @@
         return;
       }
       currentRegisterCaptchaUuid = payload.uuid || "";
-      imageNode.src = payload.image || "";
+      const imageUrl = securityUrls?.safeImageUrl?.(payload.image, "", { allowData: true, allowBlob: true }) || "";
+      if (imageUrl) {
+        imageNode.src = imageUrl;
+      } else {
+        imageNode.removeAttribute("src");
+      }
     }
 
     async function continueRegisterWithCaptcha() {

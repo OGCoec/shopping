@@ -15,6 +15,16 @@
   const nextButton = document.getElementById("order-next");
   const pageIndicator = document.getElementById("order-page-indicator");
 
+  function safeImageUrl(value) {
+    return window.ShoppingSecurityUrls?.safeImageUrl?.(value, "", {
+      allowData: false,
+      allowBlob: false,
+      allowAnyHttps: true,
+      allowLocalHttp: true,
+      allowedPathPrefixes: ["/shopping/"]
+    }) || "";
+  }
+
   const state = {
     page: 1,
     pageSize: PAGE_SIZE,
@@ -118,7 +128,7 @@
 
     const media = document.createElement("div");
     media.className = "order-card-media";
-    const imageUrl = String(order?.firstSkuImageUrl || "").trim();
+    const imageUrl = safeImageUrl(order?.firstSkuImageUrl);
     if (imageUrl) {
       const image = document.createElement("img");
       image.src = imageUrl;
@@ -256,7 +266,7 @@
     row.dataset.skuId = String(item?.skuId || "");
     const media = document.createElement("div");
     media.className = "order-item-media";
-    const imageUrl = String(item?.skuImageUrl || "").trim();
+    const imageUrl = safeImageUrl(item?.skuImageUrl);
     if (imageUrl) {
       const image = document.createElement("img");
       image.src = imageUrl;

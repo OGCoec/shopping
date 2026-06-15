@@ -74,12 +74,17 @@
       title.textContent = `#${item.lineNumber || "-"} ${item.email || "-"}`;
       row.append(title);
       if (options.includeVerifyUrl && item.verifyUrl) {
-        const link = document.createElement("a");
-        link.href = item.verifyUrl;
-        link.target = "_blank";
-        link.rel = "noopener";
-        link.textContent = item.verifyUrl;
-        row.append(link);
+        const verifyUrl = root.ShoppingSecurityUrls?.safeSameOriginPath?.(item.verifyUrl, "")
+          || root.ShoppingSecurityUrls?.safeExternalHttpsUrl?.(item.verifyUrl, [window.location.hostname], "")
+          || "";
+        if (verifyUrl) {
+          const link = document.createElement("a");
+          link.href = verifyUrl;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = verifyUrl;
+          row.append(link);
+        }
       }
       appendText(row, `clientId: ${item.clientId || "-"}`);
       if (item.verifyToken) { appendText(row, `verifyToken: ${item.verifyToken}`); }

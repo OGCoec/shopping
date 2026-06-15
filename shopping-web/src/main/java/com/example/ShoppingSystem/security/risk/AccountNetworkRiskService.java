@@ -3,6 +3,7 @@ package com.example.ShoppingSystem.security.risk;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
+import com.example.ShoppingSystem.common.transaction.AfterCommitExecutor;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.filter.preauth.PreAuthHeaders;
 import com.example.ShoppingSystem.filter.preauth.domain.TrustedExitIpMatcher;
@@ -15,6 +16,8 @@ import com.example.ShoppingSystem.quota.IpCountryQueryService;
 import com.example.ShoppingSystem.quota.IpGeoSnapshot;
 import com.example.ShoppingSystem.quota.IpReputationMultiLevelQueryService;
 import com.example.ShoppingSystem.redisdata.UserAuthRiskRedisKeys;
+import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskDecision;
+import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskStatus;
 import com.example.ShoppingSystem.security.token.AuthTokenService;
 import com.example.ShoppingSystem.service.user.auth.register.risk.IpReputationEvidence;
 import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
@@ -174,12 +177,12 @@ public class AccountNetworkRiskService {
                 riskEvaluation.penaltyScore(),
                 riskEvaluation.events()
         );
-        log.info("Post-login account network risk recorded, userId={}, method={}, uri={}, ip={}, webRtcIp={}, webRtcStatus={}, events={}, penalty={}, networkScore30m={}",
+        log.info("Post-login account network risk recorded, userId={}, method={}, uri={}, ip={}, webRtcIps={}, webRtcStatus={}, events={}, penalty={}, networkScore30m={}",
                 userId,
                 request.getMethod(),
                 request.getRequestURI(),
                 currentIp,
-                riskEvaluation.webRtcIp(),
+                riskEvaluation.webRtcIps(),
                 riskEvaluation.webRtcStatus(),
                 riskEvaluation.eventNames(),
                 riskEvaluation.penaltyScore(),
@@ -191,36 +194,68 @@ public class AccountNetworkRiskService {
         return triggerLock(userId, currentIp, deviceFingerprint, riskEvaluation, windowSnapshot);
     }
 
+    @Transactional
+    public void recordAsyncWebRtcRisk(Long userId,
+                                      String currentIp,
+                                      String deviceFingerprintHash,
+                                      WebRtcRiskDecision decision,
+                                      long observedAtEpochMillis) {
+        if (userId == null || decision == null || decision.status() != WebRtcRiskStatus.BLOCKED) {
+            return;
+        }
+        String safeCurrentIp = normalizeIp(currentIp);
+        LinkedHashSet<NetworkRiskEvent> events = new LinkedHashSet<>();
+        events.add(NetworkRiskEvent.WEBRTC_MISMATCH);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("currentIp", safeCurrentIp);
+        metadata.put("webRtcIps", String.join(",", decision.webRtcIps()));
+        metadata.put("webRtcStatus", decision.webRtcStatus());
+        metadata.put("observedAtEpochMillis", observedAtEpochMillis);
+        metadata.put("async", true);
+        if (isVpnOrProxySuspected(safeCurrentIp, metadata)) {
+            events.add(NetworkRiskEvent.VPN_PROXY);
+        }
+
+        int penaltyScore = 0;
+        for (NetworkRiskEvent event : events) {
+            penaltyScore += event.penaltyScore();
+        }
+        metadata.put("penaltyScore", penaltyScore);
+        metadata.put("events", events.stream().map(NetworkRiskEvent::eventName).toList());
+        RiskEvaluation riskEvaluation = new RiskEvaluation(
+                events,
+                penaltyScore,
+                String.join(",", decision.webRtcIps()),
+                decision.webRtcStatus(),
+                metadata
+        );
+        NetworkWindowSnapshot windowSnapshot = incrementNetworkWindow(userId, penaltyScore, events);
+        log.info("Post-login async WebRTC network risk recorded, userId={}, ip={}, webRtcIps={}, webRtcStatus={}, events={}, penalty={}, networkScore30m={}",
+                userId,
+                safeCurrentIp,
+                String.join(",", decision.webRtcIps()),
+                decision.webRtcStatus(),
+                riskEvaluation.eventNames(),
+                penaltyScore,
+                windowSnapshot.networkScore30m());
+        if (windowSnapshot.networkScore30m() > NETWORK_LOCK_THRESHOLD) {
+            triggerLock(userId, safeCurrentIp, normalizeText(deviceFingerprintHash), riskEvaluation, windowSnapshot);
+        }
+    }
+
     private RiskEvaluation evaluateRisk(Map<String, Object> state, String currentIp, HttpServletRequest request) {
         String previousIp = normalizeIp(readString(state, "lastLoginIp", "last_login_ip"));
         OffsetDateTime previousSeenAt = readOffsetDateTime(state, "lastLoginAt", "last_login_at");
-        List<String> webRtcIps = normalizeIpCandidates(
-                request == null ? "" : request.getHeader(PreAuthHeaders.HEADER_WEBRTC_IP),
-                request == null ? "" : request.getHeader(PreAuthHeaders.HEADER_WEBRTC_IPS)
-        );
-        String webRtcIp = webRtcIps.isEmpty() ? "" : webRtcIps.get(0);
-        String webRtcStatus = normalizeWebRtcStatus(request == null ? "" : request.getHeader(PreAuthHeaders.HEADER_WEBRTC_STATUS));
+        List<String> webRtcIps = List.of();
+        String webRtcStatus = "";
 
         LinkedHashSet<NetworkRiskEvent> events = new LinkedHashSet<>();
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("previousIp", previousIp);
         metadata.put("currentIp", currentIp);
-        metadata.put("webRtcIp", webRtcIp);
         metadata.put("webRtcIps", String.join(",", webRtcIps));
         metadata.put("webRtcStatus", webRtcStatus);
-
-        boolean webRtcStrictMatch = StrUtil.isNotBlank(currentIp) && webRtcIps.contains(currentIp);
-        boolean webRtcTrustedMatch = StrUtil.isNotBlank(currentIp)
-                && !webRtcStrictMatch
-                && trustedExitIpMatcher.isTrustedMatch(currentIp, webRtcIps);
-        boolean webRtcMismatch = "ok".equals(webRtcStatus)
-                && StrUtil.isNotBlank(currentIp)
-                && !webRtcIps.isEmpty()
-                && !webRtcStrictMatch
-                && !webRtcTrustedMatch;
-        if (webRtcMismatch) {
-            events.add(NetworkRiskEvent.WEBRTC_MISMATCH);
-        }
 
         boolean ipChanged = StrUtil.isNotBlank(previousIp)
                 && StrUtil.isNotBlank(currentIp)
@@ -248,7 +283,7 @@ public class AccountNetworkRiskService {
             }
         }
 
-        if ((ipChanged || webRtcMismatch) && isVpnOrProxySuspected(currentIp, metadata)) {
+        if (ipChanged && isVpnOrProxySuspected(currentIp, metadata)) {
             events.add(NetworkRiskEvent.VPN_PROXY);
         }
 
@@ -262,7 +297,7 @@ public class AccountNetworkRiskService {
         }
         metadata.put("penaltyScore", penaltyScore);
         metadata.put("events", events.stream().map(NetworkRiskEvent::eventName).toList());
-        return new RiskEvaluation(events, penaltyScore, webRtcIp, webRtcStatus, metadata);
+        return new RiskEvaluation(events, penaltyScore, String.join(",", webRtcIps), webRtcStatus, metadata);
     }
 
     private boolean isVpnOrProxySuspected(String currentIp, Map<String, Object> metadata) {
@@ -412,8 +447,15 @@ public class AccountNetworkRiskService {
                 buildMetadata(riskEvaluation, windowSnapshot, nextLockCount, decision),
                 now
         );
-        stringRedisTemplate.delete(networkWindowKeys(userId));
-        authTokenService.evictUserContext(userId);
+        AfterCommitExecutor.run(() -> {
+            try {
+                stringRedisTemplate.delete(networkWindowKeys(userId));
+                authTokenService.evictUserContext(userId);
+            } catch (Exception e) {
+                log.warn("Post-login account network risk cache cleanup failed, userId={}, reason={}",
+                        userId, e.getMessage());
+            }
+        });
 
         log.warn("Post-login account network risk locked account, userId={}, lockReason={}, lockCount={}, terminationRequired={}, networkScore30m={}, penaltyScore={}",
                 userId,
@@ -520,7 +562,14 @@ public class AccountNetworkRiskService {
                 now,
                 now
         );
-        terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(emailHash);
+        AfterCommitExecutor.run(() -> {
+            try {
+                terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(emailHash);
+            } catch (Exception e) {
+                log.warn("Terminated account email bloom sync failed, userId={}, reason={}",
+                        userId, e.getMessage());
+            }
+        });
     }
 
     private int impossibleTravelPenalty(IpGeoSnapshot previousGeo,
@@ -858,7 +907,7 @@ public class AccountNetworkRiskService {
 
     private record RiskEvaluation(LinkedHashSet<NetworkRiskEvent> events,
                                   int penaltyScore,
-                                  String webRtcIp,
+                                  String webRtcIps,
                                   String webRtcStatus,
                                   Map<String, Object> metadata) {
 

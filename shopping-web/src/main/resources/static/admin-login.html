@@ -5,28 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>管理员登录 - Shopping System</title>
   <link rel="icon" href="/shopping/favicon.ico" />
-  <script>
-    (function () {
-      var key = "shopping:admin:parti-morph:pending:v1";
-      try {
-        if (sessionStorage.getItem(key) === "1") {
-          document.documentElement.classList.add("admin-morph-pending");
-          window.setTimeout(function () {
-            document.documentElement.classList.remove("admin-morph-pending");
-            try {
-              sessionStorage.removeItem(key);
-            } catch (_) {
-            }
-          }, 6000);
-        }
-      } catch (_) {
-      }
-    })();
-  </script>
+  <script src="/shopping/js/admin/admin-morph-boot.js?v=1"></script>
   <link rel="modulepreload" href="/shopping/error/three.module.min.js" />
   <link rel="modulepreload" href="/shopping/error/three.core.min.js" />
   <link rel="stylesheet" href="/shopping/fonts/noto-sans-sc/noto-sans-sc.css" />
   <link rel="stylesheet" href="/shopping/css/admin-auth.css?v=4" />
+  <script defer src="/shopping/js/security/security-urls.js?v=1"></script>
   <script defer src="/shopping/js/admin/admin-api.js?v=11"></script>
   <script defer src="/shopping/js/vendor/html2canvas.min.js"></script>
   <script defer src="/shopping/js/admin/admin-particle-transition.js?v=9"></script>

@@ -2,11 +2,13 @@ package com.example.ShoppingSystem.service.user.auth.risk;
 
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.Utils.HybridSemaphoreIdWorker;
+import com.example.ShoppingSystem.common.transaction.AfterCommitExecutor;
 import com.example.ShoppingSystem.mapper.risk.IpReputationProfileMapper;
 import com.example.ShoppingSystem.mapper.risk.RegisterRiskProfileMapper;
 import com.example.ShoppingSystem.service.user.auth.register.impl.ChallengePolicy;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -61,14 +63,17 @@ public class DeviceRiskProfileWriteService {
         this.deviceL6CountingBloomDecisionService = deviceL6CountingBloomDecisionService;
     }
 
+    @Transactional
     public void recordSuccess(Long userId, String deviceFingerprint, String clientIp, String scene) {
         record(userId, deviceFingerprint, clientIp, true);
     }
 
+    @Transactional
     public void recordFailure(Long userId, String deviceFingerprint, String clientIp, String scene) {
         record(userId, deviceFingerprint, clientIp, false);
     }
 
+    @Transactional
     public int ensureProfileExists(String deviceFingerprint, String clientIp) {
         String normalizedFingerprint = normalizeText(deviceFingerprint);
         if (StrUtil.isBlank(normalizedFingerprint)) {
@@ -77,10 +82,11 @@ public class DeviceRiskProfileWriteService {
         upsertDeviceProfile(normalizedFingerprint, normalizeText(clientIp), OffsetDateTime.now(), 0, "");
         Integer currentScore = registerRiskProfileMapper.findDeviceRiskScoreByFingerprint(normalizedFingerprint);
         int resolvedScore = normalizeDeviceScore(currentScore);
-        syncDeviceL6Bloom(normalizedFingerprint, resolvedScore);
+        AfterCommitExecutor.run(() -> syncDeviceL6Bloom(normalizedFingerprint, resolvedScore));
         return resolvedScore;
     }
 
+    @Transactional
     public void applyAutomationPenalty(String deviceFingerprint, String clientIp, int penaltyScore, String reason) {
         String normalizedFingerprint = normalizeText(deviceFingerprint);
         if (StrUtil.isBlank(normalizedFingerprint) || penaltyScore <= 0) {
@@ -98,8 +104,11 @@ public class DeviceRiskProfileWriteService {
                 now
         );
         if (updatedScore != null) {
-            invalidateDeviceRiskCache(normalizedFingerprint);
-            syncDeviceL6Bloom(normalizedFingerprint, normalizeDeviceScore(updatedScore));
+            int resolvedScore = normalizeDeviceScore(updatedScore);
+            AfterCommitExecutor.run(() -> {
+                invalidateDeviceRiskCache(normalizedFingerprint);
+                syncDeviceL6Bloom(normalizedFingerprint, resolvedScore);
+            });
         }
     }
 
@@ -123,8 +132,10 @@ public class DeviceRiskProfileWriteService {
                 ipChangePenalty.reason()
         );
         if (ipChangePenalty.score() > 0) {
-            invalidateDeviceRiskCache(normalizedFingerprint);
-            syncDeviceL6BloomFromDb(normalizedFingerprint);
+            AfterCommitExecutor.run(() -> {
+                invalidateDeviceRiskCache(normalizedFingerprint);
+                syncDeviceL6BloomFromDb(normalizedFingerprint);
+            });
         }
         if (StrUtil.isBlank(deviceIdHex) || userId == null) {
             return;
@@ -146,7 +157,7 @@ public class DeviceRiskProfileWriteService {
             );
         }
         registerRiskProfileMapper.refreshDeviceLinkedUserCount(deviceIdHex, now);
-        invalidateDeviceLinkedUserCount(normalizedFingerprint);
+        AfterCommitExecutor.run(() -> invalidateDeviceLinkedUserCount(normalizedFingerprint));
         applyLinkedUserCountPenalty(normalizedFingerprint, now);
     }
 
@@ -179,8 +190,11 @@ public class DeviceRiskProfileWriteService {
                 now
         );
         if (updatedRows > 0) {
-            invalidateDeviceRiskCache(deviceFingerprint);
-            syncDeviceL6Bloom(deviceFingerprint, Math.max(0, currentScore - penaltyScore));
+            int updatedScore = Math.max(0, currentScore - penaltyScore);
+            AfterCommitExecutor.run(() -> {
+                invalidateDeviceRiskCache(deviceFingerprint);
+                syncDeviceL6Bloom(deviceFingerprint, updatedScore);
+            });
         }
     }
 

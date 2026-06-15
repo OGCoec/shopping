@@ -6,6 +6,7 @@
   const passwordInput = document.getElementById("admin-login-password");
   const submitButton = document.getElementById("admin-login-submit");
   const statusNode = document.getElementById("admin-login-status");
+  const securityUrls = window.ShoppingSecurityUrls;
 
   transition?.prewarm?.(form);
   const enterPromise = transition?.playEnter?.(document.querySelectorAll("[data-admin-target]"));
@@ -63,7 +64,11 @@
       });
       api.setStatus(statusNode, "登录成功。", "ok");
       const returnTo = resolveReturnTo();
-      const redirectPath = returnTo || response.data?.redirectPath || "/shopping/admin/console";
+      const redirectPath = securityUrls?.safeSameOriginPath?.(
+        returnTo || response.data?.redirectPath,
+        "/shopping/admin/console",
+        ["/shopping/admin/console"]
+      ) || "/shopping/admin/console";
       if (transition?.beginExit) {
         await transition.beginExit({ source: form, to: redirectPath });
         return;

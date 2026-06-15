@@ -28,6 +28,7 @@ public class OrderRedisPersistScheduler {
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
     private final int batchSize;
+    private final int maxBatchesPerRun;
     private final Duration processingTimeout;
     private final Duration persistLockTtl;
 
@@ -36,6 +37,7 @@ public class OrderRedisPersistScheduler {
                                       ObjectMapper objectMapper,
                                       TransactionTemplate transactionTemplate,
                                       @Value("${shopping.order.redis-persist-batch-size:100}") int batchSize,
+                                      @Value("${shopping.order.redis-persist-max-batches-per-run:20}") int maxBatchesPerRun,
                                       @Value("${shopping.order.redis-persist-processing-timeout-ms:60000}") long processingTimeoutMs,
                                       @Value("${shopping.order.redis-persist-lock-ttl-ms:30000}") long persistLockTtlMs) {
         this.orderRedisSnapshotService = orderRedisSnapshotService;
@@ -43,6 +45,7 @@ public class OrderRedisPersistScheduler {
         this.objectMapper = objectMapper;
         this.transactionTemplate = transactionTemplate;
         this.batchSize = batchSize <= 0 ? 100 : batchSize;
+        this.maxBatchesPerRun = Math.max(1, maxBatchesPerRun);
         this.processingTimeout = Duration.ofMillis(Math.max(1000L, processingTimeoutMs));
         this.persistLockTtl = Duration.ofMillis(Math.max(1000L, persistLockTtlMs));
     }
@@ -67,46 +70,77 @@ public class OrderRedisPersistScheduler {
             log.info("[Order] recovered timed-out Redis persist orders, count={}", recovered.size());
         }
 
-        List<String> orderNos = orderRedisSnapshotService.claimDirty(batchSize, nowMs);
-        if (orderNos.isEmpty()) {
-            return;
-        }
-        List<OrderRedisSnapshot> snapshots = orderRedisSnapshotService.loadSnapshots(orderNos);
-        if (snapshots.isEmpty()) {
-            orderRedisSnapshotService.completePersistedAndCleanup(orderNos, List.of());
-            return;
-        }
+        int batchCount = 0;
+        int totalClaimed = 0;
+        int totalPersisted = 0;
+        boolean failed = false;
+        while (batchCount < maxBatchesPerRun) {
+            List<String> orderNos = orderRedisSnapshotService.claimDirty(batchSize, nowMs);
+            if (orderNos.isEmpty()) {
+                break;
+            }
+            boolean shouldContinue = orderNos.size() >= batchSize;
+            totalClaimed += orderNos.size();
+            List<OrderRedisSnapshot> snapshots = orderRedisSnapshotService.loadSnapshots(orderNos);
+            if (snapshots.isEmpty()) {
+                orderRedisSnapshotService.completePersistedAndCleanup(orderNos, List.of());
+                batchCount++;
+                if (!shouldContinue) {
+                    break;
+                }
+                continue;
+            }
 
-        BatchRange batchRange = batchRange(snapshots);
-        try {
-            persistSnapshots(snapshots);
-            orderRedisSnapshotService.completePersistedAndCleanup(orderNos, snapshots);
-            log.info(
-                    "[Order] Redis order persist finished, count={}, firstOrderNo={}, firstCreatedAtMs={}, lastOrderNo={}, lastCreatedAtMs={}",
-                    snapshots.size(),
-                    batchRange.firstOrderNo(),
-                    batchRange.firstCreatedAtMs(),
-                    batchRange.lastOrderNo(),
-                    batchRange.lastCreatedAtMs()
-            );
-        } catch (Exception e) {
-            orderRedisSnapshotService.requeueProcessing(orderNos, snapshots, Instant.now().toEpochMilli());
-            log.warn(
-                    "[Order] Redis order persist failed, count={}, firstOrderNo={}, firstCreatedAtMs={}, lastOrderNo={}, lastCreatedAtMs={}",
-                    orderNos.size(),
-                    batchRange.firstOrderNo(),
-                    batchRange.firstCreatedAtMs(),
-                    batchRange.lastOrderNo(),
-                    batchRange.lastCreatedAtMs(),
-                    e
-            );
+            BatchRange batchRange = batchRange(snapshots);
+            try {
+                persistSnapshots(snapshots);
+                orderRedisSnapshotService.completePersistedAndCleanup(orderNos, snapshots);
+                batchCount++;
+                totalPersisted += snapshots.size();
+                log.info(
+                        "[Order] Redis order persist batch finished, batch={}, count={}, firstOrderNo={}, firstCreatedAtMs={}, lastOrderNo={}, lastCreatedAtMs={}",
+                        batchCount,
+                        snapshots.size(),
+                        batchRange.firstOrderNo(),
+                        batchRange.firstCreatedAtMs(),
+                        batchRange.lastOrderNo(),
+                        batchRange.lastCreatedAtMs()
+                );
+            } catch (Exception e) {
+                failed = true;
+                orderRedisSnapshotService.requeueProcessing(orderNos, snapshots, Instant.now().toEpochMilli());
+                log.warn(
+                        "[Order] Redis order persist batch failed, batch={}, count={}, firstOrderNo={}, firstCreatedAtMs={}, lastOrderNo={}, lastCreatedAtMs={}",
+                        batchCount + 1,
+                        orderNos.size(),
+                        batchRange.firstOrderNo(),
+                        batchRange.firstCreatedAtMs(),
+                        batchRange.lastOrderNo(),
+                        batchRange.lastCreatedAtMs(),
+                        e
+                );
+                break;
+            }
+            if (!shouldContinue) {
+                break;
+            }
+        }
+        if (batchCount > 0 || failed) {
+            log.info("[Order] Redis order persist run finished, batches={}, claimed={}, persisted={}, batchSize={}, maxBatches={}, failed={}",
+                    batchCount, totalClaimed, totalPersisted, batchSize, maxBatchesPerRun, failed);
         }
     }
 
     private void persistSnapshots(List<OrderRedisSnapshot> snapshots) throws JsonProcessingException {
-        List<Map<String, Object>> orderRows = new ArrayList<>(snapshots.size());
+        List<OrderRedisSnapshot> persistableSnapshots = snapshots.stream()
+                .filter(this::isPersistableSnapshot)
+                .toList();
+        if (persistableSnapshots.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> orderRows = new ArrayList<>(persistableSnapshots.size());
         List<Map<String, Object>> itemRows = new ArrayList<>();
-        for (OrderRedisSnapshot snapshot : snapshots) {
+        for (OrderRedisSnapshot snapshot : persistableSnapshots) {
             orderRows.add(orderRow(snapshot.order()));
             String orderNo = OrderRowMapper.text(snapshot.order(), "orderNo");
             for (Map<String, Object> item : snapshot.items()) {
@@ -121,6 +155,16 @@ public class OrderRedisPersistScheduler {
                 orderMapper.batchInsertOrderItems(itemsJson);
             }
         });
+    }
+
+    private boolean isPersistableSnapshot(OrderRedisSnapshot snapshot) {
+        if (snapshot == null) {
+            return false;
+        }
+        String status = OrderRowMapper.text(snapshot.order(), "status");
+        return OrderStatus.PAID.equals(status)
+                || OrderStatus.CANCELLED.equals(status)
+                || OrderStatus.CLOSED.equals(status);
     }
 
     private Map<String, Object> orderRow(Map<String, Object> order) {

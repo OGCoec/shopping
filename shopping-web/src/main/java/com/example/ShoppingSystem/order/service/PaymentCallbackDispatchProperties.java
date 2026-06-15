@@ -7,9 +7,12 @@ public class PaymentCallbackDispatchProperties {
 
     private boolean enabled = true;
     private int batchSize = 100;
+    private int maxBatchesPerRun = 10;
     private int consumerBatchSize = 50;
     private int maxRetry = 3;
     private long retryBackoffBaseMillis = 5000L;
+    private boolean dbScanEnabled = false;
+    private long fallbackDbScanIntervalMillis = 300000L;
 
     public boolean isEnabled() {
         return enabled;
@@ -25,6 +28,14 @@ public class PaymentCallbackDispatchProperties {
 
     public void setBatchSize(int batchSize) {
         this.batchSize = batchSize;
+    }
+
+    public int getMaxBatchesPerRun() {
+        return maxBatchesPerRun;
+    }
+
+    public void setMaxBatchesPerRun(int maxBatchesPerRun) {
+        this.maxBatchesPerRun = maxBatchesPerRun;
     }
 
     public int getConsumerBatchSize() {
@@ -49,5 +60,21 @@ public class PaymentCallbackDispatchProperties {
 
     public void setRetryBackoffBaseMillis(long retryBackoffBaseMillis) {
         this.retryBackoffBaseMillis = retryBackoffBaseMillis;
+    }
+
+    public boolean isDbScanEnabled() {
+        return dbScanEnabled;
+    }
+
+    public void setDbScanEnabled(boolean dbScanEnabled) {
+        this.dbScanEnabled = dbScanEnabled;
+    }
+
+    public long getFallbackDbScanIntervalMillis() {
+        return fallbackDbScanIntervalMillis;
+    }
+
+    public void setFallbackDbScanIntervalMillis(long fallbackDbScanIntervalMillis) {
+        this.fallbackDbScanIntervalMillis = fallbackDbScanIntervalMillis;
     }
 }

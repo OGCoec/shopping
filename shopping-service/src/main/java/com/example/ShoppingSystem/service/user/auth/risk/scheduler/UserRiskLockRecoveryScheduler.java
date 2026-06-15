@@ -15,6 +15,7 @@ public class UserRiskLockRecoveryScheduler {
     private static final Logger log = LoggerFactory.getLogger(UserRiskLockRecoveryScheduler.class);
     private static final String NETWORK_LOCK_REASON = "NETWORK_RISK_LOCK_30M";
     private static final String NETWORK_RECOVERY_EVENT = "NETWORK_RISK_RECOVERY";
+    private static final int MAX_BATCH_SIZE = 4000;
 
     private final UserRiskLockRecoveryService userRiskLockRecoveryService;
     private final int batchSize;
@@ -56,37 +57,86 @@ public class UserRiskLockRecoveryScheduler {
     }
 
     private void recover(int lockCount, Duration stableDuration, int scoreBonus) {
-        int recovered = userRiskLockRecoveryService.recoverStableUnlockedUsers(
+        recoverBatches("User risk lock recovery",
                 lockCount,
                 stableDuration,
                 scoreBonus,
-                batchSize
-        );
-        if (recovered > 0) {
-            log.info("User risk lock recovery completed, lockCount={}, stableDays={}, scoreBonus={}, recovered={}",
-                    lockCount,
-                    stableDuration.toDays(),
-                    scoreBonus,
-                    recovered);
-        }
+                effectiveBatchSize -> userRiskLockRecoveryService.recoverStableUnlockedUsers(
+                        lockCount,
+                        stableDuration,
+                        scoreBonus,
+                        effectiveBatchSize
+                ));
     }
 
     private void recoverNetwork(int lockCount, Duration stableDuration, int scoreBonus) {
-        int recovered = userRiskLockRecoveryService.recoverStableUnlockedUsersByReason(
-                NETWORK_LOCK_REASON,
-                NETWORK_RECOVERY_EVENT,
-                NETWORK_RECOVERY_EVENT,
+        recoverBatches("User network risk lock recovery",
                 lockCount,
                 stableDuration,
                 scoreBonus,
-                batchSize
-        );
-        if (recovered > 0) {
-            log.info("User network risk lock recovery completed, lockCount={}, stableDays={}, scoreBonus={}, recovered={}",
+                effectiveBatchSize -> userRiskLockRecoveryService.recoverStableUnlockedUsersByReason(
+                        NETWORK_LOCK_REASON,
+                        NETWORK_RECOVERY_EVENT,
+                        NETWORK_RECOVERY_EVENT,
+                        lockCount,
+                        stableDuration,
+                        scoreBonus,
+                        effectiveBatchSize
+                ));
+    }
+
+    private void recoverBatches(String recoveryName,
+                                int lockCount,
+                                Duration stableDuration,
+                                int scoreBonus,
+                                RecoveryBatch recoveryBatch) {
+        int effectiveBatchSize = Math.max(1, Math.min(batchSize, MAX_BATCH_SIZE));
+        int batchCount = 0;
+        long totalRecovered = 0L;
+        boolean failed = false;
+        while (true) {
+            int recovered;
+            try {
+                recovered = recoveryBatch.recover(effectiveBatchSize);
+            } catch (Exception e) {
+                failed = true;
+                log.warn("{} batch failed, lockCount={}, stableDays={}, scoreBonus={}, batch={}, batchSize={}, totalRecovered={}, error={}",
+                        recoveryName,
+                        lockCount,
+                        stableDuration.toDays(),
+                        scoreBonus,
+                        batchCount + 1,
+                        effectiveBatchSize,
+                        totalRecovered,
+                        e.getMessage());
+                break;
+            }
+            if (recovered <= 0) {
+                break;
+            }
+
+            batchCount++;
+            totalRecovered += recovered;
+            if (recovered < effectiveBatchSize) {
+                break;
+            }
+        }
+
+        if (totalRecovered > 0 || failed) {
+            log.info("{} finished, lockCount={}, stableDays={}, scoreBonus={}, batches={}, totalRecovered={}, batchSize={}, failed={}",
+                    recoveryName,
                     lockCount,
                     stableDuration.toDays(),
                     scoreBonus,
-                    recovered);
+                    batchCount,
+                    totalRecovered,
+                    effectiveBatchSize,
+                    failed);
         }
+    }
+
+    @FunctionalInterface
+    private interface RecoveryBatch {
+        int recover(int effectiveBatchSize);
     }
 }

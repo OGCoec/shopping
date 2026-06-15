@@ -1,0 +1,8 @@
+payloadId	payload
+script_tag	<script>alert(1)</script>
+img_onerror	<img src=x onerror=alert(1)>
+svg_onload	"><svg onload=alert(1)>
+javascript_url	javascript:alert(1)
+html_breakout	</textarea><script>alert(1)</script>
+encoded_script	%3Cscript%3Ealert(1)%3C/script%3E
+mixed_case_script	<ScRiPt>alert(1)</ScRiPt>

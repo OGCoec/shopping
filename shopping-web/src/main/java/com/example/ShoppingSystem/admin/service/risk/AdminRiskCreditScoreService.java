@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -96,6 +97,7 @@ public class AdminRiskCreditScoreService {
     private final IpCountryLocalCacheStore ipCountryLocalCacheStore;
     private final IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService;
     private final RiskReadReplicaQueryExecutor riskReadReplicaQueryExecutor;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${register.ip-risk-multi-level.redis-key-prefix:register:ip:risk:v2:}")
     private String riskRedisKeyPrefix;
@@ -110,7 +112,8 @@ public class AdminRiskCreditScoreService {
                                        IpRiskLocalCacheStore ipRiskLocalCacheStore,
                                        IpCountryLocalCacheStore ipCountryLocalCacheStore,
                                        IpL6CountingBloomDecisionService ipL6CountingBloomDecisionService,
-                                       RiskReadReplicaQueryExecutor riskReadReplicaQueryExecutor) {
+                                       RiskReadReplicaQueryExecutor riskReadReplicaQueryExecutor,
+                                       TransactionTemplate transactionTemplate) {
         this.adminDeviceRiskProfileMapper = adminDeviceRiskProfileMapper;
         this.ipReputationProfileMapper = ipReputationProfileMapper;
         this.stringRedisTemplate = stringRedisTemplate;
@@ -119,6 +122,7 @@ public class AdminRiskCreditScoreService {
         this.ipCountryLocalCacheStore = ipCountryLocalCacheStore;
         this.ipL6CountingBloomDecisionService = ipL6CountingBloomDecisionService;
         this.riskReadReplicaQueryExecutor = riskReadReplicaQueryExecutor;
+        this.transactionTemplate = transactionTemplate;
     }
 
     public AdminIpRiskListResponse listIpRiskProfiles(String family,
@@ -192,12 +196,12 @@ public class AdminRiskCreditScoreService {
         }
 
         // ── 1) 一次 DB 批量更新 ──
-        int dbUpdated;
-        if (FAMILY_IPV4.equals(normalizedFamily)) {
-            dbUpdated = ipReputationProfileMapper.batchUpdateIpv4Scores(normalizedIps, targetScore);
-        } else {
-            dbUpdated = ipReputationProfileMapper.batchUpdateIpv6Scores(normalizedIps, targetScore);
-        }
+        int dbUpdated = transactionTemplate.execute(status -> {
+            if (FAMILY_IPV4.equals(normalizedFamily)) {
+                return ipReputationProfileMapper.batchUpdateIpv4Scores(normalizedIps, targetScore);
+            }
+            return ipReputationProfileMapper.batchUpdateIpv6Scores(normalizedIps, targetScore);
+        });
 
         // ── 2) 一次 Redis 批量删除（风险缓存 + 国家缓存） ──
         int cacheDeleted = 0;
@@ -226,8 +230,12 @@ public class AdminRiskCreditScoreService {
         }
 
         // ── 4) Caffeine 本地缓存失效（无网络延迟） ──
-        ipRiskLocalCacheStore.invalidateAll(normalizedIps);
-        ipCountryLocalCacheStore.invalidateAll(normalizedIps);
+        try {
+            ipRiskLocalCacheStore.invalidateAll(normalizedIps);
+            ipCountryLocalCacheStore.invalidateAll(normalizedIps);
+        } catch (Exception e) {
+            log.warn("Admin IP risk local cache batch invalidation failed, reason={}", e.getMessage());
+        }
 
         String actionLabel = ACTION_REMOVE_RISK.equals(action) ? "风险移出" : "风险添加";
         String message = String.format("%s完成：DB 更新 %d 行，缓存清除 %d 个 key，布隆同步 %d 个元素。",

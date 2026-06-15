@@ -70,6 +70,12 @@ CREATE INDEX IF NOT EXISTS idx_user_risk_profile_lock_until
 CREATE INDEX IF NOT EXISTS idx_user_risk_profile_recovery
     ON user_risk_profile (lock_count, risk_recovery_started_at);
 
+CREATE INDEX IF NOT EXISTS idx_user_risk_profile_recovery_order
+    ON user_risk_profile (lock_count, risk_recovery_started_at, user_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_risk_profile_admin_score_order
+    ON user_risk_profile (current_score ASC, updated_at DESC NULLS LAST, user_id DESC);
+
 COMMENT ON COLUMN user_risk_profile.register_base_score IS '注册成功时的初始基础分，只写一次，作为账号冷启动分';
 COMMENT ON COLUMN user_risk_profile.current_env_score IS '当前环境分，即当前 IP 分和设备分合成后的分数';
 COMMENT ON COLUMN user_risk_profile.behavior_score_delta IS '行为修正分，给 current_score 加上一个正数或负数';

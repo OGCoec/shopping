@@ -49,14 +49,14 @@ public class SmsCodeMessageConsumer {
             SmsCodeMessage retryMessage = message.nextRetry(errorMessage);
             smsCodeMessagePublisher.publishRetry(retryMessage, delayMilli);
             log.warn("SMS message retry scheduled, messageId={}, phone={}, retryCount={}, delayMilli={}, error={}",
-                    message.getMessageId(), message.getPhoneNumber(), retryMessage.getRetryCount(), delayMilli, errorMessage);
+                    message.getMessageId(), message.getPhoneNumber(), retryMessage.getRetryCount(), delayMilli, errorMessage, exception);
             return;
         }
 
         SmsCodeMessage deadLetterMessage = message.markFailed(errorMessage);
         smsCodeMessagePublisher.publishDeadLetter(deadLetterMessage);
         log.error("SMS message moved to dead letter queue, messageId={}, phone={}, retryCount={}, error={}",
-                message.getMessageId(), message.getPhoneNumber(), message.getRetryCount(), errorMessage);
+                message.getMessageId(), message.getPhoneNumber(), message.getRetryCount(), errorMessage, exception);
     }
 
     long resolveRetryDelayMilli(int currentRetryCount) {

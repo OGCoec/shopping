@@ -7,9 +7,8 @@ import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
 import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.phone.PhoneNumberValidationService;
 import com.example.ShoppingSystem.redisdata.LoginRedisKeys;
-import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
-import com.example.ShoppingSystem.service.captcha.thirdparty.ThirdPartyCaptchaService;
-import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaService;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaVerifyRequest;
 import com.example.ShoppingSystem.service.user.auth.login.LoginFlowSessionService;
 import com.example.ShoppingSystem.service.user.auth.login.UserPasswordLoginService;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFactor;
@@ -54,9 +53,7 @@ import java.util.concurrent.TimeUnit;
 import static com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengePolicy.CHALLENGE_WAF_REQUIRED;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_CLOUDFLARE_TURNSTILE;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V2;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HCAPTCHA;
-import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_OPERATION_TIMEOUT;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_TIANAI;
 
@@ -88,9 +85,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
     private final LoginFlowSessionService loginFlowSessionService;
     private final LoginChallengePolicy loginChallengePolicy;
     private final LoginChallengeSessionService loginChallengeSessionService;
-    private final HutoolCaptchaService hutoolCaptchaService;
-    private final TianaiCaptchaService tianaiCaptchaService;
-    private final ThirdPartyCaptchaService thirdPartyCaptchaService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
     private final StringRedisTemplate stringRedisTemplate;
     private final RegisterEmailCodeMessagePublisher registerEmailCodeMessagePublisher;
     private final PasswordEncoder passwordEncoder;
@@ -110,9 +105,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                                         LoginFlowSessionService loginFlowSessionService,
                                         LoginChallengePolicy loginChallengePolicy,
                                         LoginChallengeSessionService loginChallengeSessionService,
-                                        HutoolCaptchaService hutoolCaptchaService,
-                                        TianaiCaptchaService tianaiCaptchaService,
-                                        ThirdPartyCaptchaService thirdPartyCaptchaService,
+                                        CaptchaStrategyRegistry captchaStrategyRegistry,
                                         StringRedisTemplate stringRedisTemplate,
                                         RegisterEmailCodeMessagePublisher registerEmailCodeMessagePublisher,
                                         PasswordEncoder passwordEncoder,
@@ -131,9 +124,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
         this.loginFlowSessionService = loginFlowSessionService;
         this.loginChallengePolicy = loginChallengePolicy;
         this.loginChallengeSessionService = loginChallengeSessionService;
-        this.hutoolCaptchaService = hutoolCaptchaService;
-        this.tianaiCaptchaService = tianaiCaptchaService;
-        this.thirdPartyCaptchaService = thirdPartyCaptchaService;
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
         this.stringRedisTemplate = stringRedisTemplate;
         this.registerEmailCodeMessagePublisher = registerEmailCodeMessagePublisher;
         this.passwordEncoder = passwordEncoder;
@@ -692,7 +683,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
             if (!hasCaptchaPayload) {
                 return captchaRequiredResult(riskLevel, challengeType, challengeSubType);
             }
-            if (!verifyRequiredCaptcha(challengeType, publicIp, captchaUuid, captchaCode)) {
+            if (!verifyRequiredCaptcha(challengeType, challengeSubType, publicIp, captchaUuid, captchaCode)) {
                 return captchaRequiredResult(riskLevel, challengeType, challengeSubType);
             }
             loginChallengeSessionService.clearPendingChallengeSelection(email, deviceFingerprint);
@@ -1012,32 +1003,22 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
     }
 
     private boolean verifyRequiredCaptcha(String challengeType,
+                                          String challengeSubType,
                                           String publicIp,
                                           String captchaUuid,
                                           String captchaCode) {
-        return switch (challengeType) {
-            case CHALLENGE_HUTOOL_SHEAR -> hutoolCaptchaService.validateCaptcha(LOGIN_CAPTCHA_TYPE, captchaUuid, captchaCode);
-            case CHALLENGE_TIANAI -> tianaiCaptchaService.validateCaptcha(captchaUuid, captchaCode);
-            case CHALLENGE_CLOUDFLARE_TURNSTILE -> thirdPartyCaptchaService.validateTurnstile(captchaCode, publicIp);
-            case CHALLENGE_HCAPTCHA -> thirdPartyCaptchaService.validateHCaptcha(captchaCode, publicIp);
-            case CHALLENGE_GOOGLE_RECAPTCHA_V2, CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY ->
-                    thirdPartyCaptchaService.validateRecaptcha(captchaCode, publicIp);
-            default -> false;
-        };
+        return captchaStrategyRegistry.verify(new CaptchaVerifyRequest(
+                challengeType,
+                challengeSubType,
+                LOGIN_CAPTCHA_TYPE,
+                captchaUuid,
+                captchaCode,
+                publicIp
+        ));
     }
 
-    private String resolveChallengeSiteKey(String challengeType) {
-        if (CHALLENGE_CLOUDFLARE_TURNSTILE.equals(challengeType)) {
-            return thirdPartyCaptchaService.getTurnstileSiteKey();
-        }
-        if (CHALLENGE_HCAPTCHA.equals(challengeType)) {
-            return thirdPartyCaptchaService.getHCaptchaSiteKey();
-        }
-        if (CHALLENGE_GOOGLE_RECAPTCHA_V2.equals(challengeType)
-                || CHALLENGE_GOOGLE_RECAPTCHA_V3_LEGACY.equals(challengeType)) {
-            return thirdPartyCaptchaService.getRecaptchaSiteKey();
-        }
-        return null;
+    private String resolveChallengeSiteKey(String challengeType, String challengeSubType) {
+        return captchaStrategyRegistry.siteKey(challengeType, challengeSubType);
     }
 
     private LoginFlowStartResult captchaRequiredResult(String riskLevel, String challengeType, String challengeSubType) {
@@ -1047,7 +1028,7 @@ public class UserPasswordLoginServiceImpl implements UserPasswordLoginService {
                 .riskLevel(riskLevel)
                 .challengeType(challengeType)
                 .challengeSubType(challengeSubType)
-                .challengeSiteKey(resolveChallengeSiteKey(challengeType))
+                .challengeSiteKey(resolveChallengeSiteKey(challengeType, challengeSubType))
                 .build();
     }
 

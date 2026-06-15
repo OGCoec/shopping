@@ -283,12 +283,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_refund_record_order_external_trade
 CREATE INDEX IF NOT EXISTS idx_payment_refund_record_status_created
     ON payment_refund_record (status, created_at DESC, id DESC);
 
+CREATE INDEX IF NOT EXISTS idx_payment_refund_record_created_id
+    ON payment_refund_record (created_at DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_payment_refund_record_order_no
     ON payment_refund_record (order_no);
 
 CREATE INDEX IF NOT EXISTS idx_payment_refund_record_user_created
     ON payment_refund_record (user_id, created_at DESC, id DESC)
     WHERE user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_payment_refund_record_user_order_created_id
+    ON payment_refund_record (user_id, order_no, created_at DESC, id DESC);
 
 CREATE INDEX IF NOT EXISTS idx_payment_refund_record_external_trade_no
     ON payment_refund_record (external_trade_no)

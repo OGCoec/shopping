@@ -12,6 +12,22 @@
 }
 
 body {
+  --pointer-x: 0;
+  --pointer-y: 0;
+  --wash-shift-x: 0px;
+  --wash-shift-y: 0px;
+  --grid-shift-x: 0px;
+  --grid-shift-y: 0px;
+  --motion-shift-x: 0px;
+  --motion-shift-y: 0px;
+  --panel-shift-x: 0px;
+  --panel-shift-y: 0px;
+  --motion-angle: 135deg;
+  --motion-hue: 164;
+  --motion-alpha: 0.04;
+  --motion-panel-alpha: 0.035;
+  --motion-card-alpha: 0.045;
+  --motion-grid-opacity: 0.24;
   min-height: 100vh;
   margin: 0;
   color: var(--coupon-ink);
@@ -26,6 +42,22 @@ body {
   pointer-events: none;
 }
 
+.coupon-page-background::after {
+  position: absolute;
+  inset: -80px;
+  z-index: 2;
+  content: "";
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 72%, 62%, var(--motion-alpha)) 0%,
+      rgba(255, 255, 255, 0) 48%
+    );
+  mix-blend-mode: soft-light;
+  transform: translate3d(var(--motion-shift-x), var(--motion-shift-y), 0);
+  will-change: transform;
+}
+
 .coupon-page-background__wash {
   position: absolute;
   inset: -20%;
@@ -33,14 +65,22 @@ body {
     radial-gradient(circle at 15% 20%, rgba(23, 151, 114, 0.18), transparent 28%),
     radial-gradient(circle at 82% 18%, rgba(244, 184, 92, 0.18), transparent 30%),
     linear-gradient(135deg, #f5faf4, #eef5eb);
+  transform: translate3d(var(--wash-shift-x), var(--wash-shift-y), 0) scale(1.04);
+  transform-origin: center;
+  will-change: transform;
 }
 
 .coupon-page-background__dots {
   position: absolute;
-  inset: 0;
-  opacity: 0.38;
-  background-image: radial-gradient(rgba(19, 32, 23, 0.12) 1px, transparent 1px);
-  background-size: 18px 18px;
+  inset: -48px;
+  opacity: var(--motion-grid-opacity);
+  background-image:
+    linear-gradient(rgba(23, 151, 114, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23, 151, 114, 0.11) 1px, transparent 1px),
+    radial-gradient(rgba(19, 32, 23, 0.1) 1px, transparent 1px);
+  background-size: 42px 42px, 42px 42px, 18px 18px;
+  transform: translate3d(var(--grid-shift-x), var(--grid-shift-y), 0);
+  will-change: transform;
 }
 
 .coupon-page {
@@ -83,7 +123,13 @@ body {
   font-size: 13px;
   font-weight: 900;
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 72%, 62%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.72);
   box-shadow: 0 12px 30px rgba(19, 32, 23, 0.08);
   cursor: pointer;
 }
@@ -91,7 +137,13 @@ body {
 .coupon-primary-button {
   border-color: rgba(23, 151, 114, 0.32);
   color: #fff;
-  background: linear-gradient(135deg, #179772, #0f7a5b);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 72%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 60%
+    ),
+    linear-gradient(135deg, #179772, #0f7a5b);
 }
 
 .coupon-page-tabs {
@@ -103,16 +155,30 @@ body {
 .coupon-page-tabs a.is-active {
   border-color: rgba(23, 151, 114, 0.36);
   color: #0f7a5b;
-  background: rgba(231, 247, 240, 0.85);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 72%, 62%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(231, 247, 240, 0.85);
 }
 
 .coupon-status,
 .coupon-panel {
   border: 1px solid var(--coupon-line);
   border-radius: 18px;
-  background: var(--coupon-soft);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 72%, 62%, var(--motion-panel-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    var(--coupon-soft);
   box-shadow: 0 20px 60px rgba(19, 32, 23, 0.1);
+  transform: translate3d(var(--panel-shift-x), var(--panel-shift-y), 0);
   backdrop-filter: blur(16px);
+  will-change: transform;
 }
 
 .coupon-status {
@@ -192,7 +258,13 @@ body {
   border: 1px solid var(--coupon-line);
   border-radius: 16px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.68);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 72%, 62%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.68);
 }
 
 .coupon-card.is-clickable {
@@ -241,7 +313,13 @@ body {
   border: 1px solid var(--coupon-line);
   border-radius: 12px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.58);
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 72%, 62%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 62%
+    ),
+    rgba(255, 255, 255, 0.58);
 }
 
 .coupon-meta-grid span,

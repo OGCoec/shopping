@@ -1,33 +1,37 @@
 package com.example.ShoppingSystem.listener;
 
-import com.example.ShoppingSystem.service.captcha.hutool.HutoolCaptchaService;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaGenerateRequest;
+import com.example.ShoppingSystem.service.captcha.strategy.CaptchaStrategyRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
-/**
- * Hutool 图形验证码预热监听器。
- * 在应用完全启动后主动生成一次验证码，避免首次真实请求出现明显延迟。
- */
+import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.CHALLENGE_HUTOOL_SHEAR;
+
 @Slf4j
 @Component
 public class HutoolCaptchaWarmUpListener implements ApplicationListener<ApplicationReadyEvent> {
 
-    private final HutoolCaptchaService hutoolCaptchaService;
+    private final CaptchaStrategyRegistry captchaStrategyRegistry;
 
-    public HutoolCaptchaWarmUpListener(HutoolCaptchaService hutoolCaptchaService) {
-        this.hutoolCaptchaService = hutoolCaptchaService;
+    public HutoolCaptchaWarmUpListener(CaptchaStrategyRegistry captchaStrategyRegistry) {
+        this.captchaStrategyRegistry = captchaStrategyRegistry;
     }
 
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
         long start = System.currentTimeMillis();
         try {
-            hutoolCaptchaService.generateCaptcha("warmup", null);
-            log.info("Hutool 图形验证码预热完成，耗时 {} ms", System.currentTimeMillis() - start);
+            captchaStrategyRegistry.generate(new CaptchaGenerateRequest(
+                    CHALLENGE_HUTOOL_SHEAR,
+                    null,
+                    "warmup",
+                    null
+            ));
+            log.info("Hutool captcha warm-up completed, elapsed={}ms", System.currentTimeMillis() - start);
         } catch (Exception e) {
-            log.warn("Hutool 图形验证码预热失败，不影响应用启动", e);
+            log.warn("Hutool captcha warm-up failed, application startup continues.", e);
         }
     }
 }

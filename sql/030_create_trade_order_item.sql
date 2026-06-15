@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS trade_order_item (
 CREATE INDEX IF NOT EXISTS idx_trade_order_item_order_no
     ON trade_order_item (order_no);
 
+CREATE INDEX IF NOT EXISTS idx_trade_order_item_order_created_id
+    ON trade_order_item (order_no, created_at ASC, id ASC);
+
 CREATE INDEX IF NOT EXISTS idx_trade_order_item_user_created
     ON trade_order_item (user_id, created_at DESC, id DESC);
 

@@ -38,10 +38,11 @@
       return null;
     }
     try {
-      const targetUrl = new URL(targetPath, window.location.origin);
-      if (targetUrl.origin !== window.location.origin) {
+      const safePath = window.ShoppingSecurityUrls?.safeSameOriginPath?.(targetPath, "", ["/shopping/user/"]) || "";
+      if (!safePath) {
         return null;
       }
+      const targetUrl = new URL(safePath, window.location.origin);
       return {
         href: `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`,
         pathname: targetUrl.pathname
@@ -119,8 +120,9 @@
       const payload = await parseJsonSafely(response);
       if (!response.ok) {
         if (typeof window !== "undefined" && payload?.redirectPath) {
-          if (!navigateWithinAuthShell(payload.redirectPath, { replace: true })) {
-            window.location.replace(payload.redirectPath);
+          const redirectPath = window.ShoppingSecurityUrls?.safeSameOriginPath?.(payload.redirectPath, registerStepPaths.CREATE_ACCOUNT, ["/shopping/user/"]) || registerStepPaths.CREATE_ACCOUNT;
+          if (!navigateWithinAuthShell(redirectPath, { replace: true })) {
+            window.location.replace(redirectPath);
           }
         }
         return null;
@@ -156,19 +158,20 @@
       if (typeof window === "undefined") {
         return;
       }
-      const target = resolveSameOriginRouteTarget(fallbackPath);
+      const safeFallbackPath = window.ShoppingSecurityUrls?.safeSameOriginPath?.(fallbackPath, registerStepPaths.CREATE_ACCOUNT, ["/shopping/user/"]) || registerStepPaths.CREATE_ACCOUNT;
+      const target = resolveSameOriginRouteTarget(safeFallbackPath);
       const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       if (!target || currentHref === target.href) {
         return;
       }
-      if (navigateWithinAuthShell(fallbackPath, navigationOptions)) {
+      if (navigateWithinAuthShell(safeFallbackPath, navigationOptions)) {
         return;
       }
       if (navigationOptions.replace) {
-        window.location.replace(fallbackPath);
+        window.location.replace(safeFallbackPath);
         return;
       }
-      window.location.assign(fallbackPath);
+      window.location.assign(safeFallbackPath);
     }
 
     return {

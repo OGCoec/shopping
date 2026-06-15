@@ -10,6 +10,7 @@ public final class OrderRedisKeys {
     private static final String ORDER_ITEM_KEY_PREFIX = "shopping:order:item:";
     private static final String USER_ORDER_KEY_PREFIX = "shopping:order:user:";
     private static final String IDEMPOTENCY_KEY_PREFIX = "shopping:order:idempotency:";
+    private static final String PAYMENT_CALLBACK_RECEIVED_ORDER_KEY_PREFIX = "shopping:payment:callback:received-order:";
 
     public static final String ORDER_EXPIRE_ZSET_KEY = "shopping:order:expire";
     public static final String ORDER_CLOSING_ZSET_KEY = "shopping:order:closing";
@@ -51,5 +52,9 @@ public final class OrderRedisKeys {
 
     public static String idempotencyKey(Long userId, String idempotencyKey) {
         return IDEMPOTENCY_KEY_PREFIX + userId + ":" + idempotencyKey;
+    }
+
+    public static String paymentCallbackReceivedOrderKey(String orderNo) {
+        return PAYMENT_CALLBACK_RECEIVED_ORDER_KEY_PREFIX + orderNo;
     }
 }

@@ -58,6 +58,14 @@
     let pendingRegisterPhoneSmsChallenge = null;
     let registerPhoneSendCooldownUntil = 0;
     let registerPhoneSendCooldownTimer = null;
+
+    function safePath(value, fallback = "/shopping/user/console", allowedPrefixes = ["/shopping/"]) {
+      const securityUrls = globalThis.ShoppingSecurityUrls;
+      if (securityUrls && typeof securityUrls.safeSameOriginPath === "function") {
+        return securityUrls.safeSameOriginPath(value, fallback, allowedPrefixes);
+      }
+      return fallback;
+    }
     const registerPhoneSendCodeDefaultText = registerPhoneRequiredSendCodeButton?.textContent || "Send code";
     const registerPhoneCodeSentMessage = "\u77ed\u4fe1\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001\uff0c\u8bf7\u8f93\u5165\u77ed\u4fe1\u9a8c\u8bc1\u7801\u3002";
 
@@ -111,6 +119,13 @@
       clearRegisterPhoneSendCooldownTimer();
       refreshRegisterPhoneSendCooldown();
       registerPhoneSendCooldownTimer = setInterval(refreshRegisterPhoneSendCooldown, 200);
+    }
+
+    function forceReportWebRtcSignal() {
+      try {
+        globalThis.ShoppingPreAuthClient?.forceReportWebRtcSignal?.();
+      } catch (_) {
+      }
     }
 
     function normalizeRoutePath(routeTarget) {
@@ -326,7 +341,8 @@
           return true;
         }
         if (loginResult?.redirectPath) {
-          window.location.assign(loginResult.redirectPath);
+          forceReportWebRtcSignal();
+          window.location.assign(safePath(loginResult.redirectPath));
         }
         return true;
       }
@@ -383,12 +399,13 @@
           resetRegisterPhoneCodeState();
           resetRegisterPhoneRequiredValidationState();
           resetRegisterPhoneSendCooldown();
-          window.location.assign(registerModePath("ADD_PHONE", "REGISTER_ADD_PHONE"));
+          window.location.assign(safePath(registerModePath("ADD_PHONE", "REGISTER_ADD_PHONE"), authPaths.ADD_PHONE || DEFAULT_AUTH_PATHS.ADD_PHONE, ["/shopping/user/"]));
           return true;
         }
 
         if (verifyResult?.authenticated && verifyResult?.redirectPath) {
-          window.location.assign(verifyResult.redirectPath);
+          forceReportWebRtcSignal();
+          window.location.assign(safePath(verifyResult.redirectPath));
           return true;
         }
 

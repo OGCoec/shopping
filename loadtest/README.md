@@ -224,7 +224,37 @@ The callback API should return `ORDER_PAYMENT_CALLBACK_RECEIVED` immediately. Th
 
 The callback verification SQL also checks that `REFUND_PENDING` callback outcomes do not deliver card secrets, and that `PAID` / `PAID_IDEMPOTENT` repeated callbacks do not over-deliver card secrets beyond the order item quantity.
 
-## 7. Duplicate payment callback card secret flow
+## 7. Payment callback + refund Redis Stream flow
+
+Use the Stream runner after the payment callback entry has been changed to Redis Stream buffering. It reuses the callback JMeter plan because the HTTP API did not change, but it verifies the new main chain:
+
+```text
+callback API -> callback Redis Stream -> payment_callback_inbox -> order state / refund record -> refund Redis Stream -> payment_refund_record
+```
+
+Run:
+
+```powershell
+.\loadtest\scripts\run-order-callback-refund-stream.ps1 `
+  -CallbackCsv loadtest-output/order-callback-batch-input.csv `
+  -Threads 500 `
+  -RampUp 1 `
+  -Verify `
+  -RedisCheck
+```
+
+Expected behavior:
+
+```text
+Every callback request returns ORDER_PAYMENT_CALLBACK_RECEIVED.
+Callback inbox rows are eventually PROCESSED by the callback Stream flusher.
+PAID / PAID_IDEMPOTENT callbacks leave the order PAID and do not create refunds.
+REFUND_PENDING callbacks create payment_refund_record rows.
+SIMULATED refund providers eventually move refund rows to REFUNDED through the refund Stream flusher.
+RedisCheck records callback/refund Stream XLEN and XPENDING snapshots in the run output directory.
+```
+
+## 8. Duplicate payment callback card secret flow
 
 Use this plan when you want to prove that repeated third-party payment callbacks do not create duplicate paid-order handling or over-deliver card secrets.
 
@@ -267,7 +297,7 @@ For a manual localhost smoke test, generate one order with the seed main and the
 loadtest/localhost/order-duplicate-callback-card-secret.http
 ```
 
-## 8. Local result summary
+## 9. Local result summary
 
 The table below summarizes local `loadtest-output/runs/*/summary.csv` files found on this machine. These generated files are intentionally ignored by Git, so the table is a readable snapshot, not a committed source of truth.
 

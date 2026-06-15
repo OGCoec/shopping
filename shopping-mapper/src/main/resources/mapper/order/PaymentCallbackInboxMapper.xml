@@ -99,6 +99,140 @@ SELECT <include refid="CallbackColumns"/>
 FROM updated
     </select>
 
+    <select id="batchUpsertAndClaimStreamCallbacks" resultType="map">
+        <![CDATA[
+WITH raw AS (
+    SELECT row_number() OVER () AS rn,
+           stream_message_id,
+           callback_no,
+           order_no,
+           external_trade_no,
+           payment_provider,
+           paid_at_epoch_ms,
+           paid_amount_yuan,
+           idempotency_key,
+           raw_payload_json,
+           received_at_epoch_ms
+    FROM jsonb_to_recordset(CAST(#{callbacksJson} AS jsonb)) AS callback(
+        stream_message_id text,
+        callback_no text,
+        order_no text,
+        external_trade_no text,
+        payment_provider text,
+        paid_at_epoch_ms bigint,
+        paid_amount_yuan numeric,
+        idempotency_key text,
+        raw_payload_json text,
+        received_at_epoch_ms bigint
+    )
+),
+deduped AS (
+    SELECT DISTINCT ON (idempotency_key) *
+    FROM raw
+    WHERE idempotency_key IS NOT NULL
+      AND idempotency_key <> ''
+    ORDER BY idempotency_key, rn
+),
+upserted AS (
+    INSERT INTO payment_callback_inbox (
+        callback_no,
+        order_no,
+        external_trade_no,
+        payment_provider,
+        paid_at,
+        paid_amount_yuan,
+        status,
+        idempotency_key,
+        raw_payload_json,
+        created_at,
+        updated_at
+    )
+    SELECT callback_no,
+           order_no,
+           NULLIF(external_trade_no, ''),
+           payment_provider,
+             CASE
+                 WHEN paid_at_epoch_ms IS NULL THEN NOW()
+                 ELSE to_timestamp(paid_at_epoch_ms / 1000.0)
+             END,
+             paid_amount_yuan,
+             'PROCESSING',
+             idempotency_key,
+             CAST(raw_payload_json AS jsonb),
+             NOW(),
+             NOW()
+      FROM deduped
+      ORDER BY rn
+      ON CONFLICT (idempotency_key) DO UPDATE
+      SET status = 'PROCESSING',
+          last_error_code = NULL,
+          last_error_message = NULL,
+          updated_at = NOW(),
+          version = payment_callback_inbox.version + 1
+      WHERE (
+          payment_callback_inbox.status = 'RECEIVED'
+          OR (
+              payment_callback_inbox.status = 'FAILED'
+              AND payment_callback_inbox.retry_count < #{maxRetry}
+              AND (payment_callback_inbox.next_retry_at IS NULL OR payment_callback_inbox.next_retry_at <= NOW())
+          )
+          OR (
+              payment_callback_inbox.status = 'PROCESSING'
+              AND payment_callback_inbox.updated_at <= NOW() - (#{processingTimeoutMs} * INTERVAL '1 millisecond')
+          )
+      )
+      RETURNING *
+  ),
+  terminal AS (
+      SELECT c.*
+      FROM payment_callback_inbox c
+      INNER JOIN deduped d ON d.idempotency_key = c.idempotency_key
+      WHERE c.status = 'PROCESSED'
+         OR (c.status = 'FAILED' AND c.retry_count >= #{maxRetry})
+  ),
+  stream_rows AS (
+      SELECT raw.stream_message_id,
+             raw.rn,
+             FALSE AS stream_ack_only,
+             upserted.*
+      FROM raw
+      INNER JOIN upserted ON upserted.idempotency_key = raw.idempotency_key
+      UNION ALL
+      SELECT raw.stream_message_id,
+             raw.rn,
+             TRUE AS stream_ack_only,
+             c.*
+      FROM raw
+      INNER JOIN terminal c ON c.idempotency_key = raw.idempotency_key
+  )
+        ]]>
+SELECT stream_message_id AS "streamMessageId",
+       stream_ack_only AS "streamAckOnly",
+       (NOT stream_ack_only) AS "streamClaimed",
+       id,
+       callback_no AS "callbackNo",
+       order_no AS "orderNo",
+       external_trade_no AS "externalTradeNo",
+       payment_provider AS "paymentProvider",
+       paid_at AS "paidAt",
+       paid_amount_yuan AS "paidAmountYuan",
+       status,
+       retry_count AS "retryCount",
+       next_retry_at AS "nextRetryAt",
+       result_outcome AS "resultOutcome",
+       result_order_status AS "resultOrderStatus",
+       refund_no AS "refundNo",
+       last_error_code AS "lastErrorCode",
+       last_error_message AS "lastErrorMessage",
+       idempotency_key AS "idempotencyKey",
+       raw_payload_json::text AS "rawPayloadJson",
+       version,
+       created_at AS "createdAt",
+       updated_at AS "updatedAt"
+FROM stream_rows
+ORDER BY rn
+    </select>
+
     <update id="batchWriteResults">
         <![CDATA[
 WITH result_rows AS (
