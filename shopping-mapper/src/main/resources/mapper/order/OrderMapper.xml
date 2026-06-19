@@ -15,6 +15,8 @@ SELECT encode(s.id, 'hex') AS "skuId",
        s.spec_json::text AS "specJson",
        COALESCE(s.sku_image_url::jsonb, '[]'::jsonb)::text AS "skuImageUrl",
        s.price_yuan AS "priceYuan",
+       s.point_exchange_enabled AS "pointExchangeEnabled",
+       s.point_exchange_points AS "pointExchangePoints",
        s.stock_quantity AS "stockQuantity",
        s.status AS "skuStatus",
        p.status AS "spuStatus",
@@ -92,6 +94,9 @@ WHERE s.id = target.sku_id
             total_amount_yuan,
             discount_amount_yuan,
             pay_amount_yuan,
+            required_points,
+            payment_type,
+            used_points,
             user_coupon_id,
             idempotency_key,
             expire_at,
@@ -105,6 +110,9 @@ WHERE s.id = target.sku_id
             #{totalAmountYuan},
             #{discountAmountYuan},
             #{payAmountYuan},
+            #{requiredPoints},
+            'UNPAID',
+            0,
             #{userCouponId},
             #{idempotencyKey},
             #{expireAt},
@@ -127,6 +135,9 @@ INSERT INTO trade_order_item (
     quantity,
     sale_price_yuan,
     line_amount_yuan,
+    point_exchange_enabled,
+    point_exchange_points,
+    line_points,
     is_hot_sku,
     created_at
 )
@@ -141,6 +152,9 @@ SELECT raw.order_no,
        raw.quantity,
        raw.sale_price_yuan,
        raw.line_amount_yuan,
+       COALESCE(raw.point_exchange_enabled, FALSE),
+       COALESCE(raw.point_exchange_points, 0),
+       COALESCE(raw.line_points, 0),
        raw.is_hot_sku,
        to_timestamp(raw.created_at_epoch_ms / 1000.0)
 FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
@@ -155,6 +169,9 @@ FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
     quantity integer,
     sale_price_yuan numeric,
     line_amount_yuan numeric,
+    point_exchange_enabled boolean,
+    point_exchange_points bigint,
+    line_points bigint,
     is_hot_sku boolean,
     created_at_epoch_ms bigint
 )
@@ -171,6 +188,9 @@ INSERT INTO trade_order (
     total_amount_yuan,
     discount_amount_yuan,
     pay_amount_yuan,
+    required_points,
+    payment_type,
+    used_points,
     user_coupon_id,
     idempotency_key,
     expire_at,
@@ -189,6 +209,9 @@ SELECT raw.order_no,
        raw.total_amount_yuan,
        raw.discount_amount_yuan,
        raw.pay_amount_yuan,
+       COALESCE(raw.required_points, 0),
+       COALESCE(NULLIF(raw.payment_type, ''), 'UNPAID'),
+       COALESCE(raw.used_points, 0),
        CASE
            WHEN raw.user_coupon_id_hex IS NULL OR btrim(raw.user_coupon_id_hex) = '' THEN NULL
            ELSE decode(raw.user_coupon_id_hex, 'hex')
@@ -210,6 +233,9 @@ FROM jsonb_to_recordset(CAST(#{ordersJson} AS jsonb)) AS raw(
     total_amount_yuan numeric,
     discount_amount_yuan numeric,
     pay_amount_yuan numeric,
+    required_points bigint,
+    payment_type text,
+    used_points bigint,
     user_coupon_id_hex text,
     idempotency_key text,
     expire_at_epoch_ms bigint,
@@ -228,6 +254,9 @@ SET status = EXCLUDED.status,
     total_amount_yuan = EXCLUDED.total_amount_yuan,
     discount_amount_yuan = EXCLUDED.discount_amount_yuan,
     pay_amount_yuan = EXCLUDED.pay_amount_yuan,
+    required_points = EXCLUDED.required_points,
+    payment_type = EXCLUDED.payment_type,
+    used_points = EXCLUDED.used_points,
     user_coupon_id = EXCLUDED.user_coupon_id,
     idempotency_key = EXCLUDED.idempotency_key,
     expire_at = EXCLUDED.expire_at,
@@ -257,6 +286,9 @@ INSERT INTO trade_order_item (
     quantity,
     sale_price_yuan,
     line_amount_yuan,
+    point_exchange_enabled,
+    point_exchange_points,
+    line_points,
     is_hot_sku,
     created_at
 )
@@ -271,6 +303,9 @@ SELECT raw.order_no,
        raw.quantity,
        raw.sale_price_yuan,
        raw.line_amount_yuan,
+       COALESCE(raw.point_exchange_enabled, FALSE),
+       COALESCE(raw.point_exchange_points, 0),
+       COALESCE(raw.line_points, 0),
        raw.is_hot_sku,
        to_timestamp(raw.created_at_epoch_ms / 1000.0)
 FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
@@ -285,6 +320,9 @@ FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
     quantity integer,
     sale_price_yuan numeric,
     line_amount_yuan numeric,
+    point_exchange_enabled boolean,
+    point_exchange_points bigint,
+    line_points bigint,
     is_hot_sku boolean,
     created_at_epoch_ms bigint
 )
@@ -292,6 +330,14 @@ ORDER BY raw.created_at_epoch_ms, raw.order_no, raw.sku_id_hex
 ON CONFLICT (order_no, sku_id) DO NOTHING
         ]]>
     </insert>
+
+    <select id="lockOrderState" resultType="map">
+        SELECT pg_advisory_xact_lock(hashtextextended('shopping:order:' || #{orderNo}, 0)) AS "locked"
+    </select>
+
+    <select id="tryLockOrderState" resultType="boolean">
+        SELECT pg_try_advisory_xact_lock(hashtextextended('shopping:order:' || #{orderNo}, 0))
+    </select>
 
     <sql id="OrderSelectColumns">
         id AS "id",
@@ -301,6 +347,9 @@ ON CONFLICT (order_no, sku_id) DO NOTHING
         total_amount_yuan AS "totalAmountYuan",
         discount_amount_yuan AS "discountAmountYuan",
         pay_amount_yuan AS "payAmountYuan",
+        required_points AS "requiredPoints",
+        payment_type AS "paymentType",
+        used_points AS "usedPoints",
         encode(user_coupon_id, 'hex') AS "userCouponId",
         idempotency_key AS "idempotencyKey",
         expire_at AS "expireAt",
@@ -319,6 +368,14 @@ ON CONFLICT (order_no, sku_id) DO NOTHING
         FROM trade_order
         WHERE order_no = #{orderNo}
           AND user_id = #{userId}
+    </select>
+
+    <select id="findOrderByOrderNoForUserForUpdate" resultType="map">
+        SELECT <include refid="OrderSelectColumns"/>
+        FROM trade_order
+        WHERE order_no = #{orderNo}
+          AND user_id = #{userId}
+        FOR UPDATE
     </select>
 
     <select id="findOrderByOrderNo" resultType="map">
@@ -347,11 +404,42 @@ ON CONFLICT (order_no, sku_id) DO NOTHING
                quantity,
                sale_price_yuan AS "salePriceYuan",
                line_amount_yuan AS "lineAmountYuan",
+               point_exchange_enabled AS "pointExchangeEnabled",
+               point_exchange_points AS "pointExchangePoints",
+               line_points AS "linePoints",
                is_hot_sku AS "hotSku",
                created_at AS "createdAt"
         FROM trade_order_item
         WHERE order_no = #{orderNo}
         ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="summarizeOrderItemPoints" resultType="map">
+        <![CDATA[
+SELECT COUNT(*) AS "itemCount",
+       COALESCE(BOOL_AND(point_exchange_enabled), FALSE) AS "pointExchangeAvailable",
+       COALESCE(SUM(line_points), 0) AS "requiredPoints"
+FROM trade_order_item
+WHERE order_no = #{orderNo}
+        ]]>
+    </select>
+
+    <select id="deductUserPoints" resultType="map">
+        <![CDATA[
+UPDATE user_point_account
+SET available_points = available_points - #{usedPoints},
+    total_used_points = total_used_points + #{usedPoints},
+    updated_at = NOW(),
+    version = version + 1
+WHERE user_id = #{userId}
+  AND available_points >= #{usedPoints}
+RETURNING id,
+          user_id AS "userId",
+          available_points AS "availablePoints",
+          total_earned_points AS "totalEarnedPoints",
+          total_used_points AS "totalUsedPoints",
+          version
+        ]]>
     </select>
 
     <select id="pageOrdersByUser" resultType="map">
@@ -363,6 +451,7 @@ SELECT o.id AS "id",
        o.total_amount_yuan AS "totalAmountYuan",
        o.discount_amount_yuan AS "discountAmountYuan",
        o.pay_amount_yuan AS "payAmountYuan",
+       o.required_points AS "requiredPoints",
        encode(o.user_coupon_id, 'hex') AS "userCouponId",
        o.expire_at AS "expireAt",
        o.paid_at AS "paidAt",
@@ -410,6 +499,7 @@ SELECT o.id AS "id",
        o.total_amount_yuan AS "totalAmountYuan",
        o.discount_amount_yuan AS "discountAmountYuan",
        o.pay_amount_yuan AS "payAmountYuan",
+       o.required_points AS "requiredPoints",
        encode(o.user_coupon_id, 'hex') AS "userCouponId",
        o.expire_at AS "expireAt",
        o.paid_at AS "paidAt",
@@ -522,6 +612,8 @@ WITH updated AS (
     UPDATE trade_order
     SET status = 'PAID',
         paid_at = COALESCE(paid_at, #{paidAt}),
+        payment_type = 'SIMULATED',
+        used_points = 0,
         updated_at = NOW(),
         version = version + 1
     WHERE order_no = #{orderNo}
@@ -533,6 +625,9 @@ WITH updated AS (
               user_coupon_id,
               total_amount_yuan,
               discount_amount_yuan,
+              required_points,
+              payment_type,
+              used_points,
               true AS changed
 )
 SELECT id AS "id",
@@ -542,6 +637,9 @@ SELECT id AS "id",
        encode(user_coupon_id, 'hex') AS "userCouponId",
        total_amount_yuan AS "totalAmountYuan",
        discount_amount_yuan AS "discountAmountYuan",
+       required_points AS "requiredPoints",
+       payment_type AS "paymentType",
+       used_points AS "usedPoints",
        changed AS "changed"
 FROM updated
 UNION ALL
@@ -552,6 +650,9 @@ SELECT id AS "id",
        encode(user_coupon_id, 'hex') AS "userCouponId",
        total_amount_yuan AS "totalAmountYuan",
        discount_amount_yuan AS "discountAmountYuan",
+       required_points AS "requiredPoints",
+       payment_type AS "paymentType",
+       used_points AS "usedPoints",
        false AS "changed"
 FROM trade_order
 WHERE order_no = #{orderNo}
@@ -584,6 +685,8 @@ updated AS (
     UPDATE trade_order o
     SET status = 'PAID',
         paid_at = COALESCE(o.paid_at, to_timestamp(raw.paid_at_epoch_ms / 1000.0)),
+        payment_type = 'SIMULATED',
+        used_points = 0,
         updated_at = NOW(),
         version = o.version + 1
     FROM raw
@@ -602,6 +705,9 @@ updated AS (
               o.total_amount_yuan,
               o.discount_amount_yuan,
               o.pay_amount_yuan,
+              o.required_points,
+              o.payment_type,
+              o.used_points,
               true AS changed
 ),
 existing AS (
@@ -615,9 +721,12 @@ existing AS (
            o.user_id,
            COALESCE(o.status, 'NOT_FOUND') AS status,
            encode(o.user_coupon_id, 'hex') AS user_coupon_id,
-           o.total_amount_yuan,
-           o.discount_amount_yuan,
-           o.pay_amount_yuan
+            o.total_amount_yuan,
+            o.discount_amount_yuan,
+            o.pay_amount_yuan,
+            o.required_points,
+            o.payment_type,
+            o.used_points
     FROM raw
     LEFT JOIN trade_order o ON o.order_no = raw.order_no
     WHERE NOT EXISTS (
@@ -637,9 +746,12 @@ classified AS (
            user_id,
            status AS order_status,
            user_coupon_id,
-           total_amount_yuan,
-           discount_amount_yuan,
-           pay_amount_yuan,
+            total_amount_yuan,
+            discount_amount_yuan,
+            pay_amount_yuan,
+            required_points,
+            payment_type,
+            used_points,
            true AS changed,
            'PAID' AS outcome,
            NULL::text AS reason_code
@@ -655,9 +767,12 @@ classified AS (
            user_id,
            status AS order_status,
            user_coupon_id,
-           total_amount_yuan,
-           discount_amount_yuan,
-           pay_amount_yuan,
+            total_amount_yuan,
+            discount_amount_yuan,
+            pay_amount_yuan,
+            required_points,
+            payment_type,
+            used_points,
            false AS changed,
            CASE
                WHEN status = 'PAID' THEN 'PAID_IDEMPOTENT'
@@ -683,6 +798,9 @@ SELECT callback_no AS "callbackNo",
        total_amount_yuan AS "totalAmountYuan",
        discount_amount_yuan AS "discountAmountYuan",
        pay_amount_yuan AS "payAmountYuan",
+       required_points AS "requiredPoints",
+       payment_type AS "paymentType",
+       used_points AS "usedPoints",
        changed AS "changed",
        outcome AS "outcome",
        reason_code AS "reasonCode"
@@ -697,6 +815,8 @@ WITH updated AS (
     UPDATE trade_order
     SET status = 'PAID',
         paid_at = COALESCE(paid_at, #{paidAt}),
+        payment_type = 'SIMULATED',
+        used_points = 0,
         updated_at = NOW(),
         version = version + 1
     WHERE order_no = #{orderNo}
@@ -709,6 +829,9 @@ WITH updated AS (
               user_coupon_id,
               total_amount_yuan,
               discount_amount_yuan,
+              required_points,
+              payment_type,
+              used_points,
               true AS changed
 )
 SELECT id AS "id",
@@ -718,6 +841,9 @@ SELECT id AS "id",
        encode(user_coupon_id, 'hex') AS "userCouponId",
        total_amount_yuan AS "totalAmountYuan",
        discount_amount_yuan AS "discountAmountYuan",
+       required_points AS "requiredPoints",
+       payment_type AS "paymentType",
+       used_points AS "usedPoints",
        changed AS "changed"
 FROM updated
 UNION ALL
@@ -728,11 +854,84 @@ SELECT id AS "id",
        encode(user_coupon_id, 'hex') AS "userCouponId",
        total_amount_yuan AS "totalAmountYuan",
        discount_amount_yuan AS "discountAmountYuan",
+       required_points AS "requiredPoints",
+       payment_type AS "paymentType",
+       used_points AS "usedPoints",
        false AS "changed"
 FROM trade_order
 WHERE order_no = #{orderNo}
   AND user_id = #{userId}
   AND status = 'PAID'
+  AND NOT EXISTS (SELECT 1 FROM updated)
+LIMIT 1
+        ]]>
+    </select>
+
+    <select id="markPointsPaidOrderForUser" resultType="map">
+        <![CDATA[
+WITH updated AS (
+    UPDATE trade_order
+    SET status = 'PAID',
+        paid_at = COALESCE(paid_at, #{paidAt}),
+        payment_type = 'POINTS',
+        required_points = CASE
+            WHEN required_points > 0 THEN required_points
+            ELSE #{usedPoints}
+        END,
+        used_points = #{usedPoints},
+        discount_amount_yuan = 0,
+        user_coupon_id = NULL,
+        updated_at = NOW(),
+        version = version + 1
+    WHERE order_no = #{orderNo}
+      AND user_id = #{userId}
+      AND status IN ('PENDING_PAYMENT', 'CLOSING')
+      AND payment_type = 'UNPAID'
+      AND (expire_at IS NULL OR expire_at >= #{requestReceivedAt})
+    RETURNING id,
+              order_no,
+              user_id,
+              status,
+              user_coupon_id,
+              total_amount_yuan,
+              discount_amount_yuan,
+              pay_amount_yuan,
+              required_points,
+              payment_type,
+              used_points,
+              true AS changed
+)
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId",
+       total_amount_yuan AS "totalAmountYuan",
+       discount_amount_yuan AS "discountAmountYuan",
+       pay_amount_yuan AS "payAmountYuan",
+       required_points AS "requiredPoints",
+       payment_type AS "paymentType",
+       used_points AS "usedPoints",
+       changed AS "changed"
+FROM updated
+UNION ALL
+SELECT id AS "id",
+       order_no AS "orderNo",
+       user_id AS "userId",
+       status,
+       encode(user_coupon_id, 'hex') AS "userCouponId",
+       total_amount_yuan AS "totalAmountYuan",
+       discount_amount_yuan AS "discountAmountYuan",
+       pay_amount_yuan AS "payAmountYuan",
+       required_points AS "requiredPoints",
+       payment_type AS "paymentType",
+       used_points AS "usedPoints",
+       false AS "changed"
+FROM trade_order
+WHERE order_no = #{orderNo}
+  AND user_id = #{userId}
+  AND status = 'PAID'
+  AND payment_type = 'POINTS'
   AND NOT EXISTS (SELECT 1 FROM updated)
 LIMIT 1
         ]]>

@@ -108,10 +108,6 @@ public class HotOrderInventoryStrategy implements OrderInventoryStrategy {
         if (validItems.isEmpty()) {
             return;
         }
-        if (validItems.size() == 1) {
-            release(validItems.get(0));
-            return;
-        }
         List<String> keys = validItems.stream()
                 .flatMap(item -> Stream.of(
                         OrderRedisKeys.hotSkuStockKey(item.skuIdText()),

@@ -100,14 +100,29 @@ public class OrderExpireMessagePublisher {
     }
 
     private void publishClosingFinalizeCheck(OrderClosingFinalizeCheckMessage message, long delayMillis) {
+        String exchange = properties.getClosingFinalizeExchange();
+        String routingKey = properties.getClosingFinalizeRoutingKey();
+        OrderRabbitCorrelationData correlationData = OrderRabbitCorrelationData.closingFinalize(
+                message.orderNo(),
+                exchange,
+                routingKey,
+                delayMillis,
+                message.closingDeadlineEpochMilli()
+        );
         rabbitTemplate.convertAndSend(
-                properties.getClosingFinalizeExchange(),
-                properties.getClosingFinalizeRoutingKey(),
+                exchange,
+                routingKey,
                 message,
                 item -> {
                     item.getMessageProperties().setHeader(X_DELAY_HEADER, toDelayHeader(delayMillis));
+                    item.getMessageProperties().setHeader(OrderRabbitCorrelationData.HEADER_PHASE, correlationData.phase());
+                    item.getMessageProperties().setHeader(OrderRabbitCorrelationData.HEADER_ORDER_NO, correlationData.orderNo());
+                    item.getMessageProperties().setHeader(OrderRabbitCorrelationData.HEADER_CORRELATION_ID, correlationData.getId());
+                    item.getMessageProperties().setHeader(OrderRabbitCorrelationData.HEADER_CLOSING_DEADLINE_EPOCH_MILLI, correlationData.closingDeadlineEpochMilli());
+                    item.getMessageProperties().setHeader(OrderRabbitCorrelationData.HEADER_DELAY_MILLIS, correlationData.delayMillis());
                     return item;
-                }
+                },
+                correlationData
         );
     }
 

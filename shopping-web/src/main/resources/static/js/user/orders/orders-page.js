@@ -2,6 +2,7 @@
   const PAGE_BASE = "/shopping/user/orders";
   const PAGE_SIZE = 12;
   const orderApi = window.ShoppingOrderApi;
+  let paymentCountdownTimerId = 0;
 
   const statusEl = document.getElementById("order-page-status");
   const listView = document.getElementById("order-list-view");
@@ -80,6 +81,7 @@
       await loadDetail(orderNo);
       return;
     }
+    clearPaymentCountdown();
     show(listView);
     await loadOrders();
   }
@@ -158,6 +160,7 @@
   }
 
   async function loadDetail(orderNo) {
+    clearPaymentCountdown();
     setStatus("正在加载订单详情");
     detailView.replaceChildren();
     try {
@@ -187,6 +190,10 @@
     actions.className = "order-detail-actions";
     actions.append(linkButton("返回订单", PAGE_BASE));
     if (order?.status === "PENDING_PAYMENT") {
+      actions.appendChild(paymentButton("现金支付 / 模拟支付", "SIMULATED", "order-ghost-button"));
+      if (pointsPaymentAvailable(order)) {
+        actions.appendChild(paymentButton(`积分支付：需要 ${formatPoints(requiredPoints(order))}`, "POINTS", "order-primary-button"));
+      }
       const cancelButton = document.createElement("button");
       cancelButton.className = "order-danger-button";
       cancelButton.type = "button";
@@ -202,7 +209,10 @@
       detailStatusPanel(order),
       detailGrid([
         ["订单状态", statusLabel(order?.status)],
-        ["应付金额", formatMoney(order?.payAmountYuan)],
+        ["支付方式", paymentTypeLabel(order?.paymentType)],
+        ["应付金额", paymentAmountText(order)],
+        ["应付积分", requiredPoints(order) > 0 ? formatPoints(requiredPoints(order)) : "-"],
+        ["消耗积分", Number(order?.usedPoints || 0) > 0 ? formatPoints(order?.usedPoints) : "-"],
         ["商品金额", formatMoney(order?.totalAmountYuan)],
         ["优惠金额", formatMoney(order?.discountAmountYuan)],
         ["优惠券", order?.userCouponId || "-"],
@@ -216,6 +226,7 @@
       itemSection(order?.items)
     );
     detailView.appendChild(content);
+    startPaymentCountdown(order);
     document.title = `订单 ${order?.orderNo || ""} - Shopping`;
   }
 
@@ -230,7 +241,11 @@
     } else if (order?.status === "PENDING_PAYMENT") {
       copy.textContent = `请在 ${formatDate(order?.expireAt)} 前完成支付。`;
     } else if (order?.status === "PAID") {
-      copy.textContent = `订单已支付，支付时间 ${formatDate(order?.paidAt)}。`;
+      if (order?.paymentType === "POINTS") {
+        copy.textContent = `订单已使用 ${formatPoints(order?.usedPoints)}支付，支付时间 ${formatDate(order?.paidAt)}。`;
+      } else {
+        copy.textContent = `订单已支付，支付时间 ${formatDate(order?.paidAt)}。`;
+      }
     } else if (order?.status === "CANCELLED") {
       copy.textContent = `订单已取消，取消时间 ${formatDate(order?.cancelledAt)}。`;
     } else if (order?.status === "CLOSED") {
@@ -239,6 +254,9 @@
       copy.textContent = "订单状态已更新。";
     }
     panel.appendChild(copy);
+    if (order?.status === "PENDING_PAYMENT") {
+      panel.appendChild(paymentCountdownNode(order));
+    }
     return panel;
   }
 
@@ -308,6 +326,89 @@
     }
   }
 
+  async function payCurrentOrder(orderNo, paymentType, button) {
+    if (!orderNo || !paymentType) {
+      return;
+    }
+    button.disabled = true;
+    setStatus(paymentType === "POINTS" ? "正在使用积分支付" : "正在模拟支付");
+    try {
+      await orderApi.pay(orderNo, { paymentType });
+      await loadDetail(orderNo);
+      setStatus(paymentType === "POINTS" ? "积分支付成功" : "支付成功", "ok");
+    } catch (error) {
+      button.disabled = false;
+      setStatus(error.message || "支付失败", "error");
+    }
+  }
+
+  function paymentCountdownNode(order) {
+    const node = document.createElement("div");
+    node.className = "order-payment-countdown";
+    const label = document.createElement("span");
+    label.textContent = "剩余支付时间";
+    const value = document.createElement("strong");
+    value.dataset.role = "order-payment-countdown";
+    value.textContent = countdownText(order?.expireAt);
+    node.append(label, value);
+    return node;
+  }
+
+  function startPaymentCountdown(order) {
+    clearPaymentCountdown();
+    if (order?.status !== "PENDING_PAYMENT") {
+      return;
+    }
+    const deadline = paymentDeadline(order?.expireAt);
+    const countdown = detailView.querySelector("[data-role='order-payment-countdown']");
+    if (!deadline || !countdown) {
+      return;
+    }
+    const tick = () => {
+      const remainingMs = deadline.getTime() - Date.now();
+      countdown.textContent = formatCountdownDuration(Math.max(0, remainingMs));
+      if (remainingMs > 0) {
+        return true;
+      }
+      clearPaymentCountdown();
+      disablePaymentButtons();
+      setStatus("支付倒计时已结束，请刷新或查看订单状态", "error");
+      return false;
+    };
+    if (tick()) {
+      paymentCountdownTimerId = window.setInterval(tick, 1000);
+    }
+  }
+
+  function clearPaymentCountdown() {
+    if (paymentCountdownTimerId) {
+      window.clearInterval(paymentCountdownTimerId);
+      paymentCountdownTimerId = 0;
+    }
+  }
+
+  function disablePaymentButtons() {
+    detailView.querySelectorAll("[data-action='pay-order']").forEach((button) => {
+      button.disabled = true;
+    });
+  }
+
+  function paymentDeadline(value) {
+    if (!value) {
+      return null;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function countdownText(value) {
+    const deadline = paymentDeadline(value);
+    if (!deadline) {
+      return "--:--";
+    }
+    return formatCountdownDuration(Math.max(0, deadline.getTime() - Date.now()));
+  }
+
   function detailGrid(entries) {
     const grid = document.createElement("dl");
     grid.className = "order-detail-grid";
@@ -348,6 +449,16 @@
     return link;
   }
 
+  function paymentButton(text, paymentType, className) {
+    const button = document.createElement("button");
+    button.className = className;
+    button.type = "button";
+    button.dataset.action = "pay-order";
+    button.dataset.paymentType = paymentType;
+    button.textContent = text;
+    return button;
+  }
+
   function emptyNode(message) {
     const node = document.createElement("div");
     node.className = "order-empty";
@@ -360,6 +471,44 @@
     return Number.isFinite(number) ? `¥${number.toFixed(2)}` : "¥0.00";
   }
 
+  function formatPoints(value) {
+    const number = Number(value || 0);
+    return `${Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : 0} 积分`;
+  }
+
+  function paymentTypeLabel(paymentType) {
+    if (paymentType === "POINTS") {
+      return "积分支付";
+    }
+    if (paymentType === "SIMULATED") {
+      return "模拟支付";
+    }
+    return "未支付";
+  }
+
+  function paymentAmountText(order) {
+    if (order?.status === "PAID" && order?.paymentType === "POINTS") {
+      return `已使用 ${formatPoints(order?.usedPoints)}支付`;
+    }
+    return formatMoney(order?.payAmountYuan);
+  }
+
+  function pointsPaymentAvailable(order) {
+    const items = Array.isArray(order?.items) ? order.items : [];
+    return items.length > 0
+      && requiredPoints(order) > 0
+      && items.every((item) => item?.pointExchangeEnabled === true);
+  }
+
+  function requiredPoints(order) {
+    const direct = Number(order?.requiredPoints || 0);
+    if (Number.isFinite(direct) && direct > 0) {
+      return direct;
+    }
+    const items = Array.isArray(order?.items) ? order.items : [];
+    return items.reduce((sum, item) => sum + Math.max(0, Number(item?.linePoints || 0)), 0);
+  }
+
   function formatDate(value) {
     if (!value) {
       return "-";
@@ -369,6 +518,13 @@
       return String(value);
     }
     return date.toLocaleString("zh-CN", { hour12: false });
+  }
+
+  function formatCountdownDuration(durationMs) {
+    const seconds = Math.max(0, Math.ceil(durationMs / 1000));
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
   }
 
   function formatSpec(value) {
@@ -422,11 +578,19 @@
 
   detailView?.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target.closest("[data-action]") : null;
-    if (!target || target.dataset.action !== "cancel-order") {
+    if (!target) {
       return;
     }
-    cancelCurrentOrder(target.dataset.orderNo || "", target);
+    if (target.dataset.action === "cancel-order") {
+      cancelCurrentOrder(target.dataset.orderNo || "", target);
+      return;
+    }
+    if (target.dataset.action === "pay-order") {
+      payCurrentOrder(currentOrderNo(), target.dataset.paymentType || "", target);
+    }
   });
+
+  window.addEventListener("pagehide", clearPaymentCountdown);
 
   async function startPage() {
     const pageGate = window.ShoppingPageAccessGate;

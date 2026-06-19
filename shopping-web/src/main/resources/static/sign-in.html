@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-gate-mode="silent">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>积分签到</title>
+  <link rel="stylesheet" href="/shopping/css/page-access-gate.css?v=7" />
+  <link rel="stylesheet" href="/shopping/css/sign-in.css?v=1" />
+</head>
+<body>
+  <div class="sign-in-background" aria-hidden="true">
+    <div class="sign-in-background__wash"></div>
+    <div class="sign-in-background__dots"></div>
+  </div>
+
+  <main class="sign-in-page" aria-label="积分签到">
+    <header class="sign-in-header">
+      <a class="sign-in-ghost-button" href="/shopping/user/console">返回商品列表</a>
+      <div class="sign-in-heading">
+        <span id="sign-in-period-label">正在读取签到状态</span>
+        <h1>积分签到</h1>
+      </div>
+      <a class="sign-in-ghost-button" href="/shopping/user/profile">个人资料</a>
+    </header>
+
+    <section class="sign-in-status" id="sign-in-page-status" role="status" aria-live="polite"></section>
+
+    <section class="sign-in-layout">
+      <section class="sign-in-action-panel" aria-label="签到状态">
+        <div class="sign-in-action-copy">
+          <span class="sign-in-badge" id="sign-in-status-badge">待签到</span>
+          <h2 id="sign-in-status-title">本周期签到</h2>
+          <p id="sign-in-status-copy">签到状态加载中</p>
+        </div>
+
+        <div class="sign-in-cycle" aria-label="签到周期进度">
+          <div class="sign-in-cycle-ring">
+            <span id="sign-in-cycle-day">0</span>
+            <small>周期</small>
+          </div>
+          <div class="sign-in-cycle-track">
+            <span id="sign-in-progress-fill"></span>
+          </div>
+          <p id="sign-in-next-reward">下一档奖励加载中</p>
+        </div>
+
+        <button class="sign-in-primary-button" id="sign-in-button" type="button" disabled>立即签到</button>
+      </section>
+
+      <section class="sign-in-metrics" aria-label="积分数据">
+        <article class="sign-in-metric">
+          <span>可用积分</span>
+          <strong id="sign-in-available-points">0</strong>
+        </article>
+        <article class="sign-in-metric">
+          <span>累计获得</span>
+          <strong id="sign-in-total-earned-points">0</strong>
+        </article>
+        <article class="sign-in-metric">
+          <span>连续签到</span>
+          <strong id="sign-in-continuous-count">0</strong>
+        </article>
+        <article class="sign-in-metric">
+          <span>下一档奖励</span>
+          <strong id="sign-in-next-points">0</strong>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <script src="/shopping/js/security/security-urls.js?v=1"></script>
+  <script src="/shopping/js/user/auth/shared/preauth-client.js?v=3"></script>
+  <script src="/shopping/js/user/auth/shared/auth-client.js?v=3"></script>
+  <script src="/shopping/js/user/auth/shared/page-access-gate.js?v=9"></script>
+  <script src="/shopping/js/user/sign-in.js?v=1"></script>
+</body>
+</html>

@@ -88,11 +88,19 @@
     });
   }
 
+  function pay(orderNo, body) {
+    return request(`${API_BASE}/${encodeURIComponent(String(orderNo || ""))}/pay`, {
+      method: "POST",
+      body: body || {}
+    });
+  }
+
   return {
     preview,
     create,
     page,
     detail,
-    cancel
+    cancel,
+    pay
   };
 });

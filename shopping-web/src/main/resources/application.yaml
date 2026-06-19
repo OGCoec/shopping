@@ -94,7 +94,10 @@ spring:
     password: admin123
     # RabbitMQ 虚拟主机。
     virtual-host: /
-    publisher-confirm-type: simple
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
   # Servlet 容器配置。
   servlet:
     # 文件上传配置。
@@ -144,11 +147,11 @@ spring:
   # PostgreSQL 数据源配置。
   datasource:
     # JDBC 连接地址。
-    url: jdbc:postgresql://127.0.0.1:5432/shopping
+    url: ${SHOPPING_CORE_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_core}
     # 数据库用户名。
-    username: postgres
+    username: ${SHOPPING_CORE_DB_USERNAME:postgres}
     # 数据库密码。
-    password: 123456
+    password: ${SHOPPING_CORE_DB_PASSWORD:123456}
     # PostgreSQL JDBC 驱动类名。
     driver-class-name: org.postgresql.Driver
     # HikariCP 数据库连接池配置。
@@ -212,9 +215,13 @@ app:
   order:
     loadtest:
       bypass-guards: ${ORDER_LOADTEST_BYPASS_GUARDS:false}
+      points-payment-fault-enabled: ${ORDER_POINTS_PAYMENT_FAULT_ENABLED:false}
   product:
     loadtest:
       bypass-guards: ${PRODUCT_LOADTEST_BYPASS_GUARDS:false}
+  sign-in:
+    loadtest:
+      bypass-guards: ${SIGN_IN_LOADTEST_BYPASS_GUARDS:false}
   # GitHub 登录业务配置。
   github:
     # GitHub 登录回调地址。
@@ -893,11 +900,20 @@ pagehelper:
 
 # 用户认证 token 配置。
 shopping:
+  sign-in:
+    zone-id: ${SHOPPING_SIGN_IN_ZONE_ID:Asia/Shanghai}
+    period-unit: ${SHOPPING_SIGN_IN_PERIOD_UNIT:SECOND}
   order:
     redis-persist-delay-ms: ${ORDER_REDIS_PERSIST_DELAY_MS:5000}
     redis-persist-batch-size: ${ORDER_REDIS_PERSIST_BATCH_SIZE:100}
     redis-persist-processing-timeout-ms: ${ORDER_REDIS_PERSIST_PROCESSING_TIMEOUT_MS:60000}
     redis-persist-lock-ttl-ms: ${ORDER_REDIS_PERSIST_LOCK_TTL_MS:30000}
+    closing-compensate-enabled: ${ORDER_CLOSING_COMPENSATE_ENABLED:true}
+    closing-compensate-initial-delay-ms: ${ORDER_CLOSING_COMPENSATE_INITIAL_DELAY_MS:60000}
+    closing-compensate-delay-ms: ${ORDER_CLOSING_COMPENSATE_DELAY_MS:1800000}
+    closing-compensate-batch-size: ${ORDER_CLOSING_COMPENSATE_BATCH_SIZE:100}
+    closing-compensate-max-batches-per-run: ${ORDER_CLOSING_COMPENSATE_MAX_BATCHES_PER_RUN:20}
+    closing-compensate-lock-ttl-ms: ${ORDER_CLOSING_COMPENSATE_LOCK_TTL_MS:1800000}
   admin:
     coupon-template-index:
       startup-rebuild-enabled: ${SHOPPING_ADMIN_COUPON_TEMPLATE_INDEX_STARTUP_REBUILD_ENABLED:true}
@@ -919,13 +935,55 @@ shopping:
         - /shopping/
       allow-local-http: ${SHOPPING_PRODUCT_IMAGE_ALLOW_LOCAL_HTTP:true}
   datasource:
+    trade:
+      url: ${SHOPPING_TRADE_DB_URL:jdbc:postgresql://127.0.0.1:5434/shopping_trade}
+      username: ${SHOPPING_TRADE_DB_USERNAME:postgres}
+      password: ${SHOPPING_TRADE_DB_PASSWORD:123456}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_TRADE_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_TRADE_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_TRADE_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_TRADE_DB_IDLE_TIMEOUT_MS:600000}
+    product:
+      url: ${SHOPPING_PRODUCT_DB_URL:jdbc:postgresql://127.0.0.1:5435/shopping_product}
+      username: ${SHOPPING_PRODUCT_DB_USERNAME:postgres}
+      password: ${SHOPPING_PRODUCT_DB_PASSWORD:123456}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_PRODUCT_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_PRODUCT_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_PRODUCT_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_PRODUCT_DB_IDLE_TIMEOUT_MS:600000}
+    coupon:
+      url: ${SHOPPING_COUPON_DB_URL:jdbc:postgresql://127.0.0.1:5436/shopping_coupon}
+      username: ${SHOPPING_COUPON_DB_USERNAME:postgres}
+      password: ${SHOPPING_COUPON_DB_PASSWORD:123456}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_COUPON_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_COUPON_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_COUPON_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_COUPON_DB_IDLE_TIMEOUT_MS:600000}
+    risk:
+      url: ${SHOPPING_RISK_DB_URL:jdbc:postgresql://127.0.0.1:5437/shopping_risk}
+      username: ${SHOPPING_RISK_DB_USERNAME:postgres}
+      password: ${SHOPPING_RISK_DB_PASSWORD:123456}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        minimum-idle: ${SHOPPING_RISK_DB_MIN_IDLE:2}
+        maximum-pool-size: ${SHOPPING_RISK_DB_MAX_POOL_SIZE:10}
+        connection-timeout: ${SHOPPING_RISK_DB_CONNECTION_TIMEOUT_MS:3000}
+        idle-timeout: ${SHOPPING_RISK_DB_IDLE_TIMEOUT_MS:600000}
     risk-read:
       enabled: ${SHOPPING_RISK_READ_DB_ENABLED:true}
       fallback-to-primary: ${SHOPPING_RISK_READ_DB_FALLBACK_TO_PRIMARY:true}
-      url: ${SHOPPING_RISK_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read}
-      username: ${SHOPPING_RISK_READ_DB_USERNAME:shopping_readonly}
-      password: ${SHOPPING_RISK_READ_DB_PASSWORD:change_this_readonly_password}
+      username: ${SHOPPING_RISK_READ_DB_USERNAME:postgres}
+      password: ${SHOPPING_RISK_READ_DB_PASSWORD:123456}
       driver-class-name: org.postgresql.Driver
+      replicas:
+        - url: ${SHOPPING_RISK_READ_DB_REPLICA_1_URL:jdbc:postgresql://127.0.0.1:5537/shopping_risk?ApplicationName=shopping-risk-read-1}
+        - url: ${SHOPPING_RISK_READ_DB_REPLICA_2_URL:jdbc:postgresql://127.0.0.1:5637/shopping_risk?ApplicationName=shopping-risk-read-2}
       hikari:
         minimum-idle: ${SHOPPING_RISK_READ_DB_MIN_IDLE:2}
         maximum-pool-size: ${SHOPPING_RISK_READ_DB_MAX_POOL_SIZE:10}
@@ -935,10 +993,12 @@ shopping:
     coupon-read:
       enabled: ${SHOPPING_COUPON_READ_DB_ENABLED:true}
       fallback-to-primary: ${SHOPPING_COUPON_READ_DB_FALLBACK_TO_PRIMARY:true}
-      url: ${SHOPPING_COUPON_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read}
-      username: ${SHOPPING_COUPON_READ_DB_USERNAME:shopping_readonly}
-      password: ${SHOPPING_COUPON_READ_DB_PASSWORD:change_this_readonly_password}
+      username: ${SHOPPING_COUPON_READ_DB_USERNAME:postgres}
+      password: ${SHOPPING_COUPON_READ_DB_PASSWORD:123456}
       driver-class-name: org.postgresql.Driver
+      replicas:
+        - url: ${SHOPPING_COUPON_READ_DB_REPLICA_1_URL:jdbc:postgresql://127.0.0.1:5536/shopping_coupon?ApplicationName=shopping-coupon-read-1}
+        - url: ${SHOPPING_COUPON_READ_DB_REPLICA_2_URL:jdbc:postgresql://127.0.0.1:5636/shopping_coupon?ApplicationName=shopping-coupon-read-2}
       hikari:
         minimum-idle: ${SHOPPING_COUPON_READ_DB_MIN_IDLE:2}
         maximum-pool-size: ${SHOPPING_COUPON_READ_DB_MAX_POOL_SIZE:10}
@@ -947,11 +1007,13 @@ shopping:
         read-only: true
     order-read:
       enabled: ${SHOPPING_ORDER_READ_DB_ENABLED:true}
-      fallback-to-primary: ${SHOPPING_ORDER_READ_DB_FALLBACK_TO_PRIMARY:false}
-      url: ${SHOPPING_ORDER_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read?ApplicationName=shopping-order-read}
-      username: ${SHOPPING_ORDER_READ_DB_USERNAME:shopping_readonly}
-      password: ${SHOPPING_ORDER_READ_DB_PASSWORD:change_this_readonly_password}
+      fallback-to-primary: ${SHOPPING_ORDER_READ_DB_FALLBACK_TO_PRIMARY:true}
+      username: ${SHOPPING_ORDER_READ_DB_USERNAME:postgres}
+      password: ${SHOPPING_ORDER_READ_DB_PASSWORD:123456}
       driver-class-name: org.postgresql.Driver
+      replicas:
+        - url: ${SHOPPING_ORDER_READ_DB_REPLICA_1_URL:jdbc:postgresql://127.0.0.1:5534/shopping_trade?ApplicationName=shopping-order-read-1}
+        - url: ${SHOPPING_ORDER_READ_DB_REPLICA_2_URL:jdbc:postgresql://127.0.0.1:5634/shopping_trade?ApplicationName=shopping-order-read-2}
       hikari:
         minimum-idle: ${SHOPPING_ORDER_READ_DB_MIN_IDLE:2}
         maximum-pool-size: ${SHOPPING_ORDER_READ_DB_MAX_POOL_SIZE:10}
@@ -960,11 +1022,13 @@ shopping:
         read-only: true
     product-read:
       enabled: ${SHOPPING_PRODUCT_READ_DB_ENABLED:true}
-      fallback-to-primary: ${SHOPPING_PRODUCT_READ_DB_FALLBACK_TO_PRIMARY:false}
-      url: ${SHOPPING_PRODUCT_READ_DB_URL:jdbc:postgresql://127.0.0.1:5433/shopping_ip_read?ApplicationName=shopping-product-read}
-      username: ${SHOPPING_PRODUCT_READ_DB_USERNAME:shopping_readonly}
-      password: ${SHOPPING_PRODUCT_READ_DB_PASSWORD:change_this_readonly_password}
+      fallback-to-primary: ${SHOPPING_PRODUCT_READ_DB_FALLBACK_TO_PRIMARY:true}
+      username: ${SHOPPING_PRODUCT_READ_DB_USERNAME:postgres}
+      password: ${SHOPPING_PRODUCT_READ_DB_PASSWORD:123456}
       driver-class-name: org.postgresql.Driver
+      replicas:
+        - url: ${SHOPPING_PRODUCT_READ_DB_REPLICA_1_URL:jdbc:postgresql://127.0.0.1:5535/shopping_product?ApplicationName=shopping-product-read-1}
+        - url: ${SHOPPING_PRODUCT_READ_DB_REPLICA_2_URL:jdbc:postgresql://127.0.0.1:5635/shopping_product?ApplicationName=shopping-product-read-2}
       hikari:
         minimum-idle: ${SHOPPING_PRODUCT_READ_DB_MIN_IDLE:2}
         maximum-pool-size: ${SHOPPING_PRODUCT_READ_DB_MAX_POOL_SIZE:10}

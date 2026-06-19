@@ -23,6 +23,9 @@ final class OrderResponseAssembler {
                 OrderRowMapper.intValue(row, "quantity", 0),
                 OrderAmountCalculator.money(OrderRowMapper.decimal(row, "salePriceYuan")),
                 OrderAmountCalculator.money(OrderRowMapper.decimal(row, "lineAmountYuan")),
+                OrderRowMapper.boolValue(row, "pointExchangeEnabled"),
+                nonNegativeLong(OrderRowMapper.longValue(row, "pointExchangePoints")),
+                nonNegativeLong(OrderRowMapper.longValue(row, "linePoints")),
                 OrderRowMapper.boolValue(row, "hotSku")
         );
     }
@@ -34,6 +37,9 @@ final class OrderResponseAssembler {
                 OrderAmountCalculator.money(OrderRowMapper.decimal(order, "totalAmountYuan")),
                 OrderAmountCalculator.money(OrderRowMapper.decimal(order, "discountAmountYuan")),
                 OrderAmountCalculator.money(OrderRowMapper.decimal(order, "payAmountYuan")),
+                nonNegativeLong(OrderRowMapper.longValue(order, "requiredPoints")),
+                paymentType(order),
+                nonNegativeLong(OrderRowMapper.longValue(order, "usedPoints")),
                 OrderRowMapper.idText(order, "userCouponId"),
                 OrderRowMapper.offsetDateTime(order, "expireAt"),
                 OrderRowMapper.offsetDateTime(order, "paidAt"),
@@ -43,6 +49,15 @@ final class OrderResponseAssembler {
                 OrderRowMapper.offsetDateTime(order, "closedAt"),
                 items
         );
+    }
+
+    private static String paymentType(Map<String, Object> order) {
+        String value = OrderRowMapper.text(order, "paymentType");
+        return value.isBlank() ? OrderPaymentType.UNPAID : value;
+    }
+
+    private static long nonNegativeLong(Long value) {
+        return value == null || value < 0L ? 0L : value;
     }
 
     static OrderPageItemResponse pageItem(Map<String, Object> row) {

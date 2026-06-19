@@ -262,15 +262,18 @@ public class OrderLoadtestHotSkuSeedMain {
                               FLOOR(EXTRACT(EPOCH FROM end_at) * 1000)::bigint AS end_at_epoch_ms,
                               version
                 )
-                SELECT sku_id_hex,
-                       stock_quantity,
-                       remaining_quantity,
-                       status,
-                       start_at_epoch_ms,
-                       end_at_epoch_ms,
-                       version
+                SELECT upserted.sku_id_hex,
+                       upserted.stock_quantity,
+                       upserted.remaining_quantity,
+                       upserted.status,
+                       upserted.start_at_epoch_ms,
+                       upserted.end_at_epoch_ms,
+                       upserted.version,
+                       s.point_exchange_enabled,
+                       s.point_exchange_points
                 FROM upserted
-                ORDER BY sku_id_hex
+                INNER JOIN product_sku s ON s.id = decode(upserted.sku_id_hex, 'hex')
+                ORDER BY upserted.sku_id_hex
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, toJson(payload));
@@ -286,7 +289,9 @@ public class OrderLoadtestHotSkuSeedMain {
                             resultSet.getString("status"),
                             resultSet.getLong("start_at_epoch_ms"),
                             resultSet.getLong("end_at_epoch_ms"),
-                            resultSet.getLong("version")
+                            resultSet.getLong("version"),
+                            resultSet.getBoolean("point_exchange_enabled"),
+                            resultSet.getLong("point_exchange_points")
                     ));
                 }
                 return rows;
@@ -324,6 +329,8 @@ public class OrderLoadtestHotSkuSeedMain {
                 meta.put("endAtEpochMs", String.valueOf(item.endAtEpochMs()));
                 meta.put("stockQuantity", String.valueOf(item.stockQuantity()));
                 meta.put("version", String.valueOf(item.version()));
+                meta.put("pointExchangeEnabled", String.valueOf(item.pointExchangeEnabled()));
+                meta.put("pointExchangePoints", String.valueOf(item.pointExchangePoints()));
                 futures.add(commands.hset(metaKey, meta));
                 futures.add(commands.persist(metaKey));
                 futures.add(commands.set(stockKey, String.valueOf(item.remainingQuantity())));
@@ -428,6 +435,8 @@ public class OrderLoadtestHotSkuSeedMain {
                                    String status,
                                    long startAtEpochMs,
                                    long endAtEpochMs,
-                                   long version) {
+                                   long version,
+                                   boolean pointExchangeEnabled,
+                                   long pointExchangePoints) {
     }
 }

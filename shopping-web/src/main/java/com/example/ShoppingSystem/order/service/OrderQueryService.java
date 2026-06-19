@@ -6,6 +6,8 @@ import com.example.ShoppingSystem.order.dto.OrderDetailResponse;
 import com.example.ShoppingSystem.order.dto.OrderItemResponse;
 import com.example.ShoppingSystem.order.dto.OrderPageItemResponse;
 import com.example.ShoppingSystem.order.dto.OrderPageResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,8 @@ import java.util.Map;
 
 @Service
 public class OrderQueryService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderQueryService.class);
 
     private static final int DEFAULT_PAGE = 1;
     private static final int DEFAULT_PAGE_SIZE = 10;
@@ -37,17 +41,39 @@ public class OrderQueryService {
     public OrderDetailResponse detail(Long userId, String orderNo) {
         OrderRedisSnapshot snapshot = orderRedisSnapshotService.findSnapshotForUser(orderNo, userId).orElse(null);
         if (snapshot != null) {
+            OrderDetailResponse terminalDetail = terminalDetailWhenRedisClosing(userId, orderNo, snapshot);
+            if (terminalDetail != null) {
+                return terminalDetail;
+            }
             List<OrderItemResponse> items = snapshot.items()
                     .stream()
                     .map(OrderResponseAssembler::item)
                     .toList();
             return OrderResponseAssembler.detail(snapshot.order(), items);
         }
-        return orderReadReplicaQueryExecutor.query(() -> {
+        return orderReadReplicaQueryExecutor.queryPrimary(() -> {
             Map<String, Object> order = orderMapper.findOrderByOrderNoForUser(orderNo, userId);
             if (order == null || order.isEmpty()) {
                 throw new OrderServiceException("ORDER_NOT_FOUND", "Order does not exist.", HttpStatus.NOT_FOUND);
             }
+            List<OrderItemResponse> items = orderMapper.listOrderItems(orderNo)
+                    .stream()
+                    .map(OrderResponseAssembler::item)
+                    .toList();
+            return OrderResponseAssembler.detail(order, items);
+        });
+    }
+
+    private OrderDetailResponse terminalDetailWhenRedisClosing(Long userId, String orderNo, OrderRedisSnapshot snapshot) {
+        if (!OrderStatus.CLOSING.equals(OrderRowMapper.text(snapshot.order(), "status"))) {
+            return null;
+        }
+        return orderReadReplicaQueryExecutor.queryPrimary(() -> {
+            Map<String, Object> order = orderMapper.findOrderByOrderNoForUser(orderNo, userId);
+            if (order == null || order.isEmpty() || !isTerminal(OrderRowMapper.text(order, "status"))) {
+                return null;
+            }
+            cleanupRedisTerminalSnapshot(orderNo, order);
             List<OrderItemResponse> items = orderMapper.listOrderItems(orderNo)
                     .stream()
                     .map(OrderResponseAssembler::item)
@@ -96,6 +122,23 @@ public class OrderQueryService {
                 Comparator.nullsLast(Comparator.reverseOrder())
         ));
         return merged;
+    }
+
+    private boolean isTerminal(String status) {
+        return OrderStatus.PAID.equals(status)
+                || OrderStatus.CLOSED.equals(status)
+                || OrderStatus.CANCELLED.equals(status);
+    }
+
+    private void cleanupRedisTerminalSnapshot(String orderNo, Map<String, Object> order) {
+        try {
+            orderRedisSnapshotService.completePersistedAndCleanup(
+                    List.of(orderNo),
+                    List.of(new OrderRedisSnapshot(order, List.of()))
+            );
+        } catch (Exception e) {
+            log.warn("[Order] stale closing Redis snapshot cleanup failed, orderNo={}", orderNo, e);
+        }
     }
 
     private String normalizeStatus(String status) {

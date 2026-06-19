@@ -18,6 +18,7 @@ public final class OrderRedisKeys {
     public static final String ORDER_PERSIST_DIRTY_ZSET_KEY = "shopping:order:persist:dirty";
     public static final String ORDER_PERSIST_PROCESSING_ZSET_KEY = "shopping:order:persist:processing";
     public static final String ORDER_PERSIST_LOCK_KEY = "shopping:order:persist:lock";
+    public static final String ORDER_CLOSING_COMPENSATE_LOCK_KEY = "shopping:order:closing:compensate:lock";
 
     private OrderRedisKeys() {
     }

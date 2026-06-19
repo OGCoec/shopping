@@ -165,6 +165,7 @@ body.console-detail-open {
 .console-search-form {
   align-items: flex-end;
   flex: 1;
+  flex-wrap: wrap;
   min-width: 0;
 }
 

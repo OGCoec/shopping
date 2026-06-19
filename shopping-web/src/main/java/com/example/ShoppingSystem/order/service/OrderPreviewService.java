@@ -24,6 +24,7 @@ public class OrderPreviewService {
         int quantity = normalizeQuantity(request == null ? null : request.quantity());
         OrderSkuSnapshot sku = orderSkuService.loadActiveSku(request == null ? null : request.skuId(), now);
         BigDecimal totalAmount = OrderAmountCalculator.lineAmount(sku.priceYuan(), quantity);
+        long linePoints = linePoints(sku, quantity);
         OrderCouponService.CouponOptions couponOptions = orderCouponService.couponOptions(
                 userId,
                 sku,
@@ -41,6 +42,9 @@ public class OrderPreviewService {
                 quantity,
                 sku.priceYuan(),
                 totalAmount,
+                sku.pointExchangeEnabled(),
+                sku.pointExchangePoints(),
+                linePoints,
                 sku.hotSku(),
                 couponOptions.selectedUserCouponId(),
                 totalAmount,
@@ -49,6 +53,14 @@ public class OrderPreviewService {
                 couponOptions.availableCoupons(),
                 couponOptions.unavailableCoupons()
         );
+    }
+
+    private long linePoints(OrderSkuSnapshot sku, int quantity) {
+        if (sku == null || !sku.pointExchangeEnabled()) {
+            return 0L;
+        }
+        long points = sku.pointExchangePoints() == null ? 0L : sku.pointExchangePoints();
+        return Math.max(0L, points) * Math.max(0, quantity);
     }
 
     private int normalizeQuantity(Integer rawQuantity) {

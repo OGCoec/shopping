@@ -64,6 +64,8 @@ public interface UserCouponMapper {
     Map<String, Object> releaseLockedCouponByOrderNo(@Param("orderNo") String orderNo,
                                                      @Param("now") java.time.OffsetDateTime now);
 
+    List<Map<String, Object>> releaseLockedCouponsByOrderNos(@Param("ordersJson") String ordersJson);
+
     Map<String, Object> useLockedCouponByOrderNo(@Param("orderNo") String orderNo,
                                                  @Param("now") java.time.OffsetDateTime now);
 

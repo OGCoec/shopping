@@ -33,6 +33,7 @@ order-create-hot-sku.jmx
 order-soft-close-payment-flow.jmx
 order-callback-batch-refund-flow.jmx
 order-duplicate-callback-card-secret-flow.jmx
+order-points-payment-expire-flow.jmx
 ```
 
 ## 1. Start the app for load test
@@ -297,7 +298,60 @@ For a manual localhost smoke test, generate one order with the seed main and the
 loadtest/localhost/order-duplicate-callback-card-secret.http
 ```
 
-## 9. Local result summary
+## 9. Points payment expiry flow
+
+Use this plan to prove that points (??) payment respects the order expiry boundary, deducts points exactly once under concurrency, and rolls back cleanly when a request enters the server but fails late.
+
+Start the app with the order bypass flag plus the dedicated points fault switch. The fault switch only does anything while bypass is also on, and the JMeter driver is the only thing that sends fault fields:
+
+```powershell
+$env:ORDER_LOADTEST_BYPASS_GUARDS = 'true'
+$env:ORDER_POINTS_PAYMENT_FAULT_ENABLED = 'true'
+$env:ORDER_EXPIRE_TTL_MILLIS = '300000'
+$env:ORDER_EXPIRE_CLOSING_GRACE_MILLIS = '300000'
+```
+
+The fault injection in `PointsOrderPaymentProcessor` supports `SLEEP_BEFORE_DEDUCT`, `THROW_AFTER_SLEEP`, and `THROW_AFTER_DEDUCT`. With both flags off (production default) the request DTO points fault fields are ignored entirely.
+
+Token CSV requirements: it must contain `userId=1`, `userId=2`, and `userId=3`, plus at least 16 more distinct users other than `1` and `3`. `userId=1` drives same-order concurrency, `userId=3` is the insufficient-points user, and the rest spread order creation so the hot-SKU "one active order per user" guard does not block scenarios.
+
+Run the full flow:
+
+```powershell
+.\loadtest\scripts\run-order-points-payment-expire.ps1 `
+  -SkuId '33SRKE5DbzvBWPCjGosBu' `
+  -Stock 10000 `
+  -TokenCsv C:/Users/damn/Desktop/shopping/loadtest-output/xss-users-token.csv `
+  -Verify
+```
+
+The runner prepares preconditions in batch SQL and Redis, then runs two JMeter phases:
+
+```text
+DB: product_sku.point_exchange_enabled=true, point_exchange_points=1, refresh hot-SKU window, seed point accounts (userId=3 gets 4 points).
+Redis: hot-sku meta gets pointExchangeEnabled/pointExchangePoints fields; stock key stays a plain number; per-user active-order key is cleared.
+Phase UNSUPPORTED: point exchange disabled, verifies ORDER_POINTS_PAYMENT_UNAVAILABLE.
+Phase MAIN: point exchange re-enabled, runs quantity/boundary/concurrency/blocking/insufficient/timeout-retry scenarios.
+```
+
+The MAIN phase computes each pay time from the order's `data.expireAt` instead of hardcoding 5 minutes, so it waits for real boundaries and can run well over 10 minutes (the 360s rollback scenario alone blocks ~6 minutes).
+
+Expected business behavior:
+
+```text
+Normal points payment (quantity 1..5): order PAID, required_points = used_points = quantity, payment_type=POINTS, pay_amount_yuan keeps the cash payable snapshot.
+Boundary offsets expireAt-1s / expireAt-200ms: pay succeeds. expireAt+200ms / +1s / +10s / +5min: expired-type failure, order not PAID.
+50 concurrent pays on one orderNo: points deducted exactly once; the other 49 are idempotent successes, not business failures.
+Blocking 10s / 70s (SLEEP_BEFORE_DEDUCT): finally PAID.
+Blocking 360s (THROW_AFTER_DEDUCT): must roll back, never PAID, points not deducted, stock recovers through the close chain.
+Insufficient points (userId=3, quantity 5): ORDER_POINTS_NOT_ENOUGH, order not PAID, balance and total_used_points unchanged.
+Unsupported points exchange: ORDER_POINTS_PAYMENT_UNAVAILABLE, no deduction, no PAID.
+Client timeout retry on the same orderNo: idempotent success if the first attempt committed; otherwise re-payable only while the order is still open.
+```
+
+Run `loadtest/sql/verify-order-points-payment-expire.sql` (the runner writes a generated copy with the run's `JMETER-POINTS-{runId}` prefix when `-Verify` is set) after schedulers settle to assert order status, used points, point-account balances, order-item line points, final stock recovery, and that the Redis stock key is still a plain number.
+
+## 10. Local result summary
 
 The table below summarizes local `loadtest-output/runs/*/summary.csv` files found on this machine. These generated files are intentionally ignored by Git, so the table is a readable snapshot, not a committed source of truth.
 

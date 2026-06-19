@@ -25,6 +25,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
 
     private static final String COUPON_API_PATTERN = "/shopping/user/api/coupons/**";
     private static final String ORDER_API_PATTERN = "/shopping/user/api/orders/**";
+    private static final String SIGN_IN_API_PATTERN = "/shopping/user/api/sign-in";
+    private static final String SIGN_IN_API_SUB_PATH_PATTERN = "/shopping/user/api/sign-in/**";
     private static final String PRODUCT_API_PATTERN = "/shopping/api/products/**";
     private static final String PRODUCT_CATEGORY_API_PATTERN = "/shopping/api/product-categories/**";
     private static final String PRODUCT_USER_PAGE_PATTERN = "/shopping/user/products/**";
@@ -43,6 +45,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
     private final boolean couponLoadtestBypassGuards;
     private final boolean orderLoadtestBypassGuards;
     private final boolean productLoadtestBypassGuards;
+    private final boolean signInLoadtestBypassGuards;
 
     public AuthWebMvcConfig(PreAuthInterceptor preAuthInterceptor,
                             WebRtcRiskStateInterceptor webRtcRiskStateInterceptor,
@@ -56,7 +59,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                             AdminSessionInterceptor adminSessionInterceptor,
                             @Value("${app.coupon.loadtest.bypass-guards:false}") boolean couponLoadtestBypassGuards,
                             @Value("${app.order.loadtest.bypass-guards:false}") boolean orderLoadtestBypassGuards,
-                            @Value("${app.product.loadtest.bypass-guards:false}") boolean productLoadtestBypassGuards) {
+                            @Value("${app.product.loadtest.bypass-guards:false}") boolean productLoadtestBypassGuards,
+                            @Value("${app.sign-in.loadtest.bypass-guards:false}") boolean signInLoadtestBypassGuards) {
         this.preAuthInterceptor = preAuthInterceptor;
         this.webRtcRiskStateInterceptor = webRtcRiskStateInterceptor;
         this.registerFlowGuardInterceptor = registerFlowGuardInterceptor;
@@ -70,6 +74,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
         this.couponLoadtestBypassGuards = couponLoadtestBypassGuards;
         this.orderLoadtestBypassGuards = orderLoadtestBypassGuards;
         this.productLoadtestBypassGuards = productLoadtestBypassGuards;
+        this.signInLoadtestBypassGuards = signInLoadtestBypassGuards;
     }
 
     @Override
@@ -93,7 +98,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
     }
 
     private String[] excludeWithLoadtestBypass(String... basePatterns) {
-        if (!couponLoadtestBypassGuards && !orderLoadtestBypassGuards && !productLoadtestBypassGuards) {
+        if (!couponLoadtestBypassGuards && !orderLoadtestBypassGuards && !productLoadtestBypassGuards
+                && !signInLoadtestBypassGuards) {
             return basePatterns;
         }
         java.util.List<String> merged = new java.util.ArrayList<>(java.util.Arrays.asList(basePatterns));
@@ -107,6 +113,10 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
             merged.add(PRODUCT_API_PATTERN);
             merged.add(PRODUCT_CATEGORY_API_PATTERN);
             merged.add(PRODUCT_USER_PAGE_PATTERN);
+        }
+        if (signInLoadtestBypassGuards) {
+            merged.add(SIGN_IN_API_PATTERN);
+            merged.add(SIGN_IN_API_SUB_PATH_PATTERN);
         }
         return merged.toArray(String[]::new);
     }
@@ -241,7 +251,9 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/totp",
                         "/shopping/user/totp/**",
                         COUPON_API_PATTERN,
-                        ORDER_API_PATTERN
+                        ORDER_API_PATTERN,
+                        SIGN_IN_API_PATTERN,
+                        SIGN_IN_API_SUB_PATH_PATTERN
                 )
                 .order(100);
 
@@ -277,6 +289,7 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/profile/avatar",
                         "/shopping/user/profile/deletion",
                         "/shopping/user/console",
+                        "/shopping/user/sign-in",
                         "/shopping/user/products/**",
                         "/shopping/user/checkout/**",
                         "/shopping/user/orders",
@@ -291,6 +304,8 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/api/products/**",
                         COUPON_API_PATTERN,
                         ORDER_API_PATTERN,
+                        SIGN_IN_API_PATTERN,
+                        SIGN_IN_API_SUB_PATH_PATTERN,
                         "/oauth2/github/login",
                         "/oauth2/google/login",
                         "/oauth2/microsoft/login"
@@ -332,7 +347,9 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/totp",
                         "/shopping/user/totp/**",
                         COUPON_API_PATTERN,
-                        ORDER_API_PATTERN
+                        ORDER_API_PATTERN,
+                        SIGN_IN_API_PATTERN,
+                        SIGN_IN_API_SUB_PATH_PATTERN
                 )
                 .excludePathPatterns(excludeWithLoadtestBypass())
                 .order(105);
@@ -348,7 +365,9 @@ public class AuthWebMvcConfig implements WebMvcConfigurer {
                         "/shopping/user/totp",
                         "/shopping/user/totp/**",
                         COUPON_API_PATTERN,
-                        ORDER_API_PATTERN
+                        ORDER_API_PATTERN,
+                        SIGN_IN_API_PATTERN,
+                        SIGN_IN_API_SUB_PATH_PATTERN
                 )
                 .excludePathPatterns(excludeWithLoadtestBypass())
                 .order(110);

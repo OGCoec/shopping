@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -60,6 +61,27 @@ public class OrderRedisPersistScheduler {
             persistDirtyOrdersWithLock();
         } finally {
             orderRedisSnapshotService.releasePersistLock(lockValue);
+        }
+    }
+
+    public boolean persistSnapshotNow(String orderNo) {
+        String normalizedOrderNo = orderNo == null ? "" : orderNo.trim();
+        if (normalizedOrderNo.isEmpty()) {
+            return false;
+        }
+        List<OrderRedisSnapshot> snapshots = orderRedisSnapshotService.loadSnapshots(List.of(normalizedOrderNo));
+        if (snapshots.isEmpty()) {
+            return false;
+        }
+        try {
+            persistSnapshots(snapshots, false);
+            return true;
+        } catch (JsonProcessingException e) {
+            throw new OrderServiceException(
+                    "ORDER_REDIS_PERSIST_PAYLOAD_INVALID",
+                    "Order Redis persist payload is invalid.",
+                    HttpStatus.INTERNAL_SERVER_ERROR
+            );
         }
     }
 
@@ -132,8 +154,12 @@ public class OrderRedisPersistScheduler {
     }
 
     private void persistSnapshots(List<OrderRedisSnapshot> snapshots) throws JsonProcessingException {
+        persistSnapshots(snapshots, true);
+    }
+
+    private void persistSnapshots(List<OrderRedisSnapshot> snapshots, boolean terminalOnly) throws JsonProcessingException {
         List<OrderRedisSnapshot> persistableSnapshots = snapshots.stream()
-                .filter(this::isPersistableSnapshot)
+                .filter(snapshot -> terminalOnly ? isPersistableSnapshot(snapshot) : hasOrderNo(snapshot))
                 .toList();
         if (persistableSnapshots.isEmpty()) {
             return;
@@ -157,6 +183,10 @@ public class OrderRedisPersistScheduler {
         });
     }
 
+    private boolean hasOrderNo(OrderRedisSnapshot snapshot) {
+        return snapshot != null && !OrderRowMapper.text(snapshot.order(), "orderNo").isBlank();
+    }
+
     private boolean isPersistableSnapshot(OrderRedisSnapshot snapshot) {
         if (snapshot == null) {
             return false;
@@ -175,6 +205,9 @@ public class OrderRedisPersistScheduler {
         row.put("total_amount_yuan", OrderAmountCalculator.money(OrderRowMapper.decimal(order, "totalAmountYuan")));
         row.put("discount_amount_yuan", OrderAmountCalculator.money(OrderRowMapper.decimal(order, "discountAmountYuan")));
         row.put("pay_amount_yuan", OrderAmountCalculator.money(OrderRowMapper.decimal(order, "payAmountYuan")));
+        row.put("required_points", nonNegativeLong(OrderRowMapper.longValue(order, "requiredPoints")));
+        row.put("payment_type", paymentType(order));
+        row.put("used_points", nonNegativeLong(OrderRowMapper.longValue(order, "usedPoints")));
         row.put("user_coupon_id_hex", OrderRowMapper.text(order, "userCouponIdHex"));
         row.put("idempotency_key", OrderRowMapper.text(order, "idempotencyKey"));
         row.put("expire_at_epoch_ms", OrderRowMapper.longValue(order, "expireAtEpochMs"));
@@ -203,9 +236,21 @@ public class OrderRedisPersistScheduler {
         row.put("quantity", OrderRowMapper.intValue(item, "quantity", 0));
         row.put("sale_price_yuan", OrderAmountCalculator.money(OrderRowMapper.decimal(item, "salePriceYuan")));
         row.put("line_amount_yuan", OrderAmountCalculator.money(OrderRowMapper.decimal(item, "lineAmountYuan")));
+        row.put("point_exchange_enabled", OrderRowMapper.boolValue(item, "pointExchangeEnabled"));
+        row.put("point_exchange_points", nonNegativeLong(OrderRowMapper.longValue(item, "pointExchangePoints")));
+        row.put("line_points", nonNegativeLong(OrderRowMapper.longValue(item, "linePoints")));
         row.put("is_hot_sku", OrderRowMapper.boolValue(item, "hotSku"));
         row.put("created_at_epoch_ms", OrderRowMapper.longValue(item, "createdAtEpochMs"));
         return row;
+    }
+
+    private String paymentType(Map<String, Object> order) {
+        String value = OrderRowMapper.text(order, "paymentType");
+        return value.isBlank() ? OrderPaymentType.UNPAID : value;
+    }
+
+    private long nonNegativeLong(Long value) {
+        return value == null || value < 0L ? 0L : value;
     }
 
     private BatchRange batchRange(List<OrderRedisSnapshot> snapshots) {

@@ -15,11 +15,9 @@ import com.example.ShoppingSystem.order.dto.OrderPreviewResponse;
 import com.example.ShoppingSystem.order.service.OrderCancelService;
 import com.example.ShoppingSystem.order.service.OrderCardSecretQueryService;
 import com.example.ShoppingSystem.order.service.OrderCreateService;
-import com.example.ShoppingSystem.order.service.OrderPaymentSuccessService;
+import com.example.ShoppingSystem.order.service.OrderPaymentService;
 import com.example.ShoppingSystem.order.service.OrderPreviewService;
 import com.example.ShoppingSystem.order.service.OrderQueryService;
-import com.example.ShoppingSystem.order.service.OrderServiceException;
-import com.example.ShoppingSystem.order.service.OrderStatus;
 import com.example.ShoppingSystem.security.token.AuthUserContext;
 import com.example.ShoppingSystem.security.token.AuthUserContextHolder;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,9 +35,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.OffsetDateTime;
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/shopping/user/api/orders")
 public class OrderController {
@@ -50,20 +45,20 @@ public class OrderController {
     private final OrderCreateService orderCreateService;
     private final OrderQueryService orderQueryService;
     private final OrderCancelService orderCancelService;
-    private final OrderPaymentSuccessService orderPaymentSuccessService;
+    private final OrderPaymentService orderPaymentService;
     private final OrderCardSecretQueryService orderCardSecretQueryService;
 
     public OrderController(OrderPreviewService orderPreviewService,
                            OrderCreateService orderCreateService,
                            OrderQueryService orderQueryService,
                            OrderCancelService orderCancelService,
-                           OrderPaymentSuccessService orderPaymentSuccessService,
+                           OrderPaymentService orderPaymentService,
                            OrderCardSecretQueryService orderCardSecretQueryService) {
         this.orderPreviewService = orderPreviewService;
         this.orderCreateService = orderCreateService;
         this.orderQueryService = orderQueryService;
         this.orderCancelService = orderCancelService;
-        this.orderPaymentSuccessService = orderPaymentSuccessService;
+        this.orderPaymentService = orderPaymentService;
         this.orderCardSecretQueryService = orderCardSecretQueryService;
     }
 
@@ -130,21 +125,9 @@ public class OrderController {
                                                                       Authentication authentication,
                                                                       HttpServletRequest servletRequest) {
         Long userId = requireCurrentUserId(authentication, servletRequest);
-        OffsetDateTime paidAt = OffsetDateTime.now();
-        String normalizedOrderNo = normalizeOrderNo(orderNo);
-        String externalTradeNo = externalTradeNo(request == null ? null : request.externalTradeNo(), normalizedOrderNo);
-        boolean paid = orderPaymentSuccessService.markPendingPaidForUser(
-                userId,
-                normalizedOrderNo,
-                paidAt,
-                externalTradeNo
-        );
-        if (!paid) {
-            throw new OrderServiceException("ORDER_PAY_UNAVAILABLE", "Only pending current-user orders can be paid.", HttpStatus.CONFLICT);
-        }
         return ResponseEntity.ok(OrderApiResponse.ok(
                 "ORDER_PAY_OK",
-                new OrderPaymentResponse(normalizedOrderNo, OrderStatus.PAID, paidAt, externalTradeNo)
+                orderPaymentService.pay(userId, orderNo, request)
         ));
     }
 
@@ -207,19 +190,4 @@ public class OrderController {
         }
     }
 
-    private String normalizeOrderNo(String orderNo) {
-        String value = orderNo == null ? "" : orderNo.trim();
-        if (value.isEmpty() || value.length() > 64) {
-            throw new OrderServiceException("ORDER_NO_INVALID", "Order number is invalid.", HttpStatus.BAD_REQUEST);
-        }
-        return value;
-    }
-
-    private String externalTradeNo(String rawExternalTradeNo, String orderNo) {
-        String value = rawExternalTradeNo == null ? "" : rawExternalTradeNo.trim();
-        if (!value.isEmpty()) {
-            return value;
-        }
-        return "MOCKPAY-" + orderNo + "-" + UUID.randomUUID();
-    }
 }

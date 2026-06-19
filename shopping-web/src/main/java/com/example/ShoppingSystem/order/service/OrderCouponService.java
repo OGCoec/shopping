@@ -3,12 +3,15 @@ package com.example.ShoppingSystem.order.service;
 import com.example.ShoppingSystem.Utils.HybridIdCodec;
 import com.example.ShoppingSystem.mapper.coupon.UserCouponMapper;
 import com.example.ShoppingSystem.order.dto.OrderCouponOptionResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -16,9 +19,12 @@ import java.util.Map;
 public class OrderCouponService {
 
     private final UserCouponMapper userCouponMapper;
+    private final ObjectMapper objectMapper;
 
-    public OrderCouponService(UserCouponMapper userCouponMapper) {
+    public OrderCouponService(UserCouponMapper userCouponMapper,
+                              ObjectMapper objectMapper) {
         this.userCouponMapper = userCouponMapper;
+        this.objectMapper = objectMapper;
     }
 
     public CouponOptions couponOptions(Long userId,
@@ -124,6 +130,21 @@ public class OrderCouponService {
         );
     }
 
+    public List<Map<String, Object>> releaseLockedCoupons(List<OrderRedisSnapshot> snapshots) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> orders = snapshots.stream()
+                .map(this::lockedCouponOrderRow)
+                .filter(row -> row != null)
+                .toList();
+        if (orders.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> released = userCouponMapper.releaseLockedCouponsByOrderNos(toJson(orders));
+        return released == null ? List.of() : released;
+    }
+
     public LockedOrderCoupon useLockedCoupon(String orderNo, OffsetDateTime now) {
         Map<String, Object> row = userCouponMapper.useLockedCouponByOrderNo(orderNo, now);
         if (row == null || row.isEmpty()) {
@@ -203,6 +224,33 @@ public class OrderCouponService {
             return HybridIdCodec.fromBase62(value);
         } catch (IllegalArgumentException e) {
             throw new OrderServiceException("ORDER_COUPON_INVALID", "Coupon id is invalid.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private Map<String, Object> lockedCouponOrderRow(OrderRedisSnapshot snapshot) {
+        if (snapshot == null || !hasUserCoupon(snapshot.order())) {
+            return null;
+        }
+        String orderNo = OrderRowMapper.text(snapshot.order(), "orderNo");
+        if (orderNo.isBlank()) {
+            return null;
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("order_no", orderNo);
+        row.put("user_id", OrderRowMapper.longValue(snapshot.order(), "userId"));
+        return row;
+    }
+
+    private boolean hasUserCoupon(Map<String, Object> order) {
+        return !OrderRowMapper.idText(order, "userCouponId").isBlank()
+                || !OrderRowMapper.text(order, "userCouponIdHex").isBlank();
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            throw new OrderServiceException("ORDER_COUPON_BATCH_JSON_INVALID", "Order coupon batch json is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.signin.UserSignInMapper">
+
+    <select id="acquireUserSignInLock" resultType="long">
+        WITH lock_guard AS (
+            SELECT pg_advisory_xact_lock(271828, CAST(MOD(#{userId}, 2147483647) AS integer)) AS locked
+        )
+        SELECT 1 AS locked
+        FROM lock_guard
+    </select>
+
+    <select id="findLatestSignRecordByUserId" resultType="map">
+        SELECT id,
+               user_id AS "userId",
+               sign_period_key AS "signPeriodKey",
+               sign_date AS "signDate",
+               reward_points AS "rewardPoints",
+               continuous_count AS "continuousCount",
+               cycle_day AS "cycleDay",
+               created_at AS "createdAt"
+        FROM user_sign_record
+        WHERE user_id = #{userId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertSignRecordIgnore">
+        INSERT INTO user_sign_record (
+            user_id,
+            sign_period_key,
+            sign_date,
+            reward_points,
+            continuous_count,
+            cycle_day,
+            created_at
+        )
+        VALUES (
+            #{userId},
+            #{signPeriodKey},
+            #{signDate},
+            #{rewardPoints},
+            #{continuousCount},
+            #{cycleDay},
+            NOW()
+        )
+        ON CONFLICT (user_id, sign_period_key) DO NOTHING
+    </insert>
+
+    <select id="addRewardPoints" resultType="map">
+        INSERT INTO user_point_account (
+            user_id,
+            available_points,
+            total_earned_points,
+            total_used_points,
+            created_at,
+            updated_at,
+            version
+        )
+        VALUES (
+            #{userId},
+            #{rewardPoints},
+            #{rewardPoints},
+            0,
+            NOW(),
+            NOW(),
+            1
+        )
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+            available_points = user_point_account.available_points + #{rewardPoints},
+            total_earned_points = user_point_account.total_earned_points + #{rewardPoints},
+            updated_at = NOW(),
+            version = user_point_account.version + 1
+        RETURNING id,
+                  user_id AS "userId",
+                  available_points AS "availablePoints",
+                  total_earned_points AS "totalEarnedPoints",
+                  total_used_points AS "totalUsedPoints",
+                  version
+    </select>
+
+    <select id="findPointAccountByUserId" resultType="map">
+        SELECT id,
+               user_id AS "userId",
+               available_points AS "availablePoints",
+               total_earned_points AS "totalEarnedPoints",
+               total_used_points AS "totalUsedPoints",
+               version
+        FROM user_point_account
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+</mapper>

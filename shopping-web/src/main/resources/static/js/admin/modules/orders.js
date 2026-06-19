@@ -404,6 +404,7 @@
       ["商品金额", formatMoney(order.totalAmountYuan)],
       ["优惠金额", formatMoney(order.discountAmountYuan)],
       ["应付金额", formatMoney(order.payAmountYuan)],
+      ["应付积分", formatPoints(order.requiredPoints)],
       ["优惠券", order.userCouponId || "-"],
       ["支付截止", formatDate(order.expireAt)],
       ["关闭开始", formatDate(order.closingAt)],
@@ -529,6 +530,11 @@
   function formatMoney(value) {
     const number = Number(value);
     return Number.isFinite(number) ? `¥${number.toFixed(2)}` : "¥0.00";
+  }
+
+  function formatPoints(value) {
+    const number = Math.max(0, Number(value || 0));
+    return Number.isFinite(number) && number > 0 ? `${number} 积分` : "-";
   }
 
   function formatDate(value) {

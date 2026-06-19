@@ -16,6 +16,18 @@ public final class RoutingDataSourceContext {
         return route == null ? DataSourceRoute.PRIMARY : route;
     }
 
+    public static DataSourceRoute snapshot() {
+        return CURRENT_ROUTE.get();
+    }
+
+    public static void restore(DataSourceRoute route) {
+        if (route == null) {
+            CURRENT_ROUTE.remove();
+            return;
+        }
+        CURRENT_ROUTE.set(route);
+    }
+
     public static void clear() {
         CURRENT_ROUTE.remove();
     }

@@ -449,6 +449,33 @@ body {
   line-height: 1.55;
 }
 
+.order-payment-countdown {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  border-radius: 8px;
+  background: rgba(254, 242, 242, 0.7);
+  padding: 10px 12px;
+}
+
+.order-payment-countdown span {
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.order-payment-countdown strong {
+  color: #991b1b;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .order-detail-grid {
   display: grid;
   grid-template-columns: minmax(150px, 240px) minmax(0, 1fr);

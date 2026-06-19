@@ -11,5 +11,8 @@ public record OrderItemResponse(String skuId,
                                 Integer quantity,
                                 BigDecimal salePriceYuan,
                                 BigDecimal lineAmountYuan,
+                                boolean pointExchangeEnabled,
+                                Long pointExchangePoints,
+                                Long linePoints,
                                 boolean hotSku) {
 }

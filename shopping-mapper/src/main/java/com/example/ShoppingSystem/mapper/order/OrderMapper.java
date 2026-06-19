@@ -27,10 +27,11 @@ public interface OrderMapper {
     int insertOrder(@Param("orderNo") String orderNo,
                     @Param("userId") Long userId,
                     @Param("status") String status,
-                    @Param("totalAmountYuan") BigDecimal totalAmountYuan,
-                    @Param("discountAmountYuan") BigDecimal discountAmountYuan,
-                    @Param("payAmountYuan") BigDecimal payAmountYuan,
-                    @Param("userCouponId") byte[] userCouponId,
+                     @Param("totalAmountYuan") BigDecimal totalAmountYuan,
+                     @Param("discountAmountYuan") BigDecimal discountAmountYuan,
+                     @Param("payAmountYuan") BigDecimal payAmountYuan,
+                     @Param("requiredPoints") long requiredPoints,
+                     @Param("userCouponId") byte[] userCouponId,
                     @Param("idempotencyKey") String idempotencyKey,
                     @Param("expireAt") OffsetDateTime expireAt,
                     @Param("createdAt") OffsetDateTime createdAt);
@@ -41,8 +42,15 @@ public interface OrderMapper {
 
     int batchInsertOrderItems(@Param("itemsJson") String itemsJson);
 
+    Map<String, Object> lockOrderState(@Param("orderNo") String orderNo);
+
+    Boolean tryLockOrderState(@Param("orderNo") String orderNo);
+
     Map<String, Object> findOrderByOrderNoForUser(@Param("orderNo") String orderNo,
-                                                  @Param("userId") Long userId);
+                                                   @Param("userId") Long userId);
+
+    Map<String, Object> findOrderByOrderNoForUserForUpdate(@Param("orderNo") String orderNo,
+                                                           @Param("userId") Long userId);
 
     Map<String, Object> findOrderByOrderNo(@Param("orderNo") String orderNo);
 
@@ -50,6 +58,11 @@ public interface OrderMapper {
                                                   @Param("userId") Long userId);
 
     List<Map<String, Object>> listOrderItems(@Param("orderNo") String orderNo);
+
+    Map<String, Object> summarizeOrderItemPoints(@Param("orderNo") String orderNo);
+
+    Map<String, Object> deductUserPoints(@Param("userId") Long userId,
+                                         @Param("usedPoints") long usedPoints);
 
     List<Map<String, Object>> pageOrdersByUser(@Param("userId") Long userId,
                                                @Param("status") String status,
@@ -86,4 +99,10 @@ public interface OrderMapper {
     Map<String, Object> markPendingPaidOrderForUser(@Param("orderNo") String orderNo,
                                                     @Param("userId") Long userId,
                                                     @Param("paidAt") OffsetDateTime paidAt);
+
+    Map<String, Object> markPointsPaidOrderForUser(@Param("orderNo") String orderNo,
+                                                    @Param("userId") Long userId,
+                                                    @Param("paidAt") OffsetDateTime paidAt,
+                                                    @Param("requestReceivedAt") OffsetDateTime requestReceivedAt,
+                                                    @Param("usedPoints") long usedPoints);
 }

@@ -125,6 +125,7 @@ public class OrderCreateService {
                     throw new OrderServiceException(deductResult.code(), deductResult.message(), HttpStatus.CONFLICT);
                 }
                 BigDecimal totalAmount = OrderAmountCalculator.lineAmount(sku.priceYuan(), quantity);
+                long requiredPoints = requiredPoints(sku, quantity);
                 LockedOrderCoupon lockedCoupon = orderCouponService.lockCoupon(
                         userId,
                         sku,
@@ -136,14 +137,15 @@ public class OrderCreateService {
                 BigDecimal discountAmount = OrderAmountCalculator.discount(totalAmount, lockedCoupon);
                 BigDecimal payAmount = OrderAmountCalculator.money(totalAmount.subtract(discountAmount));
                 orderCouponUsageService.writeLock(userId, lockedCoupon, totalAmount, discountAmount, orderNo);
-                return new OrderCreateDraft(lockedCoupon, totalAmount, discountAmount, payAmount);
+                return new OrderCreateDraft(lockedCoupon, totalAmount, discountAmount, payAmount, requiredPoints);
             });
             orderRedisSnapshotService.saveCreatedOrder(
                     context,
                     draft.lockedCoupon(),
                     draft.totalAmount(),
                     draft.discountAmount(),
-                    draft.payAmount()
+                    draft.payAmount(),
+                    draft.requiredPoints()
             );
             publishExpireMessage(orderNo, userId, expireAt);
             return new OrderCreateResponse(orderNo, OrderStatus.PENDING_PAYMENT, expireAt, draft.payAmount());
@@ -241,6 +243,14 @@ public class OrderCreateService {
         return rawQuantity;
     }
 
+    private long requiredPoints(OrderSkuSnapshot sku, int quantity) {
+        if (sku == null || !sku.pointExchangeEnabled()) {
+            return 0L;
+        }
+        Long points = sku.pointExchangePoints();
+        return (points == null || points < 0L ? 0L : points) * Math.max(0, quantity);
+    }
+
     private String normalizeIdempotencyKey(String rawKey) {
         String value = rawKey == null ? "" : rawKey.trim();
         if (value.isEmpty() || value.length() > 96) {
@@ -252,6 +262,7 @@ public class OrderCreateService {
     private record OrderCreateDraft(LockedOrderCoupon lockedCoupon,
                                     BigDecimal totalAmount,
                                     BigDecimal discountAmount,
-                                    BigDecimal payAmount) {
+                                    BigDecimal payAmount,
+                                    long requiredPoints) {
     }
 }

@@ -53,8 +53,14 @@ public class OrderSkuService {
                 OrderRowMapper.text(row, "specJson"),
                 OrderRowMapper.text(row, "skuImageUrl"),
                 OrderAmountCalculator.money(OrderRowMapper.decimal(row, "priceYuan")),
+                OrderRowMapper.boolValue(row, "pointExchangeEnabled"),
+                nonNegativeLong(OrderRowMapper.longValue(row, "pointExchangePoints")),
                 hotSku
         );
+    }
+
+    private long nonNegativeLong(Long value) {
+        return value == null || value < 0L ? 0L : value;
     }
 
     private byte[] parseSkuId(String rawSkuId) {

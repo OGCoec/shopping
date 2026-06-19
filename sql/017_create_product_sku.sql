@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS product_sku (
     -- 原价，单位：元，可为空
     original_price_yuan NUMERIC(12,2),
 
+    -- 是否支持积分兑换
+    point_exchange_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+
+    -- 单件 SKU 积分兑换所需积分数量
+    point_exchange_points BIGINT NOT NULL DEFAULT 0,
+
     -- 当前库存数量
     stock_quantity INTEGER NOT NULL DEFAULT 0,
 
@@ -65,6 +71,12 @@ CREATE TABLE IF NOT EXISTS product_sku (
     CONSTRAINT ck_product_sku_original_price_yuan
         CHECK (original_price_yuan IS NULL OR original_price_yuan >= price_yuan),
 
+    CONSTRAINT ck_product_sku_point_exchange_points
+        CHECK (point_exchange_points >= 0),
+
+    CONSTRAINT ck_product_sku_point_exchange_rule
+        CHECK (point_exchange_enabled = FALSE OR point_exchange_points > 0),
+
     CONSTRAINT ck_product_sku_stock_quantity
         CHECK (stock_quantity >= 0),
 
@@ -87,6 +99,11 @@ CREATE INDEX IF NOT EXISTS idx_product_sku_spu_status_created_id
 CREATE INDEX IF NOT EXISTS idx_product_sku_price_yuan
     ON product_sku (price_yuan);
 
+CREATE INDEX IF NOT EXISTS idx_product_sku_point_exchange_rank
+    ON product_sku (point_exchange_points ASC, id ASC)
+    WHERE point_exchange_enabled = TRUE
+      AND status = 'ACTIVE';
+
 COMMENT ON TABLE product_sku IS '商品 SKU 表，用于保存具体可购买规格、价格和库存';
 
 COMMENT ON COLUMN product_sku.id IS '商品 SKU ID，由 HybridSemaphoreIdWorker 生成的 16 字节 ID；接口和 URL 使用该字节值转出的 Base62 字符串';
@@ -97,6 +114,8 @@ COMMENT ON COLUMN product_sku.spec_json IS 'SKU 规格信息，JSON 对象格式
 COMMENT ON COLUMN product_sku.sku_image_url IS 'SKU 图片地址 JSON 字符串数组，可用于不同颜色或规格展示多张图片';
 COMMENT ON COLUMN product_sku.price_yuan IS '销售单价，单位：元';
 COMMENT ON COLUMN product_sku.original_price_yuan IS '原价，单位：元，可为空';
+COMMENT ON COLUMN product_sku.point_exchange_enabled IS '是否支持积分兑换';
+COMMENT ON COLUMN product_sku.point_exchange_points IS '单件 SKU 积分兑换所需积分数量';
 COMMENT ON COLUMN product_sku.stock_quantity IS '当前库存数量';
 COMMENT ON COLUMN product_sku.status IS 'SKU 状态：ACTIVE 启用，DISABLED 禁用';
 COMMENT ON COLUMN product_sku.created_at IS '创建时间';

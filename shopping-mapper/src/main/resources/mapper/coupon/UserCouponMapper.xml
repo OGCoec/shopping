@@ -324,6 +324,39 @@ FROM updated
         ]]>
     </select>
 
+    <select id="releaseLockedCouponsByOrderNos" resultType="map">
+        <![CDATA[
+WITH raw AS (
+    SELECT *
+    FROM jsonb_to_recordset(CAST(#{ordersJson} AS jsonb)) AS raw(
+        order_no text,
+        user_id bigint
+    )
+),
+updated AS (
+    UPDATE user_coupon c
+    SET status = 'UNUSED',
+        locked_order_no = NULL,
+        locked_at = NULL,
+        updated_at = NOW(),
+        version = c.version + 1
+    FROM raw
+    WHERE c.locked_order_no = raw.order_no
+      AND (raw.user_id IS NULL OR c.user_id = raw.user_id)
+      AND c.status = 'LOCKED'
+    RETURNING raw.order_no,
+              c.user_id,
+              c.id,
+              c.coupon_template_id
+)
+SELECT order_no AS "orderNo",
+       user_id AS "userId",
+       encode(id, 'hex') AS "userCouponId",
+       encode(coupon_template_id, 'hex') AS "couponTemplateId"
+FROM updated
+        ]]>
+    </select>
+
     <select id="useLockedCouponByOrderNo" resultType="map">
         <![CDATA[
 WITH updated AS (

@@ -12,6 +12,16 @@ local function text(value)
     return tostring(value)
 end
 
+local function user_id_text(value)
+    if value == nil then
+        return ''
+    end
+    if type(value) == 'number' then
+        return string.format('%.0f', value)
+    end
+    return tostring(value)
+end
+
 local function reason(status)
     if status == 'CLOSED' then
         return 'PAID_AFTER_ORDER_CLOSED'
@@ -42,17 +52,24 @@ for index, callback in ipairs(callbacks) do
     else
         local order = cjson.decode(orderJson)
         local status = text(order['status'])
-        result['userId'] = order['userId']
+        local orderUserId = user_id_text(order['userId'])
+        result['userId'] = orderUserId
         result['userCouponId'] = order['userCouponId']
         result['userCouponIdHex'] = order['userCouponIdHex']
         result['totalAmountYuan'] = order['totalAmountYuan']
         result['discountAmountYuan'] = order['discountAmountYuan']
         result['payAmountYuan'] = order['payAmountYuan']
+        result['requiredPoints'] = order['requiredPoints']
+        if orderUserId ~= '' then
+            order['userId'] = orderUserId
+        end
 
         if status == 'PENDING_PAYMENT' or status == 'CLOSING' then
             order['status'] = 'PAID'
             order['paidAt'] = callback['paidAt']
             order['paidAtEpochMs'] = callback['paidAtEpochMs']
+            order['paymentType'] = 'SIMULATED'
+            order['usedPoints'] = 0
             if callback['externalTradeNo'] and callback['externalTradeNo'] ~= '' then
                 order['externalTradeNo'] = callback['externalTradeNo']
             end

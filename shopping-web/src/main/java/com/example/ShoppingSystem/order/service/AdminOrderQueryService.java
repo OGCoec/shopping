@@ -229,6 +229,7 @@ public class AdminOrderQueryService {
                 OrderAmountCalculator.money(OrderRowMapper.decimal(order, "totalAmountYuan")),
                 OrderAmountCalculator.money(OrderRowMapper.decimal(order, "discountAmountYuan")),
                 OrderAmountCalculator.money(OrderRowMapper.decimal(order, "payAmountYuan")),
+                nonNegativeLong(OrderRowMapper.longValue(order, "requiredPoints")),
                 OrderRowMapper.idText(order, "userCouponId"),
                 OrderRowMapper.offsetDateTime(order, "expireAt"),
                 OrderRowMapper.offsetDateTime(order, "paidAt"),
@@ -257,6 +258,10 @@ public class AdminOrderQueryService {
                 OrderRowMapper.boolValue(row, "hotSku"),
                 OrderRowMapper.offsetDateTime(row, "createdAt")
         );
+    }
+
+    private long nonNegativeLong(Long value) {
+        return value == null || value < 0L ? 0L : value;
     }
 
     private String normalizeStatus(String status) {

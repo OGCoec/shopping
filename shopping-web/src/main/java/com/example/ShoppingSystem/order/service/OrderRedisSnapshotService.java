@@ -40,6 +40,7 @@ public class OrderRedisSnapshotService {
     private final DefaultRedisScript<List> cancelScript;
     private final DefaultRedisScript<List> expireScript;
     private final DefaultRedisScript<List> finalizeClosingScript;
+    private final DefaultRedisScript<List> closingCompensateBatchScript;
     private final DefaultRedisScript<List> markPaidScript;
     private final DefaultRedisScript<String> markPaidBatchScript;
     private final DefaultRedisScript<List> claimScript;
@@ -56,6 +57,7 @@ public class OrderRedisSnapshotService {
         this.cancelScript = redisScript("lua/order_snapshot_cancel.lua");
         this.expireScript = redisScript("lua/order_snapshot_expire.lua");
         this.finalizeClosingScript = redisScript("lua/order_snapshot_finalize_closing.lua");
+        this.closingCompensateBatchScript = redisScript("lua/order_closing_compensate_batch.lua");
         this.markPaidScript = redisScript("lua/order_snapshot_mark_paid.lua");
         this.markPaidBatchScript = stringRedisScript("lua/order_snapshot_mark_paid_batch.lua");
         this.claimScript = redisScript("lua/order_persist_claim.lua");
@@ -69,8 +71,9 @@ public class OrderRedisSnapshotService {
                                  LockedOrderCoupon lockedCoupon,
                                  BigDecimal totalAmount,
                                  BigDecimal discountAmount,
-                                 BigDecimal payAmount) {
-        Map<String, Object> order = orderMap(context, lockedCoupon, totalAmount, discountAmount, payAmount);
+                                 BigDecimal payAmount,
+                                 long requiredPoints) {
+        Map<String, Object> order = orderMap(context, lockedCoupon, totalAmount, discountAmount, payAmount, requiredPoints);
         List<Map<String, Object>> items = List.of(itemMap(context, totalAmount));
         try {
             stringRedisTemplate.execute(
@@ -209,6 +212,24 @@ public class OrderRedisSnapshotService {
         return stateChangeResult(result, "ORDER_FINALIZE_CLOSING");
     }
 
+    public OrderClosingCompensateBatchResult compensateDueClosing(OffsetDateTime now, int batchSize) {
+        OffsetDateTime runAt = now == null ? OffsetDateTime.now() : now;
+        int limit = Math.max(1, batchSize);
+        List<?> result = stringRedisTemplate.execute(
+                closingCompensateBatchScript,
+                List.of(
+                        OrderRedisKeys.ORDER_CLOSING_ZSET_KEY,
+                        OrderRedisKeys.ORDER_PERSIST_DIRTY_ZSET_KEY
+                ),
+                runAt.toString(),
+                String.valueOf(runAt.toInstant().toEpochMilli()),
+                String.valueOf(limit),
+                OrderRedisKeys.orderDetailKey(""),
+                OrderRedisKeys.orderItemKey("")
+        );
+        return closingCompensateResult(result);
+    }
+
     public OrderRedisStateChangeResult markPaid(String orderNo,
                                                 OffsetDateTime paidAt,
                                                 String externalTradeNo) {
@@ -312,25 +333,41 @@ public class OrderRedisSnapshotService {
     }
 
     public boolean acquirePersistLock(String lockValue, Duration ttl) {
-        if (lockValue == null || lockValue.isBlank()) {
+        return acquireLock(OrderRedisKeys.ORDER_PERSIST_LOCK_KEY, lockValue, ttl);
+    }
+
+    public void releasePersistLock(String lockValue) {
+        releaseLock(OrderRedisKeys.ORDER_PERSIST_LOCK_KEY, lockValue);
+    }
+
+    public boolean acquireClosingCompensateLock(String lockValue, Duration ttl) {
+        return acquireLock(OrderRedisKeys.ORDER_CLOSING_COMPENSATE_LOCK_KEY, lockValue, ttl);
+    }
+
+    public void releaseClosingCompensateLock(String lockValue) {
+        releaseLock(OrderRedisKeys.ORDER_CLOSING_COMPENSATE_LOCK_KEY, lockValue);
+    }
+
+    private boolean acquireLock(String key, String lockValue, Duration ttl) {
+        if (key == null || key.isBlank() || lockValue == null || lockValue.isBlank()) {
             return false;
         }
         Duration lockTtl = ttl == null || ttl.isNegative() || ttl.isZero() ? Duration.ofSeconds(30) : ttl;
         Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(
-                OrderRedisKeys.ORDER_PERSIST_LOCK_KEY,
+                key,
                 lockValue,
                 lockTtl
         );
         return Boolean.TRUE.equals(acquired);
     }
 
-    public void releasePersistLock(String lockValue) {
+    private void releaseLock(String key, String lockValue) {
         if (lockValue == null || lockValue.isBlank()) {
             return;
         }
         stringRedisTemplate.execute(
                 unlockScript,
-                List.of(OrderRedisKeys.ORDER_PERSIST_LOCK_KEY),
+                List.of(key),
                 lockValue
         );
     }
@@ -415,14 +452,18 @@ public class OrderRedisSnapshotService {
                                          LockedOrderCoupon lockedCoupon,
                                          BigDecimal totalAmount,
                                          BigDecimal discountAmount,
-                                         BigDecimal payAmount) {
+                                         BigDecimal payAmount,
+                                         long requiredPoints) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("orderNo", context.orderNo());
-        row.put("userId", context.userId());
+        row.put("userId", String.valueOf(context.userId()));
         row.put("status", OrderStatus.PENDING_PAYMENT);
         row.put("totalAmountYuan", moneyText(totalAmount));
         row.put("discountAmountYuan", moneyText(discountAmount));
         row.put("payAmountYuan", moneyText(payAmount));
+        row.put("requiredPoints", Math.max(0L, requiredPoints));
+        row.put("paymentType", OrderPaymentType.UNPAID);
+        row.put("usedPoints", 0L);
         row.put("userCouponId", lockedCoupon == null ? null : lockedCoupon.userCouponIdText());
         row.put("userCouponIdHex", lockedCoupon == null ? null : HybridIdCodec.toHex(lockedCoupon.userCouponId()));
         row.put("idempotencyKey", context.idempotencyKey());
@@ -447,7 +488,7 @@ public class OrderRedisSnapshotService {
     private Map<String, Object> itemMap(OrderCreateContext context, BigDecimal lineAmount) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("orderNo", context.orderNo());
-        row.put("userId", context.userId());
+        row.put("userId", String.valueOf(context.userId()));
         row.put("spuId", context.sku().spuId());
         row.put("skuId", HybridIdCodec.toHex(context.sku().skuId()));
         row.put("skuCode", context.sku().skuCode());
@@ -457,9 +498,24 @@ public class OrderRedisSnapshotService {
         row.put("quantity", context.quantity());
         row.put("salePriceYuan", moneyText(context.sku().priceYuan()));
         row.put("lineAmountYuan", moneyText(lineAmount));
+        row.put("pointExchangeEnabled", context.sku().pointExchangeEnabled());
+        row.put("pointExchangePoints", pointExchangePoints(context.sku()));
+        row.put("linePoints", linePoints(context.sku(), context.quantity()));
         row.put("hotSku", context.sku().hotSku());
         putTime(row, "createdAt", context.now());
         return row;
+    }
+
+    private long pointExchangePoints(OrderSkuSnapshot sku) {
+        Long points = sku == null ? null : sku.pointExchangePoints();
+        return points == null || points < 0L ? 0L : points;
+    }
+
+    private long linePoints(OrderSkuSnapshot sku, int quantity) {
+        if (sku == null || !sku.pointExchangeEnabled()) {
+            return 0L;
+        }
+        return pointExchangePoints(sku) * Math.max(0, quantity);
     }
 
     private void putTime(Map<String, Object> row, String key, OffsetDateTime value) {
@@ -500,6 +556,40 @@ public class OrderRedisSnapshotService {
         return OrderRedisStateChangeResult.unchanged("ORDER_PAY_" + code);
     }
 
+    private OrderClosingCompensateBatchResult closingCompensateResult(List<?> result) {
+        if (result == null || result.isEmpty()) {
+            return OrderClosingCompensateBatchResult.empty();
+        }
+        int claimedCount = intAt(result, 0);
+        int changedCount = intAt(result, 1);
+        int staleMissingCount = intAt(result, 2);
+        int staleTerminalCount = intAt(result, 3);
+        int skippedNonClosingCount = intAt(result, 4);
+        int skippedNotDueCount = intAt(result, 5);
+        int expectedSize = 6 + changedCount * 3;
+        if (result.size() < expectedSize) {
+            throw new OrderServiceException("ORDER_REDIS_PAYLOAD_INVALID", "Order Redis payload is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        List<OrderRedisSnapshot> changedSnapshots = new ArrayList<>(changedCount);
+        for (int index = 0; index < changedCount; index += 1) {
+            int offset = 6 + index * 3;
+            String orderJson = stringAt(result, offset + 1);
+            String itemJson = stringAt(result, offset + 2);
+            if (!orderJson.isBlank()) {
+                changedSnapshots.add(new OrderRedisSnapshot(readMap(orderJson), readItems(itemJson)));
+            }
+        }
+        return new OrderClosingCompensateBatchResult(
+                claimedCount,
+                changedCount,
+                staleMissingCount,
+                staleTerminalCount,
+                skippedNonClosingCount,
+                skippedNotDueCount,
+                List.copyOf(changedSnapshots)
+        );
+    }
+
     private Map<String, Object> readMap(String json) {
         try {
             return objectMapper.readValue(json, MAP_TYPE);
@@ -530,6 +620,28 @@ public class OrderRedisSnapshotService {
         } catch (NumberFormatException e) {
             return -1;
         }
+    }
+
+    private int intAt(List<?> result, int index) {
+        if (result == null || result.size() <= index || result.get(index) == null) {
+            return 0;
+        }
+        Object value = result.get(index);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private String stringAt(List<?> result, int index) {
+        if (result == null || result.size() <= index || result.get(index) == null) {
+            return "";
+        }
+        return String.valueOf(result.get(index));
     }
 
     private List<String> textList(List<?> result) {

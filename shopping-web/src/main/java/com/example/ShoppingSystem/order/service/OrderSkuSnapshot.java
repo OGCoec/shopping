@@ -11,5 +11,7 @@ public record OrderSkuSnapshot(byte[] skuId,
                                String specJson,
                                String skuImageUrl,
                                BigDecimal priceYuan,
+                               boolean pointExchangeEnabled,
+                               Long pointExchangePoints,
                                boolean hotSku) {
 }

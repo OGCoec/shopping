@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.order.service;
 
 import com.example.ShoppingSystem.Utils.HybridIdCodec;
+import com.example.ShoppingSystem.config.datasource.OrderReadReplicaQueryExecutor;
 import com.example.ShoppingSystem.mapper.order.OrderCardSecretDeliveryMapper;
 import com.example.ShoppingSystem.order.dto.OrderCardSecretItemResponse;
 import com.example.ShoppingSystem.order.dto.OrderCardSecretResponse;
@@ -22,13 +23,16 @@ public class OrderCardSecretQueryService {
     private final OrderRedisSnapshotService orderRedisSnapshotService;
     private final OrderCardSecretDeliveryMapper deliveryMapper;
     private final OrderCardSecretCryptoService cryptoService;
+    private final OrderReadReplicaQueryExecutor orderReadReplicaQueryExecutor;
 
     public OrderCardSecretQueryService(OrderRedisSnapshotService orderRedisSnapshotService,
                                        OrderCardSecretDeliveryMapper deliveryMapper,
-                                       OrderCardSecretCryptoService cryptoService) {
+                                       OrderCardSecretCryptoService cryptoService,
+                                       OrderReadReplicaQueryExecutor orderReadReplicaQueryExecutor) {
         this.orderRedisSnapshotService = orderRedisSnapshotService;
         this.deliveryMapper = deliveryMapper;
         this.cryptoService = cryptoService;
+        this.orderReadReplicaQueryExecutor = orderReadReplicaQueryExecutor;
     }
 
     public OrderCardSecretResponse getForUser(Long userId, String orderNo) {
@@ -36,6 +40,10 @@ public class OrderCardSecretQueryService {
             throw new OrderServiceException("ORDER_AUTH_REQUIRED", "Authentication is required.", HttpStatus.UNAUTHORIZED);
         }
         String normalizedOrderNo = normalizeOrderNo(orderNo);
+        return orderReadReplicaQueryExecutor.queryPrimary(() -> getForUserOnPrimary(userId, normalizedOrderNo));
+    }
+
+    private OrderCardSecretResponse getForUserOnPrimary(Long userId, String normalizedOrderNo) {
         OrderAndItems orderAndItems = loadOrderAndItems(userId, normalizedOrderNo);
         if (!OrderStatus.PAID.equals(orderAndItems.orderStatus())) {
             throw new OrderServiceException(

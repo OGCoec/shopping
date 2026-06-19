@@ -152,16 +152,19 @@ SELECT (SELECT spu_exists FROM stats) AS "spuExists",
        COALESCE((
            SELECT jsonb_agg(
                       jsonb_build_object(
-                          'skuId', encode(sku_id, 'hex'),
-                          'stockQuantity', stock_quantity,
-                          'remainingQuantity', remaining_quantity,
-                          'status', status,
-                          'startAtEpochMs', FLOOR(EXTRACT(EPOCH FROM start_at) * 1000)::bigint,
-                          'endAtEpochMs', FLOOR(EXTRACT(EPOCH FROM end_at) * 1000)::bigint,
-                          'version', version
+                          'skuId', encode(upserted.sku_id, 'hex'),
+                          'stockQuantity', upserted.stock_quantity,
+                          'remainingQuantity', upserted.remaining_quantity,
+                          'status', upserted.status,
+                          'startAtEpochMs', FLOOR(EXTRACT(EPOCH FROM upserted.start_at) * 1000)::bigint,
+                          'endAtEpochMs', FLOOR(EXTRACT(EPOCH FROM upserted.end_at) * 1000)::bigint,
+                          'version', upserted.version,
+                          'pointExchangeEnabled', s.point_exchange_enabled,
+                          'pointExchangePoints', s.point_exchange_points
                       )
                   )
            FROM upserted
+           INNER JOIN product_sku s ON s.id = upserted.sku_id
        ), '[]'::jsonb)::text AS "redisItemsJson"
         ]]>
     </select>

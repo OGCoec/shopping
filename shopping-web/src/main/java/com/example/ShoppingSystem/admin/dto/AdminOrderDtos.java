@@ -42,6 +42,7 @@ public final class AdminOrderDtos {
                                            BigDecimal totalAmountYuan,
                                            BigDecimal discountAmountYuan,
                                            BigDecimal payAmountYuan,
+                                           Long requiredPoints,
                                            String userCouponId,
                                            OffsetDateTime expireAt,
                                            OffsetDateTime paidAt,

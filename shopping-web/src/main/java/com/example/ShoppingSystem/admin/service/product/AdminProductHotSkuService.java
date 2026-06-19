@@ -283,6 +283,8 @@ public class AdminProductHotSkuService {
                         meta.put("endAtEpochMs", nullableLongText(item.endAtEpochMs()));
                         meta.put("stockQuantity", String.valueOf(item.stockQuantity()));
                         meta.put("version", String.valueOf(item.version()));
+                        meta.put("pointExchangeEnabled", String.valueOf(item.pointExchangeEnabled()));
+                        meta.put("pointExchangePoints", String.valueOf(item.pointExchangePoints()));
                         operations.opsForHash().putAll(metaKey, meta);
                         operations.persist(metaKey);
                         operations.opsForValue().set(stockKey, String.valueOf(item.remainingQuantity()));
@@ -596,6 +598,8 @@ public class AdminProductHotSkuService {
                                    String status,
                                    Long startAtEpochMs,
                                    Long endAtEpochMs,
-                                   long version) {
+                                   long version,
+                                   boolean pointExchangeEnabled,
+                                   long pointExchangePoints) {
     }
 }

@@ -31,6 +31,15 @@ CREATE TABLE IF NOT EXISTS trade_order (
     -- 订单应付金额，单位：元
     pay_amount_yuan NUMERIC(12,2) NOT NULL,
 
+    -- 订单积分应付数量，下单时按商品积分兑换规则计算
+    required_points BIGINT NOT NULL DEFAULT 0,
+
+    -- 支付方式：UNPAID 未支付，SIMULATED 模拟支付，POINTS 积分支付
+    payment_type VARCHAR(32) NOT NULL DEFAULT 'UNPAID',
+
+    -- 本订单使用的积分数量，非积分支付时为 0
+    used_points BIGINT NOT NULL DEFAULT 0,
+
     -- 本订单使用的用户优惠券 ID，可为空
     user_coupon_id BYTEA,
 
@@ -87,6 +96,18 @@ CREATE TABLE IF NOT EXISTS trade_order (
             AND discount_amount_yuan <= total_amount_yuan
         ),
 
+    CONSTRAINT ck_trade_order_payment_type
+        CHECK (payment_type IN ('UNPAID', 'SIMULATED', 'POINTS')),
+
+    CONSTRAINT ck_trade_order_required_points
+        CHECK (required_points >= 0),
+
+    CONSTRAINT ck_trade_order_used_points
+        CHECK (used_points >= 0),
+
+    CONSTRAINT ck_trade_order_points_payment_rule
+        CHECK (payment_type <> 'POINTS' OR used_points > 0),
+
     CONSTRAINT ck_trade_order_user_coupon_id_bytes
         CHECK (user_coupon_id IS NULL OR octet_length(user_coupon_id) = 16),
 
@@ -116,6 +137,16 @@ CREATE INDEX IF NOT EXISTS idx_trade_order_user_coupon_id
     ON trade_order (user_coupon_id)
     WHERE user_coupon_id IS NOT NULL;
 
+CREATE INDEX IF NOT EXISTS idx_trade_order_payment_type_created
+    ON trade_order (payment_type, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_trade_order_user_payment_type_created
+    ON trade_order (user_id, payment_type, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_trade_order_points_paid_created
+    ON trade_order (created_at DESC, id DESC)
+    WHERE payment_type = 'POINTS';
+
 COMMENT ON TABLE trade_order IS '订单主表：一行代表用户一次确认下单生成的交易单。订单记录用户、金额、优惠、支付状态、超时时间等核心信息，是库存锁定、优惠券锁定、支付、取消、售后等后续流程的业务入口。';
 
 COMMENT ON COLUMN trade_order.id IS '数据库订单主键，使用 PostgreSQL 自增 BIGINT，只用于数据库内部索引、排序和物理存储优化；业务接口、Redis、MQ 和对账使用 order_no';
@@ -125,6 +156,9 @@ COMMENT ON COLUMN trade_order.status IS '订单状态：PENDING_PAYMENT 待支�
 COMMENT ON COLUMN trade_order.total_amount_yuan IS '订单商品总金额，单位：元，未扣减优惠前的金额';
 COMMENT ON COLUMN trade_order.discount_amount_yuan IS '订单优惠金额，单位：元，包括优惠券、活动等优惠抵扣';
 COMMENT ON COLUMN trade_order.pay_amount_yuan IS '订单应付金额，单位：元，等于商品总金额扣减优惠后的实际待支付金额';
+COMMENT ON COLUMN trade_order.required_points IS '订单积分应付数量，下单时按商品积分兑换规则计算，非积分商品或不支持积分支付时为 0';
+COMMENT ON COLUMN trade_order.payment_type IS '支付方式：UNPAID 未支付，SIMULATED 模拟支付，POINTS 积分支付';
+COMMENT ON COLUMN trade_order.used_points IS '本订单使用的积分数量，非积分支付时为 0';
 COMMENT ON COLUMN trade_order.user_coupon_id IS '本订单使用的用户优惠券 ID，对应 user_coupon.id，可为空；用于记录订单下单时锁定并在支付成功后核销的那张具体优惠券';
 COMMENT ON COLUMN trade_order.idempotency_key IS '下单幂等键，用于防止用户重复点击确认下单导致重复创建订单';
 COMMENT ON COLUMN trade_order.expire_at IS '订单支付超时时间，超过该时间仍未支付时可自动关闭并释放库存、优惠券';

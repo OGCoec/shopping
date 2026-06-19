@@ -8,6 +8,16 @@ local orderNo = ARGV[3]
 local closingDeadlineIso = ARGV[4]
 local closingDeadlineMs = tonumber(ARGV[5])
 
+local function user_id_text(value)
+    if value == nil then
+        return ''
+    end
+    if type(value) == 'number' then
+        return string.format('%.0f', value)
+    end
+    return tostring(value)
+end
+
 local orderJson = redis.call('GET', detailKey)
 if not orderJson then
     return {1}
@@ -21,6 +31,10 @@ if tonumber(order['expireAtEpochMs'] or 0) > nowMs then
     return {3}
 end
 
+local orderUserId = user_id_text(order['userId'])
+if orderUserId ~= '' then
+    order['userId'] = orderUserId
+end
 order['status'] = 'CLOSING'
 order['closingAt'] = nowIso
 order['closingAtEpochMs'] = nowMs

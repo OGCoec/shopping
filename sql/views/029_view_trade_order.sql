@@ -15,6 +15,9 @@ SELECT
     total_amount_yuan,
     discount_amount_yuan,
     pay_amount_yuan,
+    required_points,
+    payment_type,
+    used_points,
     to_base62(user_coupon_id)     AS user_coupon_id_base62, -- 关联 user_coupon.id 的 Base62
     encode(user_coupon_id, 'hex') AS user_coupon_id_hex,    -- 兜底 Hex 展示
     idempotency_key,
@@ -49,3 +52,6 @@ COMMENT ON COLUMN v_trade_order.closed_at IS '订单关闭时间，通常用于�
 COMMENT ON COLUMN v_trade_order.version IS '数据版本号，用于订单状态变更时做乐观锁控制';
 COMMENT ON COLUMN v_trade_order.created_at IS '订单创建时间';
 COMMENT ON COLUMN v_trade_order.updated_at IS '订单更新时间';
+COMMENT ON COLUMN v_trade_order.required_points IS '订单积分应付数量，下单时按商品积分兑换规则计算，非积分商品或不支持积分支付时为 0';
+COMMENT ON COLUMN v_trade_order.payment_type IS '支付方式：UNPAID 未支付，SIMULATED 模拟支付，POINTS 积分支付';
+COMMENT ON COLUMN v_trade_order.used_points IS '本订单使用的积分数量，非积分支付时为 0';
