@@ -69,18 +69,48 @@ README 不放图片和截图；需要更细的规则说明时，请查看 [docs/
 
 ## 数据库建表说明
 
-| 业务域 | 建表脚本 | 主要数据 |
-| --- | --- | --- |
-| 账号与登录 | `001`、`002`、`003`、`004` | 登录身份、用户资料、登录成功记录、登录失败记录。 |
-| 风控画像 | `005`、`006`、`007`、`008`、`009`、`010`、`011`、`013`、`014` | IPv4/IPv6 信誉画像、用户/设备风险画像、设备用户关系、风险分事件、风控封号、自助注销。 |
-| 商品 | `015`、`016`、`017`、`018`、`021` | 商品分类、SPU、SKU、详情、热点 SKU 库存。 |
-| 优惠券 | `022`、`023`、`024`、`025` | 优惠券模板、适用范围、用户优惠券、优惠券使用记录。 |
-| 订单 | `029`、`030` | 交易订单和订单明细。 |
-| 支付与退款 | `032`、`033` | 退款记录、支付回调 inbox。 |
-| 卡密 | `034`、`035` | 卡密库存、订单卡密交付记录。 |
-| 查询视图 | `sql/views/*.sql` | Base62 函数和后台/前台查询视图，覆盖登录、风控、商品、优惠券、订单、退款、回调和卡密交付。 |
+当前项目已经从单库演进为本地纵向分库。`5432/shopping` 保留为旧库、迁移来源和回滚库，新链路默认访问 `5433` 到 `5437` 的业务库。完整端口、表归属、从库拓扑和 Spring 路由规则见 [docs/database-sharding-and-replica-routing.md](docs/database-sharding-and-replica-routing.md)。
+
+| 业务域 | 目标库 | 建表脚本 | 主要数据 |
+| --- | --- | --- | --- |
+| 账号与登录 | `5433/shopping_core` | `001`、`002`、`003`、`004` | 登录身份、用户资料、自助注销；登录成功/失败记录当前按风控查询归入 `shopping_risk`。 |
+| 风控画像 | `5437/shopping_risk` | `005`、`006`、`007`、`008`、`009`、`010`、`011`、`013`、`014` | IPv4/IPv6 信誉画像、用户/设备风险画像、设备用户关系、风险分事件、登录记录、风控封号。 |
+| 商品 | `5435/shopping_product` | `015`、`016`、`017`、`018`、`021` | 商品分类、SPU、SKU、详情、热点 SKU 库存。 |
+| 优惠券模板 | `5436/shopping_coupon` | `022`、`023` | 优惠券模板、适用范围。 |
+| 用户券与用券 | `5434/shopping_trade` | `024`、`025` | 用户优惠券、优惠券使用记录；下单锁券和支付用券需要和订单链路保持强一致。 |
+| 订单 | `5434/shopping_trade` | `029`、`030` | 交易订单和订单明细。 |
+| 支付与退款 | `5434/shopping_trade` | `032`、`033` | 退款记录、支付回调 inbox。 |
+| 卡密 | `5434/shopping_trade` | `034`、`035` | 卡密库存、订单卡密交付记录。 |
+| 签到与积分 | `5434/shopping_trade` | `036`、`037` | 用户签到记录、用户积分账户。 |
+| 查询视图 | 对应业务库 | `sql/views/*.sql` | Base62 函数和后台/前台查询视图，覆盖登录、风控、商品、优惠券、订单、退款、回调和卡密交付。 |
 
 脚本文件位于 [sql](sql)，视图位于 [sql/views](sql/views)。当前脚本编号中没有 `012`、`019`、`020`、`026`、`027`、`028`、`031`，按仓库现状保留。
+
+## 数据库分库与读从库
+
+本地分库端口：
+
+| 数据库 | 端口 | 说明 |
+| --- | --- | --- |
+| `shopping_core` | `5433` | 用户基础信息，登录认证第一版仍读写主库。 |
+| `shopping_trade` | `5434` | 订单、支付、退款、卡密、积分、签到、用户券。 |
+| `shopping_product` | `5435` | 商品分类、SPU、SKU、详情、热点 SKU。 |
+| `shopping_coupon` | `5436` | 优惠券模板和适用范围。 |
+| `shopping_risk` | `5437` | IP、设备、账号、登录风险。 |
+
+物理从库端口：
+
+| 业务域 | 主库 | 从库 |
+| --- | --- | --- |
+| CORE | `5433` | `5533`、`5633`，暂不接登录/认证读链路。 |
+| TRADE | `5434` | `5534`、`5634` |
+| PRODUCT | `5435` | `5535`、`5635` |
+| COUPON | `5436` | `5536`、`5636` |
+| RISK | `5437` | `5537`、`5637` |
+
+Spring 读写分离在应用内实现，不依赖 Nginx、MyCat 或 ShardingJDBC。写操作走对应主库；普通读通过 `OrderReadReplicaQueryExecutor`、`ProductReadReplicaQueryExecutor`、`CouponReadReplicaQueryExecutor`、`RiskReadReplicaQueryExecutor` 按 client IP hash 选择两个从库之一。从库失败后会重试另一个从库，两个从库都失败且 `fallback-to-primary=true` 时回同领域主库。
+
+强一致读必须绕过从库，包括刚创建订单后查详情、支付成功后查订单、扣积分后查余额、发卡密后查交付结果、用户卡密查询、登录认证和账号状态查询。
 
 ## 测试与压测
 
@@ -212,7 +242,7 @@ Caffeine 本地缓存
 
 - Redis：PreAuth binding、注册/登录 flow、验证码状态、短信限流、账号失败窗口、网络风险窗口、自动化防刷、IP/设备风险缓存、Counting Bloom、IP2Location quota。
 - Caffeine：本地热点风险缓存，减少 Redis 和 DB 压力。
-- PostgreSQL：用户身份、登录记录、用户风险画像、设备风险画像、IPv4/IPv6 风险画像、风险事件、封号记录、商品数据。
+- PostgreSQL：按业务域纵向分库到 `shopping_core`、`shopping_trade`、`shopping_product`、`shopping_coupon`、`shopping_risk`；普通读可按领域走物理从库，写操作和强一致读走主库。
 - RabbitMQ：注册邮箱验证码、密码重置邮件、欢迎邮件、短信验证码、头像上传、账号注销、IP 风险写回等异步任务。
 - Redis Lua：用于自动化防刷、IP2Location quota 管理、批量扣减/补偿等需要原子性的场景。
 
@@ -224,7 +254,7 @@ Caffeine 本地缓存
 
 - JDK 21
 - Maven
-- PostgreSQL
+- PostgreSQL；当前本地默认使用 `5433` 到 `5437` 作为纵向分库主库，`5533/5633` 到 `5537/5637` 作为物理从库。
 - Redis
 - RabbitMQ
 - 本地 IP2Location LITE DB11 IPv6 BIN 文件，默认文件名为 `IP2LOCATION-LITE-DB11.IPV6.BIN`，文件较大，不提交到 GitHub。
@@ -242,6 +272,21 @@ mvn -pl shopping-web -am spring-boot:run
 - HTTPS 端口：`6655`
 - 启动类：`shopping-web/src/main/java/com/example/ShoppingSystem/ShoppingSystemApplication.java`
 - 主配置：`shopping-web/src/main/resources/application.yaml`
+- 数据库详细配置：见 [docs/database-sharding-and-replica-routing.md](docs/database-sharding-and-replica-routing.md)
+
+本地 PostgreSQL 从库脚本：
+
+```powershell
+E:\postgresql_replica_instances\start_shopping_replicas.bat
+E:\postgresql_replica_instances\stop_shopping_replicas.bat
+E:\postgresql_replica_instances\check_shopping_replicas.bat
+```
+
+端口检查：
+
+```powershell
+Get-NetTCPConnection -LocalPort 5433,5434,5435,5436,5437,5533,5534,5535,5536,5537,5633,5634,5635,5636,5637 -State Listen
+```
 
 常见环境变量：
 
@@ -258,8 +303,17 @@ mvn -pl shopping-web -am spring-boot:run
 | `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET` | 阿里云短信。 |
 | `IP2LOCATION_IO_API_URL` | IP2Location.io API 地址（只控制外部请求地址，不是 Redis key）。 |
 | `IPING_API_ENABLED` / `IPING_API_URL` / `IPING_API_LANGUAGE` | iPing 降级查询。 |
+| `SHOPPING_CORE_DB_URL` / `SHOPPING_CORE_DB_USERNAME` / `SHOPPING_CORE_DB_PASSWORD` | `5433/shopping_core` 主库连接。 |
+| `SHOPPING_TRADE_DB_URL` / `SHOPPING_TRADE_DB_USERNAME` / `SHOPPING_TRADE_DB_PASSWORD` | `5434/shopping_trade` 主库连接。 |
+| `SHOPPING_PRODUCT_DB_URL` / `SHOPPING_PRODUCT_DB_USERNAME` / `SHOPPING_PRODUCT_DB_PASSWORD` | `5435/shopping_product` 主库连接。 |
+| `SHOPPING_COUPON_DB_URL` / `SHOPPING_COUPON_DB_USERNAME` / `SHOPPING_COUPON_DB_PASSWORD` | `5436/shopping_coupon` 主库连接。 |
+| `SHOPPING_RISK_DB_URL` / `SHOPPING_RISK_DB_USERNAME` / `SHOPPING_RISK_DB_PASSWORD` | `5437/shopping_risk` 主库连接。 |
+| `SHOPPING_ORDER_READ_DB_REPLICA_1_URL` / `SHOPPING_ORDER_READ_DB_REPLICA_2_URL` | 订单普通读从库，默认 `5534/5634`。 |
+| `SHOPPING_PRODUCT_READ_DB_REPLICA_1_URL` / `SHOPPING_PRODUCT_READ_DB_REPLICA_2_URL` | 商品普通读从库，默认 `5535/5635`。 |
+| `SHOPPING_COUPON_READ_DB_REPLICA_1_URL` / `SHOPPING_COUPON_READ_DB_REPLICA_2_URL` | 优惠券普通读从库，默认 `5536/5636`。 |
+| `SHOPPING_RISK_READ_DB_REPLICA_1_URL` / `SHOPPING_RISK_READ_DB_REPLICA_2_URL` | 风控普通读从库，默认 `5537/5637`。 |
 
-不要把真实密钥提交到仓库。
+不要把真实密钥提交到仓库。生产环境应使用环境变量、Secret 或部署平台密钥管理，不要依赖本地开发默认密码。
 
 IP2Location 配额 key 说明：
 
@@ -271,6 +325,7 @@ IP2Location 配额 key 说明：
 
 ## 文档索引
 
+- [docs/database-sharding-and-replica-routing.md](docs/database-sharding-and-replica-routing.md)：PostgreSQL 纵向分库、物理从库、Spring 读写路由、IP hash 负载均衡和强一致读规则。
 - [docs/risk-control-system-overview.md](docs/risk-control-system-overview.md)：风控系统实现总览。
 - [risk_challenge_rules.txt](risk_challenge_rules.txt)：注册、登录、短信、密码重置等 challenge 分流规则。
 - [bot_attack_defense_rules.txt](bot_attack_defense_rules.txt)：自动化攻击和防刷规则说明。
