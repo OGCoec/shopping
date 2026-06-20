@@ -8,8 +8,8 @@ import cloud.tianai.captcha.interceptor.CaptchaInterceptor;
 import cloud.tianai.captcha.interceptor.Context;
 import cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack;
 import cloud.tianai.captcha.validator.common.model.dto.MatchParam;
-import com.example.ShoppingSystem.service.captcha.tianai.interceptor.rule.AdvancedTrackRule6;
-import com.example.ShoppingSystem.service.captcha.tianai.interceptor.rule.BasicTrackRules123457;
+import com.example.ShoppingSystem.service.captcha.tianai.interceptor.rule.impl.TrackValidationRule.AdvancedTrackRule6;
+import com.example.ShoppingSystem.service.captcha.tianai.interceptor.rule.impl.TrackValidationRule.BasicTrackRules123457;
 import com.example.ShoppingSystem.service.captcha.tianai.interceptor.rule.TrackValidationRule;
 
 import java.util.List;

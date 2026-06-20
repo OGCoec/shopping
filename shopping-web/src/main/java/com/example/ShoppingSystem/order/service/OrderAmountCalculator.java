@@ -3,18 +3,18 @@ package com.example.ShoppingSystem.order.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-final class OrderAmountCalculator {
+public final class OrderAmountCalculator {
 
     private static final BigDecimal ONE = BigDecimal.ONE;
 
     private OrderAmountCalculator() {
     }
 
-    static BigDecimal lineAmount(BigDecimal price, int quantity) {
+    public static BigDecimal lineAmount(BigDecimal price, int quantity) {
         return money(price.multiply(BigDecimal.valueOf(quantity)));
     }
 
-    static BigDecimal discount(BigDecimal orderAmount, OrderCouponSnapshot coupon) {
+    public static BigDecimal discount(BigDecimal orderAmount, OrderCouponSnapshot coupon) {
         if (coupon == null) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
@@ -39,7 +39,7 @@ final class OrderAmountCalculator {
         return money(discount);
     }
 
-    static BigDecimal discount(BigDecimal orderAmount, LockedOrderCoupon coupon) {
+    public static BigDecimal discount(BigDecimal orderAmount, LockedOrderCoupon coupon) {
         if (coupon == null) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
@@ -65,7 +65,7 @@ final class OrderAmountCalculator {
         return discount(orderAmount, snapshot);
     }
 
-    static BigDecimal money(BigDecimal value) {
+    public static BigDecimal money(BigDecimal value) {
         return (value == null ? BigDecimal.ZERO : value).setScale(2, RoundingMode.HALF_UP);
     }
 }

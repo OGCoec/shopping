@@ -13,9 +13,6 @@ public interface CouponScopeMapper {
 
     int insertScopes(@Param("itemsJson") String itemsJson);
 
-    long countExistingTargets(@Param("scopeType") String scopeType,
-                              @Param("itemsJson") String itemsJson);
-
     List<Map<String, Object>> listByTemplateId(@Param("couponTemplateId") byte[] couponTemplateId);
 
     List<Map<String, Object>> listByTemplateIds(@Param("couponTemplateIds") List<byte[]> couponTemplateIds);

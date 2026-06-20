@@ -168,6 +168,62 @@ LIMIT #{limit} OFFSET #{offset}
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <select id="countExistingSpuIds" resultType="long">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="ids" item="id" separator=",">
+                (#{id})
+            </foreach>
+        ),
+        normalized_requested AS (
+            SELECT DISTINCT id
+            FROM requested
+        )
+        SELECT COUNT(*)
+        FROM product_spu p
+        INNER JOIN normalized_requested r ON r.id = p.id
+    </select>
+
+    <select id="countExistingSkuIds" resultType="long">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="ids" item="id" separator=",">
+                (#{id})
+            </foreach>
+        ),
+        normalized_requested AS (
+            SELECT DISTINCT id
+            FROM requested
+        )
+        SELECT COUNT(*)
+        FROM product_sku s
+        INNER JOIN normalized_requested r ON r.id = s.id
+    </select>
+
+    <select id="listSkuIdHexesBySpuId" resultType="string">
+        SELECT encode(id, 'hex')
+        FROM product_sku
+        WHERE spu_id = #{spuId}
+        ORDER BY id
+    </select>
+
+    <select id="listSkuSummariesBySkuIds" resultType="map">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="ids" item="id" separator=",">
+                (#{id})
+            </foreach>
+        )
+        SELECT encode(s.id, 'hex') AS "skuIdHex",
+               to_base62(s.id) AS "skuId",
+               s.sku_name AS "skuName",
+               p.id AS "spuId",
+               p.name AS "spuName"
+        FROM product_sku s
+        INNER JOIN requested r ON r.id = s.id
+        LEFT JOIN product_spu p ON p.id = s.spu_id
+    </select>
+
     <select id="findSpuById" resultType="map">
         <![CDATA[
 SELECT p.id AS "id",

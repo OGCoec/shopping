@@ -22,11 +22,18 @@ public interface UserCouponMapper {
     List<Map<String, Object>> listByUserIds(@Param("userIds") List<Long> userIds,
                                             @Param("status") String status);
 
-    List<Map<String, Object>> listAdminClaimsByTemplateId(@Param("couponTemplateId") byte[] couponTemplateId,
-                                                          @Param("status") String status,
-                                                          @Param("email") String email,
-                                                          @Param("offset") int offset,
-                                                          @Param("pageSize") int pageSize);
+    List<Map<String, Object>> listByUserIdAndTemplateIds(@Param("userId") Long userId,
+                                                         @Param("couponTemplateIds") List<byte[]> couponTemplateIds);
+
+    List<Map<String, Object>> listAdminClaimsByTemplateIdForUser(@Param("couponTemplateId") byte[] couponTemplateId,
+                                                                 @Param("status") String status,
+                                                                 @Param("userId") Long userId,
+                                                                 @Param("offset") int offset,
+                                                                 @Param("pageSize") int pageSize);
+
+    long countAdminClaimsByTemplateIdForUser(@Param("couponTemplateId") byte[] couponTemplateId,
+                                             @Param("status") String status,
+                                             @Param("userId") Long userId);
 
     List<Map<String, Object>> listMine(@Param("userId") Long userId,
                                        @Param("status") String status,

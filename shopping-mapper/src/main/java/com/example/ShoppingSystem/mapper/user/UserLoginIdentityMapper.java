@@ -37,6 +37,19 @@ public interface UserLoginIdentityMapper {
 
     java.util.List<Long> listPhoneVerifiedUserIds(@Param("limit") int limit, @Param("offset") long offset);
 
+    java.util.List<java.util.Map<String, Object>> listEmailsByUserIds(@Param("userIds") java.util.List<Long> userIds);
+
+    java.util.List<java.util.Map<String, Object>> listIdentitySummariesByUserIds(@Param("userIds") java.util.List<Long> userIds);
+
+    java.util.List<java.util.Map<String, Object>> listIdentitySummariesByFilters(@Param("userId") Long userId,
+                                                                                  @Param("emailPattern") String emailPattern,
+                                                                                  @Param("phonePattern") String phonePattern,
+                                                                                  @Param("status") String status);
+
+    java.util.List<Long> listActiveUserIdsByUserIds(@Param("userIds") java.util.List<Long> userIds);
+
+    int deleteRiskTerminatedByUserIds(@Param("userIds") java.util.List<Long> userIds);
+
     int bindGithubIdById(@Param("id") Long id, @Param("githubId") String githubId);
 
     int bindGoogleIdById(@Param("id") Long id, @Param("googleId") String googleId);

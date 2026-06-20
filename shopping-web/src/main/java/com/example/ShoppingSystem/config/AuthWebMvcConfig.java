@@ -17,6 +17,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import com.example.ShoppingSystem.loginflow.LoginFlowWebSupport;
 /**
  * MVC interceptor registration for semantic auth step routes.
  */

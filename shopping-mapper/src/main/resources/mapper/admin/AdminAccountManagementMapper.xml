@@ -7,9 +7,6 @@
 
     <select id="listAccountCreditProfiles" resultType="map">
         SELECT urp.user_id AS "userId",
-               uli.email,
-               uli.phone,
-               uli.status,
                urp.current_score AS "currentScore",
                urp.risk_level AS "riskLevel",
                urp.lock_count AS "lockCount",
@@ -18,19 +15,15 @@
                urp.last_login_at AS "lastLoginAt",
                urp.updated_at AS "updatedAt"
         FROM user_risk_profile urp
-        LEFT JOIN user_login_identity uli ON uli.user_id = urp.user_id
         <where>
             <if test="userId != null">
                 AND urp.user_id = #{userId}
             </if>
-            <if test="emailPattern != null">
-                AND LOWER(uli.email) LIKE #{emailPattern}
-            </if>
-            <if test="phonePattern != null">
-                AND uli.phone LIKE #{phonePattern}
-            </if>
-            <if test="status != null">
-                AND uli.status = #{status}
+            <if test="userIds != null and userIds.size() > 0">
+                AND urp.user_id IN
+                <foreach collection="userIds" item="candidateUserId" open="(" separator="," close=")">
+                    #{candidateUserId}
+                </foreach>
             </if>
             <if test="riskLevel != null">
                 AND urp.risk_level = #{riskLevel}
@@ -42,9 +35,6 @@
     <select id="findAccountCreditDetail" resultType="map">
         <![CDATA[
 SELECT urp.user_id AS "userId",
-       uli.email,
-       uli.phone,
-       uli.status,
        urp.current_score AS "currentScore",
        urp.risk_level AS "riskLevel",
        urp.current_env_score AS "currentEnvScore",
@@ -59,7 +49,6 @@ SELECT urp.user_id AS "userId",
        urp.last_device_fingerprint AS "lastDeviceFingerprint",
        urp.updated_at AS "updatedAt"
 FROM user_risk_profile urp
-LEFT JOIN user_login_identity uli ON uli.user_id = urp.user_id
 WHERE urp.user_id = #{userId}
 LIMIT 1
         ]]>
@@ -287,7 +276,6 @@ WHERE id = #{id}
                t.user_id AS "userId",
                t.email,
                t.phone,
-               uli.status,
                COALESCE(urp.current_score, 0) AS "currentScore",
                urp.risk_level AS "riskLevel",
                COALESCE(urp.lock_count, 0) AS "lockCount",
@@ -295,7 +283,6 @@ WHERE id = #{id}
                t.terminated_at AS "terminatedAt",
                t.created_at AS "createdAt"
         FROM user_risk_account_termination t
-        LEFT JOIN user_login_identity uli ON uli.user_id = t.user_id
         LEFT JOIN user_risk_profile urp ON urp.user_id = t.user_id
         <where>
             <if test="userId != null">
@@ -317,7 +304,6 @@ SELECT t.id,
        t.user_id AS "userId",
        t.email,
        t.phone,
-       uli.status,
        COALESCE(urp.current_score, 0) AS "currentScore",
        urp.risk_level AS "riskLevel",
        COALESCE(urp.lock_count, 0) AS "lockCount",
@@ -325,7 +311,6 @@ SELECT t.id,
        t.terminated_at AS "terminatedAt",
        t.created_at AS "createdAt"
 FROM user_risk_account_termination t
-LEFT JOIN user_login_identity uli ON uli.user_id = t.user_id
 LEFT JOIN user_risk_profile urp ON urp.user_id = t.user_id
 WHERE t.id = #{id}
 LIMIT 1

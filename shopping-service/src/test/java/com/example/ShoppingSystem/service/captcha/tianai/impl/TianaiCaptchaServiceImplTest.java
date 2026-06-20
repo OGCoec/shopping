@@ -6,6 +6,8 @@ import cloud.tianai.captcha.validator.common.constant.TrackTypeConstant;
 import cloud.tianai.captcha.validator.common.model.dto.ImageCaptchaTrack;
 import cloud.tianai.captcha.validator.common.model.dto.MatchParam;
 import com.example.ShoppingSystem.common.exception.TianaiCaptchaFormatException;
+import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaEngine;
+import com.example.ShoppingSystem.service.captcha.tianai.impl.TianaiCaptchaService.TianaiCaptchaServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -24,7 +26,7 @@ class TianaiCaptchaServiceImplTest {
     @Test
     void validateCaptchaThrowsFormatExceptionWhenTrackPayloadIsMalformed() {
         ImageCaptchaApplication imageCaptchaApplication = mock(ImageCaptchaApplication.class);
-        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(imageCaptchaApplication);
+        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(new TianaiCaptchaEngine(imageCaptchaApplication));
 
         assertThrows(TianaiCaptchaFormatException.class,
                 () -> service.validateCaptcha("slider-captcha-id", "{bad-json"));
@@ -35,7 +37,7 @@ class TianaiCaptchaServiceImplTest {
     @Test
     void validateCaptchaThrowsFormatExceptionWhenPayloadIsBlank() {
         ImageCaptchaApplication imageCaptchaApplication = mock(ImageCaptchaApplication.class);
-        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(imageCaptchaApplication);
+        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(new TianaiCaptchaEngine(imageCaptchaApplication));
 
         assertThrows(TianaiCaptchaFormatException.class,
                 () -> service.validateCaptcha("slider-captcha-id", " "));
@@ -46,7 +48,7 @@ class TianaiCaptchaServiceImplTest {
         ImageCaptchaApplication imageCaptchaApplication = mock(ImageCaptchaApplication.class);
         when(imageCaptchaApplication.matching(eq("rotate-captcha-id"), any(MatchParam.class)))
                 .thenReturn(ApiResponse.ofSuccess());
-        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(imageCaptchaApplication);
+        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(new TianaiCaptchaEngine(imageCaptchaApplication));
 
         boolean verified = service.validateCaptcha("rotate-captcha-id", "0.5");
 
@@ -70,7 +72,7 @@ class TianaiCaptchaServiceImplTest {
         ImageCaptchaApplication imageCaptchaApplication = mock(ImageCaptchaApplication.class);
         when(imageCaptchaApplication.matching(eq("rotate-captcha-id"), any(MatchParam.class)))
                 .thenReturn(ApiResponse.ofSuccess());
-        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(imageCaptchaApplication);
+        TianaiCaptchaServiceImpl service = new TianaiCaptchaServiceImpl(new TianaiCaptchaEngine(imageCaptchaApplication));
 
         boolean verified = service.validateRotateCaptcha("rotate-captcha-id", 180f);
 

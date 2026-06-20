@@ -7,12 +7,12 @@ import com.example.ShoppingSystem.order.dto.OrderPageItemResponse;
 import java.util.List;
 import java.util.Map;
 
-final class OrderResponseAssembler {
+public final class OrderResponseAssembler {
 
     private OrderResponseAssembler() {
     }
 
-    static OrderItemResponse item(Map<String, Object> row) {
+    public static OrderItemResponse item(Map<String, Object> row) {
         return new OrderItemResponse(
                 OrderRowMapper.idText(row, "skuId"),
                 OrderRowMapper.longValue(row, "spuId"),
@@ -30,7 +30,7 @@ final class OrderResponseAssembler {
         );
     }
 
-    static OrderDetailResponse detail(Map<String, Object> order, List<OrderItemResponse> items) {
+    public static OrderDetailResponse detail(Map<String, Object> order, List<OrderItemResponse> items) {
         return new OrderDetailResponse(
                 OrderRowMapper.text(order, "orderNo"),
                 OrderRowMapper.text(order, "status"),
@@ -60,7 +60,7 @@ final class OrderResponseAssembler {
         return value == null || value < 0L ? 0L : value;
     }
 
-    static OrderPageItemResponse pageItem(Map<String, Object> row) {
+    public static OrderPageItemResponse pageItem(Map<String, Object> row) {
         return new OrderPageItemResponse(
                 OrderRowMapper.text(row, "orderNo"),
                 OrderRowMapper.text(row, "status"),
@@ -73,7 +73,7 @@ final class OrderResponseAssembler {
         );
     }
 
-    static OrderPageItemResponse pageItem(Map<String, Object> order, List<Map<String, Object>> items) {
+    public static OrderPageItemResponse pageItem(Map<String, Object> order, List<Map<String, Object>> items) {
         Map<String, Object> firstItem = items == null || items.isEmpty() ? Map.of() : items.get(0);
         return new OrderPageItemResponse(
                 OrderRowMapper.text(order, "orderNo"),

@@ -1,6 +1,6 @@
 package com.example.ShoppingSystem.admin.config;
 
-import com.example.ShoppingSystem.admin.service.config.AdminManagedEnvService;
+import com.example.ShoppingSystem.admin.service.config.impl.AdminManagedEnvService.AdminManagedEnvServiceImpl;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
@@ -87,7 +87,7 @@ public class AdminOAuth2WindowsEnvPostProcessor implements EnvironmentPostProces
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         Map<String, Object> values = new LinkedHashMap<>(
-                AdminManagedEnvService.readManagedEnvValues(MANAGED_ENV_NAMES, environment)
+                AdminManagedEnvServiceImpl.readManagedEnvValues(MANAGED_ENV_NAMES, environment)
         );
         if (!values.isEmpty()) {
             environment.getPropertySources().addFirst(new MapPropertySource(PROPERTY_SOURCE_NAME, values));

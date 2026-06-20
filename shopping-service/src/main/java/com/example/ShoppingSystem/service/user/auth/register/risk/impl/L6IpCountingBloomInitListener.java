@@ -6,6 +6,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
+import com.example.ShoppingSystem.service.user.auth.register.risk.L6IpCountingBloomInitializerService;
 /**
  * L6 IP 计数布隆启动监听器。
  * <p>

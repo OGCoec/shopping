@@ -157,25 +157,60 @@ WHERE user_id = #{userId}
         ]]>
     </update>
 
-    <select id="recoverStableUnlockedUsers" resultType="int">
+    <select id="listStableUnlockedUserRecoveryCandidates" resultType="map">
         <![CDATA[
-WITH target AS (
+SELECT urp.user_id AS "userId"
+FROM user_risk_profile urp
+WHERE urp.lock_count = #{lockCount}
+  AND (urp.lock_reason = 'AUTH_FAIL_LOCK_30M' OR urp.lock_reason IS NULL)
+  AND urp.risk_recovery_started_at IS NOT NULL
+  AND urp.risk_recovery_started_at <= #{cutoff}
+  AND (
+      urp.last_risk_penalty_at IS NULL
+      OR urp.last_risk_penalty_at <= urp.risk_recovery_started_at
+  )
+ORDER BY urp.risk_recovery_started_at, urp.user_id
+LIMIT #{limit}
+OFFSET #{offset}
+        ]]>
+    </select>
+
+    <select id="listStableUnlockedUserRecoveryCandidatesByReason" resultType="map">
+        <![CDATA[
+SELECT urp.user_id AS "userId"
+FROM user_risk_profile urp
+WHERE urp.lock_count = #{lockCount}
+  AND urp.lock_reason = #{lockReason}
+  AND urp.risk_recovery_started_at IS NOT NULL
+  AND urp.risk_recovery_started_at <= #{cutoff}
+  AND (
+      urp.last_risk_penalty_at IS NULL
+      OR urp.last_risk_penalty_at <= urp.risk_recovery_started_at
+  )
+ORDER BY urp.risk_recovery_started_at, urp.user_id
+LIMIT #{limit}
+OFFSET #{offset}
+        ]]>
+    </select>
+
+    <select id="recoverStableUnlockedUsersByUserIds" resultType="int">
+        <![CDATA[
+WITH requested(user_id) AS (
+    VALUES
+]]>
+        <foreach collection="userIds" item="userId" separator=",">
+            (#{userId})
+        </foreach>
+        <![CDATA[
+),
+target AS (
     SELECT urp.user_id,
            urp.current_score AS score_before,
            urp.risk_level AS risk_level_before
     FROM user_risk_profile urp
-    JOIN user_login_identity uli ON uli.user_id = urp.user_id
-    WHERE uli.status = 'ACTIVE'
-      AND urp.lock_count = #{lockCount}
+    INNER JOIN requested r ON r.user_id = urp.user_id
+    WHERE urp.lock_count = #{lockCount}
       AND (urp.lock_reason = 'AUTH_FAIL_LOCK_30M' OR urp.lock_reason IS NULL)
-      AND urp.risk_recovery_started_at IS NOT NULL
-      AND urp.risk_recovery_started_at <= #{cutoff}
-      AND (
-          urp.last_risk_penalty_at IS NULL
-          OR urp.last_risk_penalty_at <= urp.risk_recovery_started_at
-      )
-    ORDER BY urp.risk_recovery_started_at, urp.user_id
-    LIMIT #{limit}
     FOR UPDATE OF urp SKIP LOCKED
 ),
 updated AS (
@@ -260,25 +295,24 @@ FROM updated
         ]]>
     </select>
 
-    <select id="recoverStableUnlockedUsersByReason" resultType="int">
+    <select id="recoverStableUnlockedUsersByReasonAndUserIds" resultType="int">
         <![CDATA[
-WITH target AS (
+WITH requested(user_id) AS (
+    VALUES
+]]>
+        <foreach collection="userIds" item="userId" separator=",">
+            (#{userId})
+        </foreach>
+        <![CDATA[
+),
+target AS (
     SELECT urp.user_id,
            urp.current_score AS score_before,
            urp.risk_level AS risk_level_before
     FROM user_risk_profile urp
-    JOIN user_login_identity uli ON uli.user_id = urp.user_id
-    WHERE uli.status = 'ACTIVE'
-      AND urp.lock_count = #{lockCount}
+    INNER JOIN requested r ON r.user_id = urp.user_id
+    WHERE urp.lock_count = #{lockCount}
       AND urp.lock_reason = #{lockReason}
-      AND urp.risk_recovery_started_at IS NOT NULL
-      AND urp.risk_recovery_started_at <= #{cutoff}
-      AND (
-          urp.last_risk_penalty_at IS NULL
-          OR urp.last_risk_penalty_at <= urp.risk_recovery_started_at
-      )
-    ORDER BY urp.risk_recovery_started_at, urp.user_id
-    LIMIT #{limit}
     FOR UPDATE OF urp SKIP LOCKED
 ),
 updated AS (

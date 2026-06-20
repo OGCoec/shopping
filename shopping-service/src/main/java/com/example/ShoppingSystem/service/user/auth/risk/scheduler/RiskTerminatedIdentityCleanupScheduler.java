@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.service.user.auth.risk.scheduler;
 
 import com.example.ShoppingSystem.mapper.risk.UserRiskAccountTerminationMapper;
+import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,12 +18,15 @@ public class RiskTerminatedIdentityCleanupScheduler {
     private static final int MAX_BATCH_SIZE = 5000;
 
     private final UserRiskAccountTerminationMapper userRiskAccountTerminationMapper;
+    private final UserLoginIdentityMapper userLoginIdentityMapper;
     private final int batchSize;
     private final AtomicBoolean cleanupRunning = new AtomicBoolean(false);
 
     public RiskTerminatedIdentityCleanupScheduler(UserRiskAccountTerminationMapper userRiskAccountTerminationMapper,
+                                                  UserLoginIdentityMapper userLoginIdentityMapper,
                                                   @Value("${app.risk-terminated-identity-cleanup.batch-size:500}") int batchSize) {
         this.userRiskAccountTerminationMapper = userRiskAccountTerminationMapper;
+        this.userLoginIdentityMapper = userLoginIdentityMapper;
         this.batchSize = batchSize;
     }
 
@@ -38,22 +42,28 @@ public class RiskTerminatedIdentityCleanupScheduler {
         long totalDeleted = 0L;
         boolean failed = false;
         try {
+            long offset = 0L;
             while (true) {
+                java.util.List<Long> candidateUserIds = userRiskAccountTerminationMapper.listExpiredRiskTerminatedUserIds(
+                        cutoff,
+                        safeBatchSize,
+                        offset);
+                if (candidateUserIds == null || candidateUserIds.isEmpty()) {
+                    break;
+                }
                 int deleted;
                 try {
-                    deleted = userRiskAccountTerminationMapper.deleteExpiredRiskTerminatedIdentities(cutoff, safeBatchSize);
+                    deleted = userLoginIdentityMapper.deleteRiskTerminatedByUserIds(candidateUserIds);
                 } catch (Exception e) {
                     failed = true;
                     log.warn("Risk terminated identity cleanup batch failed, batch={}, cutoff={}, batchSize={}, totalDeleted={}, reason={}",
                             batchCount + 1, cutoff, safeBatchSize, totalDeleted, e.getMessage());
                     break;
                 }
-                if (deleted <= 0) {
-                    break;
-                }
+                offset += candidateUserIds.size();
                 batchCount++;
                 totalDeleted += deleted;
-                if (deleted < safeBatchSize) {
+                if (candidateUserIds.size() < safeBatchSize) {
                     break;
                 }
             }

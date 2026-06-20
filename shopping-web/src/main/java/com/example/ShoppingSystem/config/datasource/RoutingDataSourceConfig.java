@@ -1,5 +1,6 @@
 package com.example.ShoppingSystem.config.datasource;
 
+import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
@@ -8,6 +9,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy;
 
 import javax.sql.DataSource;
 import java.util.HashMap;
@@ -206,7 +208,7 @@ public class RoutingDataSourceConfig {
         routingDataSource.setDefaultTargetDataSource(primaryDataSource);
         routingDataSource.setTargetDataSources(targetDataSources);
         routingDataSource.afterPropertiesSet();
-        return routingDataSource;
+        return new LazyConnectionDataSourceProxy(routingDataSource);
     }
 
     private HikariDataSource writableDataSource(ShardDataSourceProperties properties, String poolName) {

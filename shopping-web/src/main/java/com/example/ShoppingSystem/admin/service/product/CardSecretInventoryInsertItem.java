@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.admin.service.product;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-record CardSecretInventoryInsertItem(@JsonProperty("id_hex") String idHex,
+public record CardSecretInventoryInsertItem(@JsonProperty("id_hex") String idHex,
                                      @JsonProperty("sku_id_hex") String skuIdHex,
                                      @JsonProperty("batch_no") String batchNo,
                                      @JsonProperty("secret_ciphertext") String secretCiphertext,

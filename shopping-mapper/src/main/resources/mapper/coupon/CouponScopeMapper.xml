@@ -35,38 +35,6 @@
         )
     </insert>
 
-    <select id="countExistingTargets" resultType="long">
-        <choose>
-            <when test="scopeType == 'CATEGORY'">
-                WITH incoming AS (
-                    SELECT DISTINCT raw.target_id AS target_id
-                    FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(target_id bigint)
-                )
-                SELECT COUNT(*)
-                FROM product_category c
-                INNER JOIN incoming i ON i.target_id = c.id
-            </when>
-            <when test="scopeType == 'SPU'">
-                WITH incoming AS (
-                    SELECT DISTINCT raw.target_id AS target_id
-                    FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(target_id bigint)
-                )
-                SELECT COUNT(*)
-                FROM product_spu p
-                INNER JOIN incoming i ON i.target_id = p.id
-            </when>
-            <otherwise>
-                WITH incoming AS (
-                    SELECT DISTINCT decode(raw.target_id_hex, 'hex') AS target_id
-                    FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(target_id_hex text)
-                )
-                SELECT COUNT(*)
-                FROM product_sku s
-                INNER JOIN incoming i ON i.target_id = s.id
-            </otherwise>
-        </choose>
-    </select>
-
     <select id="listByTemplateId" resultType="map">
         SELECT encode(coupon_template_id, 'hex') AS "couponTemplateId",
                scope_target_type AS "scopeTargetType",

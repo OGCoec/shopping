@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.quota.writeback;
 
+import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
+import com.example.ShoppingSystem.outbox.InboxIdempotentConsumerExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -15,19 +17,21 @@ public class IpRiskWritebackConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(IpRiskWritebackConsumer.class);
 
+    private static final String CONSUMER_NAME = "ip-risk-writeback-risk";
+
     private final IpRiskWritebackExecutorService executorService;
     private final IpRiskWritebackDispatcher dispatcher;
     private final IpRiskWritebackRabbitProperties rabbitProperties;
-    private final IpRiskWritebackIdempotencyService idempotencyService;
+    private final InboxIdempotentConsumerExecutor inboxExecutor;
 
     public IpRiskWritebackConsumer(IpRiskWritebackExecutorService executorService,
                                    IpRiskWritebackDispatcher dispatcher,
                                    IpRiskWritebackRabbitProperties rabbitProperties,
-                                   IpRiskWritebackIdempotencyService idempotencyService) {
+                                   InboxIdempotentConsumerExecutor inboxExecutor) {
         this.executorService = executorService;
         this.dispatcher = dispatcher;
         this.rabbitProperties = rabbitProperties;
-        this.idempotencyService = idempotencyService;
+        this.inboxExecutor = inboxExecutor;
     }
 
     @RabbitListener(
@@ -39,13 +43,17 @@ public class IpRiskWritebackConsumer {
             return;
         }
         try {
-            if (!idempotencyService.markProcessing(command.getEventId())) {
-                return;
-            }
-            Set<IpRiskWritebackAction> actions = command.getActions();
-            executorService.executeActions(command.getPublicIp(), command.getPayload(), actions);
+            // 写回目标库为 RISK，使用 RISK 库 inbox_event 做数据库级幂等
+            inboxExecutor.execute(
+                    DataSourceRoute.RISK,
+                    command.getEventId(),
+                    CONSUMER_NAME,
+                    () -> {
+                        Set<IpRiskWritebackAction> actions = command.getActions();
+                        executorService.executeActions(command.getPublicIp(), command.getPayload(), actions);
+                    }
+            );
         } catch (Exception e) {
-            idempotencyService.clearProcessing(command.getEventId());
             handleFailure(command, e);
         }
     }

@@ -70,27 +70,14 @@ SELECT EXISTS (
         ]]>
     </select>
 
-    <select id="deleteExpiredRiskTerminatedIdentities" resultType="int">
+    <select id="listExpiredRiskTerminatedUserIds" resultType="long">
         <![CDATA[
-WITH target AS (
-    SELECT uli.user_id
-    FROM user_login_identity uli
-    JOIN user_risk_account_termination termination
-      ON termination.user_id = uli.user_id
-    WHERE uli.status = 'RISK_TERMINATED'
-      AND termination.terminated_at <= #{cutoff}
-    ORDER BY termination.terminated_at, uli.user_id
-    LIMIT #{limit}
-    FOR UPDATE OF uli SKIP LOCKED
-),
-deleted AS (
-    DELETE FROM user_login_identity uli
-    USING target
-    WHERE uli.user_id = target.user_id
-    RETURNING uli.user_id
-)
-SELECT COUNT(1)
-FROM deleted
+SELECT user_id
+FROM user_risk_account_termination
+WHERE terminated_at <= #{cutoff}
+ORDER BY terminated_at, user_id
+LIMIT #{limit}
+OFFSET #{offset}
         ]]>
     </select>
 </mapper>

@@ -34,6 +34,14 @@ public interface ProductSpuMapper {
                                        @Param("limit") int limit,
                                        @Param("offset") long offset);
 
+    long countExistingSpuIds(@Param("ids") List<Long> ids);
+
+    long countExistingSkuIds(@Param("ids") List<byte[]> ids);
+
+    List<String> listSkuIdHexesBySpuId(@Param("spuId") Long spuId);
+
+    List<Map<String, Object>> listSkuSummariesBySkuIds(@Param("ids") List<byte[]> ids);
+
     Map<String, Object> findSpuById(@Param("id") Long id);
 
     Map<String, Object> findSpuDetailById(@Param("id") Long id);

@@ -15,6 +15,7 @@ public interface CardSecretInventoryMapper {
 
     List<Map<String, Object>> pageInventoryForAdmin(@Param("spuId") Long spuId,
                                                     @Param("skuId") byte[] skuId,
+                                                    @Param("skuIdHexes") List<String> skuIdHexes,
                                                     @Param("batchNo") String batchNo,
                                                     @Param("inventoryStatus") String inventoryStatus,
                                                     @Param("deliveryStatus") String deliveryStatus,
@@ -31,6 +32,7 @@ public interface CardSecretInventoryMapper {
 
     List<Map<String, Object>> pageDeliveriesForAdmin(@Param("spuId") Long spuId,
                                                      @Param("skuId") byte[] skuId,
+                                                     @Param("skuIdHexes") List<String> skuIdHexes,
                                                      @Param("orderNo") String orderNo,
                                                      @Param("userId") Long userId,
                                                      @Param("deliveryStatus") String deliveryStatus,

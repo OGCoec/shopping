@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.security.risk.webrtc;
 
+import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
+import com.example.ShoppingSystem.outbox.InboxIdempotentConsumerExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -10,19 +12,21 @@ public class WebRtcRiskConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(WebRtcRiskConsumer.class);
 
+    private static final String CONSUMER_NAME = "webrtc-risk-eval-risk";
+
     private final WebRtcRiskEvaluationService evaluationService;
     private final WebRtcRiskDispatcher dispatcher;
     private final WebRtcRiskRabbitProperties rabbitProperties;
-    private final WebRtcRiskIdempotencyService idempotencyService;
+    private final InboxIdempotentConsumerExecutor inboxExecutor;
 
     public WebRtcRiskConsumer(WebRtcRiskEvaluationService evaluationService,
                               WebRtcRiskDispatcher dispatcher,
                               WebRtcRiskRabbitProperties rabbitProperties,
-                              WebRtcRiskIdempotencyService idempotencyService) {
+                              InboxIdempotentConsumerExecutor inboxExecutor) {
         this.evaluationService = evaluationService;
         this.dispatcher = dispatcher;
         this.rabbitProperties = rabbitProperties;
-        this.idempotencyService = idempotencyService;
+        this.inboxExecutor = inboxExecutor;
     }
 
     @RabbitListener(
@@ -34,12 +38,14 @@ public class WebRtcRiskConsumer {
             return;
         }
         try {
-            if (!idempotencyService.markProcessing(message.getEventId())) {
-                return;
-            }
-            evaluationService.evaluateAndWriteBack(message);
+            // 写回目标库为 RISK，使用 RISK 库 inbox_event 做数据库级幂等
+            inboxExecutor.execute(
+                    DataSourceRoute.RISK,
+                    message.getEventId(),
+                    CONSUMER_NAME,
+                    () -> evaluationService.evaluateAndWriteBack(message)
+            );
         } catch (Exception e) {
-            idempotencyService.clearProcessing(message.getEventId());
             handleFailure(message, e);
         }
     }

@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.order.service;
 
+import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
+import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
 import com.example.ShoppingSystem.mapper.order.OrderMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,7 +11,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -27,7 +28,7 @@ public class OrderRedisPersistScheduler {
     private final OrderRedisSnapshotService orderRedisSnapshotService;
     private final OrderMapper orderMapper;
     private final ObjectMapper objectMapper;
-    private final TransactionTemplate transactionTemplate;
+    private final RoutedTransactionExecutor routedTransactionExecutor;
     private final int batchSize;
     private final int maxBatchesPerRun;
     private final Duration processingTimeout;
@@ -36,7 +37,7 @@ public class OrderRedisPersistScheduler {
     public OrderRedisPersistScheduler(OrderRedisSnapshotService orderRedisSnapshotService,
                                       OrderMapper orderMapper,
                                       ObjectMapper objectMapper,
-                                      TransactionTemplate transactionTemplate,
+                                      RoutedTransactionExecutor routedTransactionExecutor,
                                       @Value("${shopping.order.redis-persist-batch-size:100}") int batchSize,
                                       @Value("${shopping.order.redis-persist-max-batches-per-run:20}") int maxBatchesPerRun,
                                       @Value("${shopping.order.redis-persist-processing-timeout-ms:60000}") long processingTimeoutMs,
@@ -44,7 +45,7 @@ public class OrderRedisPersistScheduler {
         this.orderRedisSnapshotService = orderRedisSnapshotService;
         this.orderMapper = orderMapper;
         this.objectMapper = objectMapper;
-        this.transactionTemplate = transactionTemplate;
+        this.routedTransactionExecutor = routedTransactionExecutor;
         this.batchSize = batchSize <= 0 ? 100 : batchSize;
         this.maxBatchesPerRun = Math.max(1, maxBatchesPerRun);
         this.processingTimeout = Duration.ofMillis(Math.max(1000L, processingTimeoutMs));
@@ -175,7 +176,7 @@ public class OrderRedisPersistScheduler {
         }
         String ordersJson = objectMapper.writeValueAsString(orderRows);
         String itemsJson = objectMapper.writeValueAsString(itemRows);
-        transactionTemplate.executeWithoutResult(status -> {
+        routedTransactionExecutor.executeWithoutResult(DataSourceRoute.TRADE, () -> {
             orderMapper.batchUpsertOrders(ordersJson);
             if (!itemRows.isEmpty()) {
                 orderMapper.batchInsertOrderItems(itemsJson);

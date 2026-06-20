@@ -1,0 +1,371 @@
+package com.example.ShoppingSystem.quota.impl.Ip2LocationQuotaHttpService;
+
+import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys;
+import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys.AccountType;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Locale;
+
+import com.example.ShoppingSystem.quota.Ip2LocationQuotaHttpService;
+import com.example.ShoppingSystem.quota.Ip2LocationQuotaService;
+import com.example.ShoppingSystem.quota.RiskApiConfigStoreService;
+/**
+ * Queries IP2Location with Redis-backed quota enforcement.
+ */
+@Service
+public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpService {
+
+    private static final Logger log = LoggerFactory.getLogger(Ip2LocationQuotaHttpService.class);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private static final String API_URL_CONFIG_NAME = "IP2LOCATION_IO_API_URL";
+
+    private final Ip2LocationQuotaService quotaService;
+    private final RiskApiConfigStoreService riskApiConfigStoreService;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+    private final String defaultApiUrl;
+
+    @Autowired
+    public Ip2LocationQuotaHttpServiceImpl(Ip2LocationQuotaService quotaService,
+                                       ObjectMapper objectMapper,
+                                       RiskApiConfigStoreService riskApiConfigStoreService,
+                                       @Value("${ip2location.io.api-url:https://api.ip2location.io/}") String apiUrl) {
+        this(
+                quotaService,
+                objectMapper,
+                riskApiConfigStoreService,
+                HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build(),
+                apiUrl
+        );
+    }
+
+    Ip2LocationQuotaHttpServiceImpl(Ip2LocationQuotaService quotaService,
+                                ObjectMapper objectMapper,
+                                RiskApiConfigStoreService riskApiConfigStoreService,
+                                HttpClient httpClient,
+                                String apiUrl) {
+        this.quotaService = quotaService;
+        this.riskApiConfigStoreService = riskApiConfigStoreService;
+        this.objectMapper = objectMapper;
+        this.httpClient = httpClient;
+        this.defaultApiUrl = apiUrl;
+    }
+
+    /**
+     * Queries IP2Location by IP.
+     * Logs quota denials, raw payloads, extracted risk fields, and transport failures.
+     */
+    public Ip2LocationQueryResult queryByIp(String ip) {
+        if (isBlank(ip)) {
+            return Ip2LocationQueryResult.failed(
+                    "invalid_ip",
+                    null,
+                    quotaService.getTotalQuotaCount(),
+                    0,
+                    false);
+        }
+
+        Ip2LocationQuotaService.QuotaAcquireResult acquireResult = quotaService.acquireQuotaForCall();
+        if (!acquireResult.allowCall()) {
+            log.info("IP2Location query blocked by quota, ip={}, reason={}, totalQuotaCount={}",
+                    ip,
+                    acquireResult.reason(),
+                    acquireResult.totalQuotaCount());
+            return Ip2LocationQueryResult.blocked(acquireResult.reason(), acquireResult.totalQuotaCount());
+        }
+
+        String quotaKey = acquireResult.quotaKey();
+        AccountType accountType = extractAccountType(quotaKey);
+        String ttl = formatTtl(accountType);
+        String apiKey = extractApiKey(quotaKey);
+        if (isBlank(apiKey)) {
+            safeCompensate(quotaKey);
+            log.warn("IP2Location query failed because the quota key is invalid, ip={}, quotaKey={}, accountType={}, ttl={}",
+                    ip,
+                    quotaKey,
+                    accountType,
+                    ttl);
+            return Ip2LocationQueryResult.failed(
+                    "invalid_quota_key",
+                    quotaKey,
+                    quotaService.getTotalQuotaCount(),
+                    0,
+                    true);
+        }
+
+        HttpRequest request = buildRequest(apiKey, ip.trim());
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            int statusCode = response.statusCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                safeCompensate(quotaKey);
+                log.warn("IP2Location query returned non-2xx, ip={}, quotaKey={}, accountType={}, ttl={}, status={}, responseBody={}",
+                        ip,
+                        quotaKey,
+                        accountType,
+                        ttl,
+                        statusCode,
+                        response.body());
+                return Ip2LocationQueryResult.failed(
+                        "http_status_" + statusCode,
+                        quotaKey,
+                        quotaService.getTotalQuotaCount(),
+                        statusCode,
+                        true);
+            }
+
+            JsonNode payload = objectMapper.readTree(response.body());
+            RiskRelevantFields riskFields = extractRiskFields(payload);
+
+            log.info("IP2Location query succeeded, ip={}, quotaKey={}, accountType={}, ttl={}, httpStatus={}, riskFields={}",
+                    ip,
+                    quotaKey,
+                    accountType,
+                    ttl,
+                    statusCode,
+                    formatRiskFields(riskFields));
+            log.info("IP2Location raw response, ip={}, payload={}", ip, payload.toString());
+
+            return Ip2LocationQueryResult.succeeded(
+                    quotaKey,
+                    quotaService.getTotalQuotaCount(),
+                    statusCode,
+                    payload,
+                    riskFields);
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            safeCompensate(quotaKey);
+            log.warn("IP2Location query exception, ip={}, quotaKey={}, accountType={}, ttl={}, reason={}",
+                    ip,
+                    quotaKey,
+                    accountType,
+                    ttl,
+                    e.getMessage());
+            return Ip2LocationQueryResult.failed(
+                    "http_error",
+                    quotaKey,
+                    quotaService.getTotalQuotaCount(),
+                    0,
+                    true);
+        }
+    }
+
+    private HttpRequest buildRequest(String apiKey, String ip) {
+        String apiUrl = currentApiUrl();
+        String separator = apiUrl.contains("?") ? "&" : "?";
+        String url = apiUrl
+                + separator
+                + "key="
+                + urlEncode(apiKey)
+                + "&ip="
+                + urlEncode(ip);
+        return HttpRequest.newBuilder(URI.create(url))
+                .timeout(REQUEST_TIMEOUT)
+                .GET()
+                .build();
+    }
+
+    private String currentApiUrl() {
+        return riskApiConfigStoreService.readValue(API_URL_CONFIG_NAME)
+                .filter(value -> !isBlank(value))
+                .orElse(defaultApiUrl);
+    }
+
+    private RiskRelevantFields extractRiskFields(JsonNode payload) {
+        return new RiskRelevantFields(
+                text(payload, "fraud_score"),
+                text(payload, "is_proxy"),
+                text(payload, "usage_type"),
+                text(payload, "address_type"),
+                text(payload, "asn"),
+                pickProviderName(payload),
+                pickCountryCode(payload),
+                pickRegionName(payload),
+                pickCityName(payload),
+                text(payload, "latitude"),
+                text(payload, "longitude"),
+                nestedText(payload, "proxy", "proxy_type"),
+                nestedText(payload, "proxy", "threat"),
+                nestedText(payload, "proxy", "is_vpn"),
+                nestedText(payload, "proxy", "is_tor"),
+                nestedText(payload, "proxy", "is_data_center"),
+                nestedText(payload, "proxy", "is_public_proxy"),
+                nestedText(payload, "proxy", "is_residential_proxy"),
+                nestedText(payload, "proxy", "is_web_proxy"),
+                nestedText(payload, "proxy", "is_consumer_privacy_network"),
+                nestedText(payload, "proxy", "is_enterprise_private_network"),
+                nestedText(payload, "as_info", "as_usage_type"));
+    }
+
+    private String formatRiskFields(RiskRelevantFields fields) {
+        if (fields == null) {
+            return "null";
+        }
+        return "fraudScore=" + fields.fraudScore()
+                + ", isProxy=" + fields.isProxy()
+                + ", usageType=" + fields.usageType()
+                + ", addressType=" + fields.addressType()
+                + ", asn=" + fields.asn()
+                + ", providerName=" + fields.providerName()
+                + ", countryCode=" + fields.countryCode()
+                + ", region=" + fields.region()
+                + ", city=" + fields.city()
+                + ", latitude=" + fields.latitude()
+                + ", longitude=" + fields.longitude()
+                + ", proxyType=" + fields.proxyType()
+                + ", proxyThreat=" + fields.proxyThreat()
+                + ", proxyIsVpn=" + fields.proxyIsVpn()
+                + ", proxyIsTor=" + fields.proxyIsTor()
+                + ", proxyIsDataCenter=" + fields.proxyIsDataCenter()
+                + ", proxyIsPublicProxy=" + fields.proxyIsPublicProxy()
+                + ", proxyIsResidentialProxy=" + fields.proxyIsResidentialProxy()
+                + ", proxyIsWebProxy=" + fields.proxyIsWebProxy()
+                + ", proxyIsConsumerPrivacyNetwork=" + fields.proxyIsConsumerPrivacyNetwork()
+                + ", proxyIsEnterprisePrivateNetwork=" + fields.proxyIsEnterprisePrivateNetwork()
+                + ", asUsageType=" + fields.asUsageType();
+    }
+
+    private String extractApiKey(String quotaKey) {
+        return Ip2LocationQuotaRedisKeys.extractApiKey(quotaKey);
+    }
+
+    private AccountType extractAccountType(String quotaKey) {
+        return Ip2LocationQuotaRedisKeys.extractAccountType(quotaKey);
+    }
+
+    private String formatTtl(AccountType accountType) {
+        Duration ttl = quotaService.resolveQuotaTtl(accountType);
+        return ttl == null ? "PERSIST" : ttl.toString();
+    }
+
+    private void safeCompensate(String quotaKey) {
+        if (isBlank(quotaKey)) {
+            return;
+        }
+        try {
+            quotaService.compensateQuota(quotaKey);
+        } catch (RuntimeException ex) {
+            log.warn("Compensate quota failed for key={}, reason={}", quotaKey, ex.getMessage());
+        }
+    }
+
+    private String text(JsonNode payload, String fieldName) {
+        if (payload == null || fieldName == null) {
+            return null;
+        }
+        JsonNode node = payload.get(fieldName);
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return node.asText();
+    }
+
+    private String nestedText(JsonNode payload, String objectName, String fieldName) {
+        if (payload == null || objectName == null || fieldName == null) {
+            return null;
+        }
+        JsonNode objectNode = payload.get(objectName);
+        if (objectNode == null || objectNode.isNull()) {
+            return null;
+        }
+        JsonNode fieldNode = objectNode.get(fieldName);
+        if (fieldNode == null || fieldNode.isNull()) {
+            return null;
+        }
+        return fieldNode.asText();
+    }
+
+    private String pickProviderName(JsonNode payload) {
+        String as = text(payload, "as");
+        if (!isBlank(as)) {
+            return as.trim();
+        }
+        String isp = text(payload, "isp");
+        if (!isBlank(isp)) {
+            return isp.trim();
+        }
+        String proxyProvider = nestedText(payload, "proxy", "provider");
+        if (!isBlank(proxyProvider)) {
+            return proxyProvider.trim();
+        }
+        return null;
+    }
+
+    private String pickCountryCode(JsonNode payload) {
+        String countryCode = text(payload, "country_code");
+        if (!isBlank(countryCode)) {
+            return normalizeCountryCode(countryCode);
+        }
+        String nestedCountryCode = nestedText(payload, "country", "code");
+        if (!isBlank(nestedCountryCode)) {
+            return normalizeCountryCode(nestedCountryCode);
+        }
+        return null;
+    }
+
+    private String pickRegionName(JsonNode payload) {
+        return firstText(
+                text(payload, "region"),
+                text(payload, "region_name"),
+                text(payload, "regionName"),
+                text(payload, "state"),
+                text(payload, "province"),
+                nestedText(payload, "location", "region"),
+                nestedText(payload, "location", "state"),
+                nestedText(payload, "location", "province")
+        );
+    }
+
+    private String pickCityName(JsonNode payload) {
+        return firstText(
+                text(payload, "city"),
+                text(payload, "city_name"),
+                text(payload, "cityName"),
+                nestedText(payload, "location", "city")
+        );
+    }
+
+    private String firstText(String... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (String candidate : candidates) {
+            if (!isBlank(candidate)) {
+                return candidate.trim();
+            }
+        }
+        return null;
+    }
+
+    private String normalizeCountryCode(String countryCode) {
+        if (isBlank(countryCode)) {
+            return null;
+        }
+        String normalized = countryCode.trim().toUpperCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String urlEncode(String raw) {
+        return URLEncoder.encode(raw, StandardCharsets.UTF_8);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+}

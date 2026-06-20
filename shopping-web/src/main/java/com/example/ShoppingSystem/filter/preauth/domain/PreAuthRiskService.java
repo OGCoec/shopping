@@ -4,7 +4,7 @@ import com.example.ShoppingSystem.filter.preauth.model.PreAuthRiskProfile;
 import com.example.ShoppingSystem.quota.DeviceRiskMultiLevelQueryService;
 import com.example.ShoppingSystem.quota.IpReputationMultiLevelQueryService;
 import com.example.ShoppingSystem.service.user.auth.register.impl.ChallengePolicy;
-import com.example.ShoppingSystem.service.user.auth.register.risk.impl.IpL6CountingBloomDecisionService;
+import com.example.ShoppingSystem.service.user.auth.register.risk.IpL6CountingBloomDecisionService;
 import com.example.ShoppingSystem.service.user.auth.risk.DeviceL6CountingBloomDecisionService;
 import org.springframework.stereotype.Component;
 

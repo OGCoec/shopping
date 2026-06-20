@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
+import com.example.ShoppingSystem.tools.ip2location.verify.impl.Ip2LocationVerifyMailReaderService.Ip2LocationVerifyMailReaderServiceImpl;
 final class Ip2LocationVerifyMailMainSupport {
 
     private static final String DEFAULT_PROXY_HOST = "127.0.0.1";
@@ -43,7 +44,7 @@ final class Ip2LocationVerifyMailMainSupport {
                 + "，可连接=" + proxySelection.reachable()
                 + "，原因=" + proxySelection.reason());
 
-        return new Ip2LocationVerifyMailReaderService(
+        return new Ip2LocationVerifyMailReaderServiceImpl(
                 new ObjectMapper(),
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(12)).build(),
                 "https://login.microsoftonline.com/common/oauth2/v2.0/token",

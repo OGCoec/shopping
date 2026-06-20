@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import com.example.ShoppingSystem.loginflow.LoginFlowWebSupport;
 /**
  * Guards semantic register step page routes.
  */

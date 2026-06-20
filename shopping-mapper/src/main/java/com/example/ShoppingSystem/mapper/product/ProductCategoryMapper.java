@@ -31,6 +31,8 @@ public interface ProductCategoryMapper {
 
     List<Map<String, Object>> listCategoryIndexDocumentsByIds(@Param("ids") List<Long> ids);
 
+    long countExistingCategoryIds(@Param("ids") List<Long> ids);
+
 
     Map<String, Object> findCategoryTreeRowById(@Param("id") Long id);
 

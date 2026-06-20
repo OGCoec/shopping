@@ -26,6 +26,7 @@ public interface UserRiskAccountTerminationMapper {
 
     boolean existsByEmailHash(@Param("emailHash") String emailHash);
 
-    int deleteExpiredRiskTerminatedIdentities(@Param("cutoff") OffsetDateTime cutoff,
-                                             @Param("limit") int limit);
+    List<Long> listExpiredRiskTerminatedUserIds(@Param("cutoff") OffsetDateTime cutoff,
+                                                @Param("limit") int limit,
+                                                @Param("offset") long offset);
 }

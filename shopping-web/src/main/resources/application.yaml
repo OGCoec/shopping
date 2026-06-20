@@ -900,6 +900,25 @@ pagehelper:
 
 # 用户认证 token 配置。
 shopping:
+  # Outbox 调度器：扫描各业务库 outbox_event 并可靠投递 RabbitMQ
+  outbox:
+    dispatcher:
+      enabled: true
+      batch-size: 50
+      max-retry: 10
+      retry-backoff-base-ms: 30000
+      processing-timeout-ms: 60000
+      # 发 MQ 后等待 publisher confirm 的超时时间，确认成功才标记 PUBLISHED
+      confirm-timeout-ms: 5000
+      routes:
+        - RISK
+        - TRADE
+        - PRODUCT
+        - COUPON
+        - CORE
+  # Inbox 幂等：PROCESSING 抢占超时时间，超时后允许其他消费者抢回重试
+  inbox:
+    processing-timeout-ms: 60000
   sign-in:
     zone-id: ${SHOPPING_SIGN_IN_ZONE_ID:Asia/Shanghai}
     period-unit: ${SHOPPING_SIGN_IN_PERIOD_UNIT:SECOND}
@@ -935,6 +954,11 @@ shopping:
         - /shopping/
       allow-local-http: ${SHOPPING_PRODUCT_IMAGE_ALLOW_LOCAL_HTTP:true}
   datasource:
+    # SQL 路由诊断：打印每条 SQL 的 routeContext / expectedRoute / jdbcPort，用于排查跨库路由错位
+    route-diagnostics:
+      enabled: true
+      log-sql: true
+      log-jdbc-url: true
     trade:
       url: ${SHOPPING_TRADE_DB_URL:jdbc:postgresql://127.0.0.1:5434/shopping_trade}
       username: ${SHOPPING_TRADE_DB_USERNAME:postgres}

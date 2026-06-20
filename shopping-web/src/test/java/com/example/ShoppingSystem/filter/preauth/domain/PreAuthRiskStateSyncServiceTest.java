@@ -7,15 +7,15 @@ import com.example.ShoppingSystem.loginflow.LoginFlowCookieFactory;
 import com.example.ShoppingSystem.redisdata.LoginRedisKeys;
 import com.example.ShoppingSystem.redisdata.RegisterRedisKeys;
 import com.example.ShoppingSystem.registerflow.RegisterFlowCookieFactory;
+import com.example.ShoppingSystem.service.user.auth.login.LoginChallengeSessionService;
 import com.example.ShoppingSystem.service.user.auth.login.LoginFlowProperties;
 import com.example.ShoppingSystem.service.user.auth.login.LoginFlowSessionService;
 import com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengePolicy;
-import com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengeSessionService;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFactor;
 import com.example.ShoppingSystem.service.user.auth.login.model.LoginFlowSession;
+import com.example.ShoppingSystem.service.user.auth.register.ChallengeSessionService;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterFlowProperties;
 import com.example.ShoppingSystem.service.user.auth.register.RegisterFlowSessionService;
-import com.example.ShoppingSystem.service.user.auth.register.impl.ChallengeSessionService;
 import com.example.ShoppingSystem.service.user.auth.register.model.RegisterFlowSession;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
@@ -30,6 +30,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.ShoppingSystem.filter.preauth.domain.impl.PreAuthRiskStateSyncService.PreAuthRiskStateSyncServiceImpl;
 class PreAuthRiskStateSyncServiceTest {
 
     private static final String TOKEN = "preauth-token";
@@ -41,7 +42,7 @@ class PreAuthRiskStateSyncServiceTest {
     private final LoginChallengeSessionService loginChallengeSessionService = mock(LoginChallengeSessionService.class);
     private final ChallengeSessionService registerChallengeSessionService = mock(ChallengeSessionService.class);
     private final LoginChallengePolicy loginChallengePolicy = mock(LoginChallengePolicy.class);
-    private final PreAuthRiskStateSyncService service = new PreAuthRiskStateSyncService(
+    private final PreAuthRiskStateSyncService service = new PreAuthRiskStateSyncServiceImpl(
             stringRedisTemplate,
             new LoginFlowCookieFactory(new LoginFlowProperties(), new PreAuthRequestResolver(new PreAuthProperties())),
             new RegisterFlowCookieFactory(new RegisterFlowProperties(), new PreAuthRequestResolver(new PreAuthProperties())),
@@ -105,6 +106,7 @@ class PreAuthRiskStateSyncServiceTest {
         return new PreAuthBinding(
                 TOKEN,
                 "fp-hash",
+                "navigation-fp-hash",
                 "ua-hash",
                 "203.0.113.10",
                 List.of("203.0.113.10"),

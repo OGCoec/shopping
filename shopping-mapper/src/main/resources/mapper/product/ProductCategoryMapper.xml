@@ -314,6 +314,22 @@ LIMIT #{limit} OFFSET #{offset}
         ORDER BY c.id ASC
     </select>
 
+    <select id="countExistingCategoryIds" resultType="long">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="ids" item="id" separator=",">
+                (#{id})
+            </foreach>
+        ),
+        normalized_requested AS (
+            SELECT DISTINCT id
+            FROM requested
+        )
+        SELECT COUNT(*)
+        FROM product_category c
+        INNER JOIN normalized_requested r ON r.id = c.id
+    </select>
+
     <select id="findCategoryTreeRowById" resultType="map">
         <![CDATA[
 SELECT c.id AS "id",

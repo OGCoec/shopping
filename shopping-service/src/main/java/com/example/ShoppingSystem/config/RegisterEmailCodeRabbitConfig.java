@@ -17,6 +17,7 @@ import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.example.ShoppingSystem.service.user.auth.register.mq.RegisterEmailCodeMessage;
 /**
  * 注册邮箱验证码 RabbitMQ 基础配置。
  * 负责声明交换机、正常队列、重试队列、死信队列，以及消费者并发参数和 JSON 消息转换器。

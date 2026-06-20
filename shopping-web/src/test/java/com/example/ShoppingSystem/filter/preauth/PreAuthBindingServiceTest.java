@@ -4,7 +4,6 @@ import com.example.ShoppingSystem.filter.preauth.domain.PreAuthBindingFactory;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthIpChangePenaltyService;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskService;
 import com.example.ShoppingSystem.filter.preauth.domain.PreAuthRiskStateSyncService;
-import com.example.ShoppingSystem.filter.preauth.domain.WebRtcIpConsistencyService;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBinding;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationError;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthValidationOutcome;
@@ -27,6 +26,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.ShoppingSystem.filter.preauth.impl.PreAuthBindingService.PreAuthBindingServiceImpl;
 class PreAuthBindingServiceTest {
 
     private static final String TOKEN = "preauth-token";
@@ -36,7 +36,7 @@ class PreAuthBindingServiceTest {
     private final PreAuthRequestResolver requestResolver = new PreAuthRequestResolver(properties);
     private final PreAuthHashingService hashingService = new PreAuthHashingService();
     private final PreAuthBindingRepository bindingRepository = mock(PreAuthBindingRepository.class);
-    private final PreAuthBindingService service = new PreAuthBindingService(
+    private final PreAuthBindingService service = new PreAuthBindingServiceImpl(
             properties,
             requestResolver,
             mock(PreAuthCookieFactory.class),
@@ -45,8 +45,7 @@ class PreAuthBindingServiceTest {
             mock(PreAuthRiskService.class),
             mock(PreAuthBindingFactory.class),
             mock(PreAuthIpChangePenaltyService.class),
-            mock(PreAuthRiskStateSyncService.class),
-            mock(WebRtcIpConsistencyService.class)
+            mock(PreAuthRiskStateSyncService.class)
     );
 
     @Test
@@ -85,6 +84,7 @@ class PreAuthBindingServiceTest {
         return new PreAuthBinding(
                 TOKEN,
                 hashingService.sha256(fingerprint),
+                hashingService.sha256("navigation-fingerprint"),
                 hashingService.sha256(userAgent),
                 IP,
                 List.of(IP),

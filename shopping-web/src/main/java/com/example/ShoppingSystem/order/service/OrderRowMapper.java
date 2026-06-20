@@ -9,12 +9,12 @@ import java.time.ZoneId;
 import java.util.Date;
 import java.util.Map;
 
-final class OrderRowMapper {
+public final class OrderRowMapper {
 
     private OrderRowMapper() {
     }
 
-    static Object value(Map<String, Object> row, String key) {
+    public static Object value(Map<String, Object> row, String key) {
         if (row == null || key == null) {
             return null;
         }
@@ -24,12 +24,12 @@ final class OrderRowMapper {
         return row.get(toSnakeCase(key));
     }
 
-    static String text(Map<String, Object> row, String key) {
+    public static String text(Map<String, Object> row, String key) {
         Object value = value(row, key);
         return value == null ? "" : String.valueOf(value).trim();
     }
 
-    static Long longValue(Map<String, Object> row, String key) {
+    public static Long longValue(Map<String, Object> row, String key) {
         Object value = value(row, key);
         if (value instanceof Number number) {
             return number.longValue();
@@ -41,7 +41,7 @@ final class OrderRowMapper {
         return Long.parseLong(text);
     }
 
-    static int intValue(Map<String, Object> row, String key, int defaultValue) {
+    public static int intValue(Map<String, Object> row, String key, int defaultValue) {
         Object value = value(row, key);
         if (value instanceof Number number) {
             return number.intValue();
@@ -53,7 +53,7 @@ final class OrderRowMapper {
         return Integer.parseInt(text);
     }
 
-    static boolean boolValue(Map<String, Object> row, String key) {
+    public static boolean boolValue(Map<String, Object> row, String key) {
         Object value = value(row, key);
         if (value instanceof Boolean bool) {
             return bool;
@@ -62,12 +62,12 @@ final class OrderRowMapper {
         return "true".equalsIgnoreCase(text) || "1".equals(text);
     }
 
-    static BigDecimal decimal(Map<String, Object> row, String key) {
+    public static BigDecimal decimal(Map<String, Object> row, String key) {
         BigDecimal value = nullableDecimal(row, key);
         return value == null ? BigDecimal.ZERO : value;
     }
 
-    static BigDecimal nullableDecimal(Map<String, Object> row, String key) {
+    public static BigDecimal nullableDecimal(Map<String, Object> row, String key) {
         Object value = value(row, key);
         if (value instanceof BigDecimal decimal) {
             return decimal;
@@ -79,7 +79,7 @@ final class OrderRowMapper {
         return text.isEmpty() ? null : new BigDecimal(text);
     }
 
-    static OffsetDateTime offsetDateTime(Map<String, Object> row, String key) {
+    public static OffsetDateTime offsetDateTime(Map<String, Object> row, String key) {
         Object value = value(row, key);
         if (value instanceof OffsetDateTime dateTime) {
             return dateTime;
@@ -94,7 +94,7 @@ final class OrderRowMapper {
         return text.isEmpty() ? null : OffsetDateTime.parse(text);
     }
 
-    static byte[] idBytes(Map<String, Object> row, String key) {
+    public static byte[] idBytes(Map<String, Object> row, String key) {
         Object value = value(row, key);
         if (value instanceof byte[] bytes) {
             return bytes;
@@ -106,7 +106,7 @@ final class OrderRowMapper {
         return HybridIdCodec.fromHex(text);
     }
 
-    static String idText(Map<String, Object> row, String key) {
+    public static String idText(Map<String, Object> row, String key) {
         return HybridIdCodec.toBase62FromDatabaseValue(value(row, key));
     }
 

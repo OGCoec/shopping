@@ -64,66 +64,68 @@
         ORDER BY u.received_at DESC, u.created_at DESC
     </select>
 
-    <select id="listAdminClaimsByTemplateId" resultType="map">
-        WITH template_state AS (
-            SELECT EXISTS (
-                SELECT 1
-                FROM coupon_template
-                WHERE id = #{couponTemplateId}
-            ) AS template_exists
-        ),
-        filtered_claims AS (
-            SELECT encode(uc.id, 'hex') AS "userCouponId",
-                   encode(uc.coupon_template_id, 'hex') AS "couponTemplateId",
-                   uc.user_id AS "userId",
-                   uli.email AS email,
-                   uc.status AS status,
-                   uc.received_at AS "receivedAt",
-                   uc.valid_start_at AS "validStartAt",
-                   uc.valid_end_at AS "validEndAt",
-                   uc.locked_order_no AS "lockedOrderNo",
-                   uc.locked_at AS "lockedAt",
-                   uc.used_order_no AS "usedOrderNo",
-                   uc.used_at AS "usedAt",
-                   uc.created_at AS "createdAt"
-            FROM user_coupon uc
-            LEFT JOIN user_login_identity uli ON uli.user_id = uc.user_id
-            WHERE uc.coupon_template_id = #{couponTemplateId}
-            <if test="status != null and status != ''">
-                AND uc.status = #{status}
-            </if>
-            <if test="email != null and email != ''">
-                AND uli.email = #{email}
-            </if>
-        ),
-        claim_count AS (
-            SELECT COUNT(*) AS total
-            FROM filtered_claims
-        ),
-        paged_claims AS (
-            SELECT *
-            FROM filtered_claims
-            ORDER BY "receivedAt" DESC, "createdAt" DESC
-            LIMIT #{pageSize}
-            OFFSET #{offset}
+    <select id="listByUserIdAndTemplateIds" resultType="map">
+        WITH requested(id) AS (
+            VALUES
+            <foreach collection="couponTemplateIds" item="id" separator=",">
+                (#{id})
+            </foreach>
         )
-        SELECT ts.template_exists AS "templateExists",
-               cc.total AS "total",
-               pc."userCouponId",
-               pc."couponTemplateId",
-               pc."userId",
-               pc.email,
-               pc.status,
-               pc."receivedAt",
-               pc."validStartAt",
-               pc."validEndAt",
-               pc."lockedOrderNo",
-               pc."lockedAt",
-               pc."usedOrderNo",
-               pc."usedAt"
-        FROM template_state ts
-        CROSS JOIN claim_count cc
-        LEFT JOIN paged_claims pc ON TRUE
+        SELECT encode(u.id, 'hex') AS "userCouponId",
+               u.user_id AS "userId",
+               encode(u.coupon_template_id, 'hex') AS "couponTemplateId",
+               u.status AS "status",
+               u.valid_start_at AS "validStartAt",
+               u.valid_end_at AS "validEndAt",
+               u.received_at AS "receivedAt",
+               u.locked_order_no AS "lockedOrderNo",
+               u.locked_at AS "lockedAt",
+               u.used_order_no AS "usedOrderNo",
+               u.used_at AS "usedAt",
+               u.version AS "version",
+               u.created_at AS "createdAt",
+               u.updated_at AS "updatedAt"
+        FROM user_coupon u
+        INNER JOIN requested r ON r.id = u.coupon_template_id
+        WHERE u.user_id = #{userId}
+        ORDER BY u.received_at DESC, u.created_at DESC
+    </select>
+
+    <select id="listAdminClaimsByTemplateIdForUser" resultType="map">
+        SELECT encode(uc.id, 'hex') AS "userCouponId",
+               encode(uc.coupon_template_id, 'hex') AS "couponTemplateId",
+               uc.user_id AS "userId",
+               uc.status AS status,
+               uc.received_at AS "receivedAt",
+               uc.valid_start_at AS "validStartAt",
+               uc.valid_end_at AS "validEndAt",
+               uc.locked_order_no AS "lockedOrderNo",
+               uc.locked_at AS "lockedAt",
+               uc.used_order_no AS "usedOrderNo",
+               uc.used_at AS "usedAt",
+               uc.created_at AS "createdAt"
+        FROM user_coupon uc
+        WHERE uc.coupon_template_id = #{couponTemplateId}
+        <if test="status != null and status != ''">
+            AND uc.status = #{status}
+        </if>
+        <if test="userId != null">
+            AND uc.user_id = #{userId}
+        </if>
+        ORDER BY uc.received_at DESC, uc.created_at DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countAdminClaimsByTemplateIdForUser" resultType="long">
+        SELECT COUNT(*)
+        FROM user_coupon uc
+        WHERE uc.coupon_template_id = #{couponTemplateId}
+        <if test="status != null and status != ''">
+            AND uc.status = #{status}
+        </if>
+        <if test="userId != null">
+            AND uc.user_id = #{userId}
+        </if>
     </select>
 
     <sql id="UserCouponMineSelectColumns">
@@ -140,32 +142,12 @@
         uc.used_at AS "usedAt",
         uc.version AS "userCouponVersion",
         uc.created_at AS "userCouponCreatedAt",
-        uc.updated_at AS "userCouponUpdatedAt",
-        ct.coupon_code AS "couponCode",
-        ct.name,
-        ct.discount_type AS "discountType",
-        ct.threshold_amount_yuan AS "thresholdAmountYuan",
-        ct.discount_amount_yuan AS "discountAmountYuan",
-        ct.discount_rate AS "discountRate",
-        ct.max_discount_amount_yuan AS "maxDiscountAmountYuan",
-        ct.total_quantity AS "totalQuantity",
-        ct.remaining_quantity AS "remainingQuantity",
-        ct.per_user_limit AS "perUserLimit",
-        ct.scope_type AS "scopeType",
-        ct.receive_start_at AS "receiveStartAt",
-        ct.receive_end_at AS "receiveEndAt",
-        ct.valid_start_at AS "templateValidStartAt",
-        ct.valid_end_at AS "templateValidEndAt",
-        ct.status AS "templateStatus",
-        ct.version AS "templateVersion",
-        ct.created_at AS "templateCreatedAt",
-        ct.updated_at AS "templateUpdatedAt"
+        uc.updated_at AS "userCouponUpdatedAt"
     </sql>
 
     <select id="listMine" resultType="map">
         SELECT <include refid="UserCouponMineSelectColumns"/>
         FROM user_coupon uc
-        INNER JOIN coupon_template ct ON ct.id = uc.coupon_template_id
         WHERE uc.user_id = #{userId}
         <if test="status != null and status != ''">
             AND uc.status = #{status}
@@ -186,7 +168,6 @@
     <select id="findMineById" resultType="map">
         SELECT <include refid="UserCouponMineSelectColumns"/>
         FROM user_coupon uc
-        INNER JOIN coupon_template ct ON ct.id = uc.coupon_template_id
         WHERE uc.user_id = #{userId}
           AND uc.id = #{userCouponId}
     </select>
@@ -197,46 +178,20 @@
         uc.user_id AS "userId",
         uc.status AS "userCouponStatus",
         uc.valid_start_at AS "validStartAt",
-        uc.valid_end_at AS "validEndAt",
-        ct.name AS "name",
-        ct.discount_type AS "discountType",
-        ct.threshold_amount_yuan AS "thresholdAmountYuan",
-        ct.discount_amount_yuan AS "discountAmountYuan",
-        ct.discount_rate AS "discountRate",
-        ct.max_discount_amount_yuan AS "maxDiscountAmountYuan",
-        ct.scope_type AS "scopeType",
-        ct.status AS "templateStatus",
-        ct.valid_start_at AS "templateValidStartAt",
-        ct.valid_end_at AS "templateValidEndAt",
-        CASE
-            WHEN ct.scope_type = 'ALL' THEN true
-            ELSE EXISTS (
-                SELECT 1
-                FROM coupon_scope cs
-                WHERE cs.coupon_template_id = ct.id
-                  AND (
-                      (ct.scope_type = 'CATEGORY' AND cs.scope_target_type = 'CATEGORY' AND cs.category_id = #{categoryId})
-                      OR (ct.scope_type = 'SPU' AND cs.scope_target_type = 'SPU' AND cs.spu_id = #{spuId})
-                      OR (ct.scope_type = 'SKU' AND cs.scope_target_type = 'SKU' AND cs.sku_id = #{skuId})
-                  )
-            )
-        END AS "scopeMatched"
+        uc.valid_end_at AS "validEndAt"
     </sql>
 
     <select id="listOrderCandidateCoupons" resultType="map">
         SELECT <include refid="OrderCouponCandidateColumns"/>
         FROM user_coupon uc
-        INNER JOIN coupon_template ct ON ct.id = uc.coupon_template_id
         WHERE uc.user_id = #{userId}
           AND uc.status IN ('UNUSED', 'LOCKED')
-          AND ct.status IN ('ACTIVE', 'DISABLED', 'EXPIRED')
         ORDER BY uc.received_at DESC, uc.created_at DESC
     </select>
 
     <select id="findOrderCandidateCoupon" resultType="map">
         SELECT <include refid="OrderCouponCandidateColumns"/>
         FROM user_coupon uc
-        INNER JOIN coupon_template ct ON ct.id = uc.coupon_template_id
         WHERE uc.user_id = #{userId}
           AND uc.id = #{userCouponId}
     </select>
@@ -245,36 +200,13 @@
         <![CDATA[
 WITH target AS (
     SELECT uc.id,
-           uc.coupon_template_id,
-           ct.discount_type,
-           ct.threshold_amount_yuan,
-           ct.discount_amount_yuan,
-           ct.discount_rate,
-           ct.max_discount_amount_yuan
+           uc.coupon_template_id
     FROM user_coupon uc
-    INNER JOIN coupon_template ct ON ct.id = uc.coupon_template_id
     WHERE uc.id = #{userCouponId}
       AND uc.user_id = #{userId}
       AND uc.status = 'UNUSED'
       AND uc.valid_start_at <= #{now}
       AND uc.valid_end_at > #{now}
-      AND ct.status = 'ACTIVE'
-      AND ct.valid_start_at <= #{now}
-      AND ct.valid_end_at > #{now}
-      AND #{orderAmountYuan} >= ct.threshold_amount_yuan
-      AND (
-          ct.scope_type = 'ALL'
-          OR EXISTS (
-              SELECT 1
-              FROM coupon_scope cs
-              WHERE cs.coupon_template_id = ct.id
-                AND (
-                    (ct.scope_type = 'CATEGORY' AND cs.scope_target_type = 'CATEGORY' AND cs.category_id = #{categoryId})
-                    OR (ct.scope_type = 'SPU' AND cs.scope_target_type = 'SPU' AND cs.spu_id = #{spuId})
-                    OR (ct.scope_type = 'SKU' AND cs.scope_target_type = 'SKU' AND cs.sku_id = #{skuId})
-                )
-          )
-      )
 ),
 updated AS (
     UPDATE user_coupon uc
@@ -286,20 +218,10 @@ updated AS (
     FROM target t
     WHERE uc.id = t.id
     RETURNING uc.id,
-              t.coupon_template_id,
-              t.discount_type,
-              t.threshold_amount_yuan,
-              t.discount_amount_yuan,
-              t.discount_rate,
-              t.max_discount_amount_yuan
+              t.coupon_template_id
 )
 SELECT encode(id, 'hex') AS "userCouponId",
-       encode(coupon_template_id, 'hex') AS "couponTemplateId",
-       discount_type AS "discountType",
-       threshold_amount_yuan AS "thresholdAmountYuan",
-       discount_amount_yuan AS "discountAmountYuan",
-       discount_rate AS "discountRate",
-       max_discount_amount_yuan AS "maxDiscountAmountYuan"
+       encode(coupon_template_id, 'hex') AS "couponTemplateId"
 FROM updated
         ]]>
     </select>

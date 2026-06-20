@@ -1,11 +1,12 @@
 package com.example.ShoppingSystem.order.service;
 
+import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
+import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -22,7 +23,7 @@ public class OrderClosingCompensateScheduler {
     private final OrderInventoryReleaseService orderInventoryReleaseService;
     private final OrderCouponService orderCouponService;
     private final OrderCouponUsageService orderCouponUsageService;
-    private final TransactionTemplate transactionTemplate;
+    private final RoutedTransactionExecutor routedTransactionExecutor;
     private final boolean enabled;
     private final int batchSize;
     private final int maxBatchesPerRun;
@@ -32,7 +33,7 @@ public class OrderClosingCompensateScheduler {
                                            OrderInventoryReleaseService orderInventoryReleaseService,
                                            OrderCouponService orderCouponService,
                                            OrderCouponUsageService orderCouponUsageService,
-                                           TransactionTemplate transactionTemplate,
+                                           RoutedTransactionExecutor routedTransactionExecutor,
                                            @Value("${shopping.order.closing-compensate-enabled:true}") boolean enabled,
                                            @Value("${shopping.order.closing-compensate-batch-size:100}") int batchSize,
                                            @Value("${shopping.order.closing-compensate-max-batches-per-run:20}") int maxBatchesPerRun,
@@ -41,7 +42,7 @@ public class OrderClosingCompensateScheduler {
         this.orderInventoryReleaseService = orderInventoryReleaseService;
         this.orderCouponService = orderCouponService;
         this.orderCouponUsageService = orderCouponUsageService;
-        this.transactionTemplate = transactionTemplate;
+        this.routedTransactionExecutor = routedTransactionExecutor;
         this.enabled = enabled;
         this.batchSize = batchSize <= 0 ? 100 : batchSize;
         this.maxBatchesPerRun = Math.max(1, maxBatchesPerRun);
@@ -153,12 +154,16 @@ public class OrderClosingCompensateScheduler {
         if (snapshots == null || snapshots.isEmpty()) {
             return new ResourceReleaseResult(0, 0);
         }
-        return transactionTemplate.execute(status -> {
-            int inventoryItemCount = orderInventoryReleaseService.releaseAll(snapshots);
-            List<Map<String, Object>> released = orderCouponService.releaseLockedCoupons(snapshots);
-            orderCouponUsageService.writeReleases(released);
-            return new ResourceReleaseResult(inventoryItemCount, released.size());
+        int inventoryItemCount = routedTransactionExecutor.execute(
+                DataSourceRoute.PRODUCT,
+                () -> orderInventoryReleaseService.releaseAll(snapshots)
+        );
+        List<Map<String, Object>> released = routedTransactionExecutor.execute(DataSourceRoute.TRADE, () -> {
+            List<Map<String, Object>> rows = orderCouponService.releaseLockedCoupons(snapshots);
+            orderCouponUsageService.writeReleases(rows);
+            return rows;
         });
+        return new ResourceReleaseResult(inventoryItemCount, released.size());
     }
 
     private record ResourceReleaseResult(int inventoryItemCount,

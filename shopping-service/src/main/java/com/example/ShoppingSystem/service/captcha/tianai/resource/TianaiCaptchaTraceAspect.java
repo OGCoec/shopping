@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import static cloud.tianai.captcha.generator.impl.StandardSliderImageCaptchaGenerator.TEMPLATE_ACTIVE_IMAGE_NAME;
 import static cloud.tianai.captcha.generator.impl.StandardSliderImageCaptchaGenerator.TEMPLATE_FIXED_IMAGE_NAME;
 
+import com.example.ShoppingSystem.service.captcha.tianai.TianaiCaptchaEngine;
 @Slf4j
 @Aspect
 @Component

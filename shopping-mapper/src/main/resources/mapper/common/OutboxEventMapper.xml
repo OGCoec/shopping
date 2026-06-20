@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.ShoppingSystem.mapper.common.OutboxEventMapper">
+
+    <insert id="insertEvent">
+        <![CDATA[
+INSERT INTO outbox_event (
+    event_id,
+    event_type,
+    aggregate_type,
+    aggregate_id,
+    exchange_name,
+    routing_key,
+    payload_json,
+    idempotency_key,
+    status,
+    retry_count,
+    next_retry_at,
+    last_error,
+    created_at,
+    updated_at,
+    published_at
+) VALUES (
+    #{eventId},
+    #{eventType},
+    #{aggregateType},
+    #{aggregateId},
+    #{exchangeName},
+    #{routingKey},
+    CAST(#{payloadJson} AS jsonb),
+    #{idempotencyKey},
+    'NEW',
+    0,
+    NULL,
+    NULL,
+    #{createdAt},
+    #{createdAt},
+    NULL
+)
+ON CONFLICT (event_id) DO NOTHING
+        ]]>
+    </insert>
+
+    <select id="claimBatch" resultType="map">
+        <![CDATA[
+WITH candidates AS (
+    SELECT event_id
+    FROM outbox_event
+    WHERE (
+              status IN ('NEW', 'RETRY')
+              AND retry_count < #{maxRetry}
+              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+          )
+       OR (
+              status = 'PROCESSING'
+              AND updated_at <= NOW() - (#{processingTimeoutMs} * INTERVAL '1 millisecond')
+          )
+    ORDER BY created_at ASC, event_id ASC
+    LIMIT #{limit}
+    FOR UPDATE SKIP LOCKED
+),
+claimed AS (
+    UPDATE outbox_event e
+    SET status = 'PROCESSING',
+        updated_at = NOW()
+    FROM candidates c
+    WHERE e.event_id = c.event_id
+    RETURNING e.event_id,
+              e.event_type,
+              e.aggregate_type,
+              e.aggregate_id,
+              e.exchange_name,
+              e.routing_key,
+              e.payload_json,
+              e.idempotency_key,
+              e.retry_count,
+              e.created_at
+)
+SELECT event_id AS "eventId",
+       event_type AS "eventType",
+       aggregate_type AS "aggregateType",
+       aggregate_id AS "aggregateId",
+       exchange_name AS "exchangeName",
+       routing_key AS "routingKey",
+       payload_json::text AS "payloadJson",
+       idempotency_key AS "idempotencyKey",
+       retry_count AS "retryCount",
+       created_at AS "createdAt"
+FROM claimed
+        ]]>
+    </select>
+
+    <update id="markPublished">
+        <![CDATA[
+UPDATE outbox_event
+SET status = 'PUBLISHED',
+    published_at = #{publishedAt},
+    updated_at = #{publishedAt},
+    last_error = NULL
+WHERE event_id = #{eventId}
+  AND status = 'PROCESSING'
+        ]]>
+    </update>
+
+    <update id="markRetry">
+        <![CDATA[
+UPDATE outbox_event
+SET retry_count = retry_count + 1,
+    status = CASE WHEN retry_count + 1 >= #{maxRetry} THEN 'FAILED' ELSE 'RETRY' END,
+    next_retry_at = CASE WHEN retry_count + 1 >= #{maxRetry} THEN NULL ELSE #{nextRetryAt} END,
+    last_error = #{lastError},
+    updated_at = NOW()
+WHERE event_id = #{eventId}
+  AND status = 'PROCESSING'
+        ]]>
+    </update>
+</mapper>

@@ -11,9 +11,7 @@ import java.util.Map;
 public interface AdminAccountManagementMapper {
 
     List<Map<String, Object>> listAccountCreditProfiles(@Param("userId") Long userId,
-                                                        @Param("emailPattern") String emailPattern,
-                                                        @Param("phonePattern") String phonePattern,
-                                                        @Param("status") String status,
+                                                        @Param("userIds") List<Long> userIds,
                                                         @Param("riskLevel") String riskLevel);
 
     Map<String, Object> findAccountCreditDetail(@Param("userId") Long userId);

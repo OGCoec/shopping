@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.ShoppingSystem.mapper.common.InboxEventMapper">
+
+    <insert id="insertProcessing">
+        <![CDATA[
+INSERT INTO inbox_event (
+    event_id,
+    consumer_name,
+    status,
+    received_at,
+    processed_at,
+    last_error,
+    created_at,
+    updated_at
+) VALUES (
+    #{eventId},
+    #{consumerName},
+    'PROCESSING',
+    #{receivedAt},
+    NULL,
+    NULL,
+    #{receivedAt},
+    #{receivedAt}
+)
+ON CONFLICT (event_id, consumer_name) DO NOTHING
+        ]]>
+    </insert>
+
+    <!-- 幂等抢占处理: 新建直接进入 PROCESSING; 已 FAILED 或 PROCESSING 超时允许抢回重试; PROCESSED 或未超时的 PROCESSING 返回 0 表示跳过 -->
+    <insert id="tryStartProcessing">
+        <![CDATA[
+INSERT INTO inbox_event (
+    event_id,
+    consumer_name,
+    status,
+    received_at,
+    processed_at,
+    last_error,
+    created_at,
+    updated_at
+) VALUES (
+    #{eventId},
+    #{consumerName},
+    'PROCESSING',
+    #{now},
+    NULL,
+    NULL,
+    #{now},
+    #{now}
+)
+ON CONFLICT (event_id, consumer_name) DO UPDATE
+SET status = 'PROCESSING',
+    received_at = #{now},
+    processed_at = NULL,
+    last_error = NULL,
+    updated_at = #{now}
+WHERE inbox_event.status = 'FAILED'
+   OR (
+          inbox_event.status = 'PROCESSING'
+          AND inbox_event.updated_at <= NOW() - (#{processingTimeoutMs} * INTERVAL '1 millisecond')
+      )
+        ]]>
+    </insert>
+
+    <update id="markProcessed">
+        <![CDATA[
+UPDATE inbox_event
+SET status = 'PROCESSED',
+    processed_at = #{processedAt},
+    last_error = NULL,
+    updated_at = #{processedAt}
+WHERE event_id = #{eventId}
+  AND consumer_name = #{consumerName}
+        ]]>
+    </update>
+
+    <update id="markFailed">
+        <![CDATA[
+UPDATE inbox_event
+SET status = 'FAILED',
+    last_error = #{lastError},
+    updated_at = NOW()
+WHERE event_id = #{eventId}
+  AND consumer_name = #{consumerName}
+        ]]>
+    </update>
+</mapper>

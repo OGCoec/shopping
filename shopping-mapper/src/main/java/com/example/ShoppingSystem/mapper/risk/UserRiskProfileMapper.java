@@ -4,6 +4,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 
 @Mapper
@@ -47,20 +48,29 @@ public interface UserRiskProfileMapper {
     int markRiskRecoveryStarted(@Param("userId") Long userId,
                                 @Param("startedAt") OffsetDateTime startedAt);
 
-    int recoverStableUnlockedUsers(@Param("lockCount") int lockCount,
-                                   @Param("cutoff") OffsetDateTime cutoff,
-                                   @Param("scoreBonus") int scoreBonus,
-                                   @Param("stableDays") int stableDays,
-                                   @Param("now") OffsetDateTime now,
-                                   @Param("limit") int limit);
+    List<Map<String, Object>> listStableUnlockedUserRecoveryCandidates(@Param("lockCount") int lockCount,
+                                                                       @Param("cutoff") OffsetDateTime cutoff,
+                                                                       @Param("limit") int limit,
+                                                                       @Param("offset") long offset);
 
-    int recoverStableUnlockedUsersByReason(@Param("lockReason") String lockReason,
-                                           @Param("eventType") String eventType,
-                                           @Param("eventReason") String eventReason,
-                                           @Param("lockCount") int lockCount,
-                                           @Param("cutoff") OffsetDateTime cutoff,
-                                           @Param("scoreBonus") int scoreBonus,
-                                           @Param("stableDays") int stableDays,
-                                           @Param("now") OffsetDateTime now,
-                                           @Param("limit") int limit);
+    List<Map<String, Object>> listStableUnlockedUserRecoveryCandidatesByReason(@Param("lockReason") String lockReason,
+                                                                               @Param("lockCount") int lockCount,
+                                                                               @Param("cutoff") OffsetDateTime cutoff,
+                                                                               @Param("limit") int limit,
+                                                                               @Param("offset") long offset);
+
+    int recoverStableUnlockedUsersByUserIds(@Param("userIds") List<Long> userIds,
+                                            @Param("lockCount") int lockCount,
+                                            @Param("scoreBonus") int scoreBonus,
+                                            @Param("stableDays") int stableDays,
+                                            @Param("now") OffsetDateTime now);
+
+    int recoverStableUnlockedUsersByReasonAndUserIds(@Param("userIds") List<Long> userIds,
+                                                     @Param("lockReason") String lockReason,
+                                                     @Param("eventType") String eventType,
+                                                     @Param("eventReason") String eventReason,
+                                                     @Param("lockCount") int lockCount,
+                                                     @Param("scoreBonus") int scoreBonus,
+                                                     @Param("stableDays") int stableDays,
+                                                     @Param("now") OffsetDateTime now);
 }

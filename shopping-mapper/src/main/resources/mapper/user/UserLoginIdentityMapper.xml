@@ -159,6 +159,84 @@
         OFFSET #{offset}
     </select>
 
+    <select id="listEmailsByUserIds" resultType="map">
+        WITH requested(user_id) AS (
+            VALUES
+            <foreach collection="userIds" item="userId" separator=",">
+                (#{userId})
+            </foreach>
+        )
+        SELECT i.user_id AS "userId",
+               i.email AS "email"
+        FROM user_login_identity i
+        INNER JOIN requested r ON r.user_id = i.user_id
+        WHERE i.email IS NOT NULL
+    </select>
+
+    <select id="listIdentitySummariesByUserIds" resultType="map">
+        WITH requested(user_id) AS (
+            VALUES
+            <foreach collection="userIds" item="userId" separator=",">
+                (#{userId})
+            </foreach>
+        )
+        SELECT i.user_id AS "userId",
+               i.email AS "email",
+               i.phone AS "phone",
+               i.status AS "status"
+        FROM user_login_identity i
+        INNER JOIN requested r ON r.user_id = i.user_id
+    </select>
+
+    <select id="listIdentitySummariesByFilters" resultType="map">
+        SELECT i.user_id AS "userId",
+               i.email AS "email",
+               i.phone AS "phone",
+               i.status AS "status"
+        FROM user_login_identity i
+        <where>
+            <if test="userId != null">
+                AND i.user_id = #{userId}
+            </if>
+            <if test="emailPattern != null">
+                AND LOWER(i.email) LIKE #{emailPattern}
+            </if>
+            <if test="phonePattern != null">
+                AND i.phone LIKE #{phonePattern}
+            </if>
+            <if test="status != null">
+                AND i.status = #{status}
+            </if>
+        </where>
+        ORDER BY i.user_id DESC
+    </select>
+
+    <select id="listActiveUserIdsByUserIds" resultType="long">
+        WITH requested(user_id) AS (
+            VALUES
+            <foreach collection="userIds" item="userId" separator=",">
+                (#{userId})
+            </foreach>
+        )
+        SELECT i.user_id
+        FROM user_login_identity i
+        INNER JOIN requested r ON r.user_id = i.user_id
+        WHERE i.status = 'ACTIVE'
+    </select>
+
+    <delete id="deleteRiskTerminatedByUserIds">
+        WITH requested(user_id) AS (
+            VALUES
+            <foreach collection="userIds" item="userId" separator=",">
+                (#{userId})
+            </foreach>
+        )
+        DELETE FROM user_login_identity i
+        USING requested r
+        WHERE i.user_id = r.user_id
+          AND i.status = 'RISK_TERMINATED'
+    </delete>
+
     <update id="bindGithubIdById">
         UPDATE user_login_identity
         SET github_id = #{githubId},

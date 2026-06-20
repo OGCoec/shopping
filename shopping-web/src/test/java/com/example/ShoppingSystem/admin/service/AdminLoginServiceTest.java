@@ -2,6 +2,12 @@ package com.example.ShoppingSystem.admin.service;
 
 import com.example.ShoppingSystem.admin.dto.AdminLoginRequest;
 import com.example.ShoppingSystem.admin.model.AdminAccount;
+import com.example.ShoppingSystem.admin.service.auth.AdminLoginLockService;
+import com.example.ShoppingSystem.admin.service.auth.AdminLoginService;
+import com.example.ShoppingSystem.admin.service.auth.AdminSessionService;
+import com.example.ShoppingSystem.admin.service.auth.impl.AdminLoginService.AdminLoginServiceImpl;
+import com.example.ShoppingSystem.admin.service.common.AdminServiceException;
+import com.example.ShoppingSystem.admin.service.config.AdminConfigService;
 import com.example.ShoppingSystem.security.RegisterPasswordCryptoService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -25,7 +31,7 @@ class AdminLoginServiceTest {
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final RegisterPasswordCryptoService registerPasswordCryptoService = mock(RegisterPasswordCryptoService.class);
     private final AdminLoginLockService adminLoginLockService = mock(AdminLoginLockService.class);
-    private final AdminLoginService service = new AdminLoginService(
+    private final AdminLoginService service = new AdminLoginServiceImpl(
             adminConfigService,
             adminSessionService,
             passwordEncoder,

@@ -1,8 +1,11 @@
 package com.example.ShoppingSystem.coupon.rabbit;
 
 import com.example.ShoppingSystem.Utils.HybridIdCodec;
+import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
+import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
 import com.example.ShoppingSystem.coupon.service.CouponRedisKeys;
 import com.example.ShoppingSystem.mapper.coupon.UserCouponMapper;
+import com.example.ShoppingSystem.outbox.InboxIdempotentConsumerExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -10,7 +13,6 @@ import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -21,22 +23,27 @@ public class CouponClaimMessageConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(CouponClaimMessageConsumer.class);
 
+    private static final String CONSUMER_NAME = "coupon-claim-trade";
+
     private final UserCouponMapper userCouponMapper;
     private final CouponClaimMessagePublisher couponClaimMessagePublisher;
     private final CouponClaimRabbitProperties properties;
     private final StringRedisTemplate stringRedisTemplate;
-    private final TransactionTemplate transactionTemplate;
+    private final RoutedTransactionExecutor routedTransactionExecutor;
+    private final InboxIdempotentConsumerExecutor inboxExecutor;
 
     public CouponClaimMessageConsumer(UserCouponMapper userCouponMapper,
                                       CouponClaimMessagePublisher couponClaimMessagePublisher,
                                       CouponClaimRabbitProperties properties,
                                       StringRedisTemplate stringRedisTemplate,
-                                      TransactionTemplate transactionTemplate) {
+                                      RoutedTransactionExecutor routedTransactionExecutor,
+                                      InboxIdempotentConsumerExecutor inboxExecutor) {
         this.userCouponMapper = userCouponMapper;
         this.couponClaimMessagePublisher = couponClaimMessagePublisher;
         this.properties = properties;
         this.stringRedisTemplate = stringRedisTemplate;
-        this.transactionTemplate = transactionTemplate;
+        this.routedTransactionExecutor = routedTransactionExecutor;
+        this.inboxExecutor = inboxExecutor;
     }
 
     @RabbitListener(
@@ -54,7 +61,14 @@ public class CouponClaimMessageConsumer {
                         message.getClaimId(), message.getCouponId(), message.getUserId());
                 return;
             }
-            transactionTemplate.executeWithoutResult(status -> insertUserCoupon(message));
+            // 写入目标库为 TRADE，使用 claimId 作为 eventId，在 TRADE 库 inbox_event 做数据库级幂等
+            inboxExecutor.execute(
+                    DataSourceRoute.TRADE,
+                    message.getClaimId(),
+                    CONSUMER_NAME,
+                    () -> routedTransactionExecutor.executeWithoutResult(
+                            DataSourceRoute.TRADE, () -> insertUserCoupon(message))
+            );
             deletePending(message.getClaimId());
             log.info("[Coupon] claim message consumed, claimId={}, couponId={}, userId={}, retryCount={}",
                     message.getClaimId(), message.getCouponId(), message.getUserId(), message.getRetryCount());

@@ -6,6 +6,7 @@ import com.example.ShoppingSystem.admin.service.common.AdminServiceException;
 import com.example.ShoppingSystem.admin.service.product.AdminProductHotSkuService;
 import com.example.ShoppingSystem.config.datasource.ProductReadReplicaProperties;
 import com.example.ShoppingSystem.config.datasource.ProductReadReplicaQueryExecutor;
+import com.example.ShoppingSystem.config.datasource.ReadReplicaQueryRunner;
 import com.example.ShoppingSystem.mapper.product.ProductHotSkuMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.example.ShoppingSystem.admin.service.product.impl.AdminProductHotSkuService.AdminProductHotSkuServiceImpl;
 class AdminProductHotSkuServiceTest {
 
     private static final String VALID_SKU_ID = "abc123";
@@ -33,12 +35,12 @@ class AdminProductHotSkuServiceTest {
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker = mock(HybridSemaphoreIdWorker.class);
     private final StringRedisTemplate stringRedisTemplate = mock(StringRedisTemplate.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final AdminProductHotSkuService service = new AdminProductHotSkuService(
+    private final AdminProductHotSkuService service = new AdminProductHotSkuServiceImpl(
             productHotSkuMapper,
             hybridSemaphoreIdWorker,
             stringRedisTemplate,
             objectMapper,
-            new ProductReadReplicaQueryExecutor(new ProductReadReplicaProperties()));
+            new ProductReadReplicaQueryExecutor(new ProductReadReplicaProperties(), mock(ReadReplicaQueryRunner.class)));
 
     @Test
     void hitReturnsFullFieldsAndOverridesRemainingFromRedis() {

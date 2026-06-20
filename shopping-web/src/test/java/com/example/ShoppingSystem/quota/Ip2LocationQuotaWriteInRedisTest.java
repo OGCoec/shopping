@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.example.ShoppingSystem.quota.impl.Ip2LocationQuotaService.Ip2LocationQuotaServiceImpl;
 class Ip2LocationQuotaWriteInRedisTest {
 
     private static final String API_KEY = "4A3230AC087F11A1D757DD5C636FCC59";
@@ -27,7 +28,7 @@ class Ip2LocationQuotaWriteInRedisTest {
         factory.afterPropertiesSet();
 
         StringRedisTemplate redisTemplate = new StringRedisTemplate(factory);
-        Ip2LocationQuotaService quotaService = new Ip2LocationQuotaService(redisTemplate);
+        Ip2LocationQuotaService quotaService = new Ip2LocationQuotaServiceImpl(redisTemplate);
 
         quotaService.initializeMonthlyQuota(API_KEY, REMAINING_QUOTA);
 

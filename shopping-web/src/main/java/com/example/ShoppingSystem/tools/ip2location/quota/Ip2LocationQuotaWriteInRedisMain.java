@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.example.ShoppingSystem.quota.impl.Ip2LocationQuotaService.Ip2LocationQuotaServiceImpl;
 /**
  * Manual writer for IP2Location quota keys in Redis DB 2.
  */
@@ -67,7 +68,7 @@ public class Ip2LocationQuotaWriteInRedisMain {
 
         try {
             StringRedisTemplate redisTemplate = new StringRedisTemplate(factory);
-            Ip2LocationQuotaService quotaService = new Ip2LocationQuotaService(redisTemplate);
+            Ip2LocationQuotaService quotaService = new Ip2LocationQuotaServiceImpl(redisTemplate);
             RLock lock = redissonClient.getLock(REFRESH_LOCK_KEY);
 
             boolean locked = false;

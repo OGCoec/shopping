@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.ShoppingSystem.mapper.product.OrderProductSkuMapper">
+
+    <select id="findSkuForOrder" resultType="map">
+        <![CDATA[
+SELECT encode(s.id, 'hex') AS "skuId",
+       s.spu_id AS "spuId",
+       p.category_id AS "categoryId",
+       s.sku_code AS "skuCode",
+       s.sku_name AS "skuName",
+       s.spec_json::text AS "specJson",
+       COALESCE(s.sku_image_url::jsonb, '[]'::jsonb)::text AS "skuImageUrl",
+       s.price_yuan AS "priceYuan",
+       s.point_exchange_enabled AS "pointExchangeEnabled",
+       s.point_exchange_points AS "pointExchangePoints",
+       s.stock_quantity AS "stockQuantity",
+       s.status AS "skuStatus",
+       p.status AS "spuStatus",
+       c.status AS "categoryStatus"
+FROM product_sku s
+INNER JOIN product_spu p ON p.id = s.spu_id
+INNER JOIN product_category c ON c.id = p.category_id
+WHERE s.id = #{skuId}
+        ]]>
+    </select>
+
+    <select id="findHotSkuForOrder" resultType="map">
+        <![CDATA[
+SELECT encode(h.sku_id, 'hex') AS "skuId",
+       h.status AS "status",
+       h.stock_quantity AS "stockQuantity",
+       h.remaining_quantity AS "remainingQuantity",
+       h.start_at AS "startAt",
+       h.end_at AS "endAt",
+       h.version AS "version"
+FROM product_hot_sku h
+WHERE h.sku_id = #{skuId}
+  AND h.status = 'ENABLED'
+  AND (h.start_at IS NULL OR h.start_at <= #{now})
+  AND (h.end_at IS NULL OR h.end_at > #{now})
+        ]]>
+    </select>
+
+    <update id="deductNormalSkuStock">
+        UPDATE product_sku
+        SET stock_quantity = stock_quantity - #{quantity},
+            updated_at = NOW()
+        WHERE id = #{skuId}
+          AND status = 'ACTIVE'
+          AND stock_quantity >= #{quantity}
+    </update>
+
+    <update id="increaseNormalSkuStock">
+        UPDATE product_sku
+        SET stock_quantity = stock_quantity + #{quantity},
+            updated_at = NOW()
+        WHERE id = #{skuId}
+    </update>
+
+    <update id="increaseNormalSkuStocks">
+        <![CDATA[
+WITH raw AS (
+    SELECT decode(item.sku_id_hex, 'hex') AS sku_id,
+           item.quantity AS quantity
+    FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS item(
+        sku_id_hex text,
+        quantity integer
+    )
+),
+target AS (
+    SELECT sku_id,
+           SUM(quantity)::integer AS quantity
+    FROM raw
+    WHERE quantity > 0
+    GROUP BY sku_id
+)
+UPDATE product_sku s
+SET stock_quantity = stock_quantity + target.quantity,
+    updated_at = NOW()
+FROM target
+WHERE s.id = target.sku_id
+        ]]>
+    </update>
+</mapper>

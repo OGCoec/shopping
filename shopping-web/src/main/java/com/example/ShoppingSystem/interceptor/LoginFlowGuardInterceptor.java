@@ -15,6 +15,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import com.example.ShoppingSystem.registerflow.RegisterFlowWebSupport;
 @Component
 public class LoginFlowGuardInterceptor implements HandlerInterceptor {
 

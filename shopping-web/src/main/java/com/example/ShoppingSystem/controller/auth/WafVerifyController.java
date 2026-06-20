@@ -2,7 +2,7 @@ package com.example.ShoppingSystem.controller.auth;
 
 import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
 import com.example.ShoppingSystem.admin.service.auth.AdminWafVerificationService;
-import com.example.ShoppingSystem.service.user.auth.login.impl.LoginChallengeSessionService;
+import com.example.ShoppingSystem.service.user.auth.login.LoginChallengeSessionService;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

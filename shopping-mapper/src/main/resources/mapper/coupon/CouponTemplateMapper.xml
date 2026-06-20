@@ -53,9 +53,9 @@
 
     <sql id="UserCouponTemplateSelectColumns">
         <include refid="CouponTemplateSelectColumnsWithAlias"/>,
-        (uc.id IS NOT NULL) AS "claimed",
-        encode(uc.id, 'hex') AS "userCouponId",
-        uc.status AS "userCouponStatus"
+        false AS "claimed",
+        NULL AS "userCouponId",
+        '' AS "userCouponStatus"
     </sql>
 
     <insert id="insertTemplate">
@@ -171,9 +171,6 @@
     <select id="listUserReceivableTemplates" resultType="map">
         SELECT <include refid="UserCouponTemplateSelectColumns"/>
         FROM coupon_template ct
-        LEFT JOIN user_coupon uc
-               ON uc.coupon_template_id = ct.id
-              AND uc.user_id = #{userId}
         WHERE ct.status = 'ACTIVE'
           AND ct.receive_start_at &lt;= #{now}
           AND ct.receive_end_at &gt;= #{now}
@@ -192,9 +189,6 @@
     <select id="listUserReceivableTemplatesByIds" resultType="map">
         SELECT <include refid="UserCouponTemplateSelectColumns"/>
         FROM coupon_template ct
-        LEFT JOIN user_coupon uc
-               ON uc.coupon_template_id = ct.id
-              AND uc.user_id = #{userId}
         WHERE ct.status = 'ACTIVE'
           AND ct.receive_start_at &lt;= #{now}
           AND ct.receive_end_at &gt;= #{now}
@@ -207,9 +201,6 @@
     <select id="findUserReceivableTemplateById" resultType="map">
         SELECT <include refid="UserCouponTemplateSelectColumns"/>
         FROM coupon_template ct
-        LEFT JOIN user_coupon uc
-               ON uc.coupon_template_id = ct.id
-              AND uc.user_id = #{userId}
         WHERE ct.id = #{id}
           AND ct.status = 'ACTIVE'
           AND ct.receive_start_at &lt;= #{now}
