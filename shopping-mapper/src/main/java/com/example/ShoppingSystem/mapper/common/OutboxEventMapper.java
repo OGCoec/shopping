@@ -20,6 +20,8 @@ public interface OutboxEventMapper {
                     @Param("idempotencyKey") String idempotencyKey,
                     @Param("createdAt") OffsetDateTime createdAt);
 
+    int insertEvents(@Param("events") List<OutboxEventRow> events);
+
     List<Map<String, Object>> claimBatch(@Param("limit") int limit,
                                          @Param("maxRetry") int maxRetry,
                                          @Param("processingTimeoutMs") long processingTimeoutMs);

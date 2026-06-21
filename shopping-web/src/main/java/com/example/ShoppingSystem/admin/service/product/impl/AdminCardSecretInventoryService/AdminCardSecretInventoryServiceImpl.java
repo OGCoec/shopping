@@ -8,8 +8,6 @@ import com.example.ShoppingSystem.admin.dto.AdminCardSecretImportResponse;
 import com.example.ShoppingSystem.admin.service.common.AdminServiceException;
 import com.example.ShoppingSystem.admin.service.config.AdminCardSecretCryptoConfigService;
 import com.example.ShoppingSystem.admin.service.config.impl.AdminManagedEnvService.AdminManagedEnvServiceImpl;
-import com.example.ShoppingSystem.mapper.product.CardSecretInventoryMapper;
-import com.example.ShoppingSystem.mapper.product.OrderProductSkuMapper;
 import com.example.ShoppingSystem.mapper.product.ProductSpuMapper;
 import com.example.ShoppingSystem.product.service.PublicProductDetailCacheService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -25,10 +23,12 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -57,9 +57,8 @@ public class AdminCardSecretInventoryServiceImpl implements AdminCardSecretInven
     private static final String IMPORT_SOURCE_TXT_FILE = "TXT_FILE";
     private static final String IMPORT_SOURCE_MIXED = "MIXED";
 
-    private final CardSecretInventoryMapper cardSecretInventoryMapper;
     private final ProductSpuMapper productSpuMapper;
-    private final OrderProductSkuMapper orderProductSkuMapper;
+    private final CardSecretInventoryImportWriter cardSecretInventoryImportWriter;
     private final AdminManagedEnvService managedEnvService;
     private final AdminProductDetailCacheService detailCacheService;
     private final PublicProductDetailCacheService publicDetailCacheService;
@@ -68,18 +67,16 @@ public class AdminCardSecretInventoryServiceImpl implements AdminCardSecretInven
     private final ObjectMapper objectMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public AdminCardSecretInventoryServiceImpl(CardSecretInventoryMapper cardSecretInventoryMapper,
-                                           ProductSpuMapper productSpuMapper,
-                                           OrderProductSkuMapper orderProductSkuMapper,
+    public AdminCardSecretInventoryServiceImpl(ProductSpuMapper productSpuMapper,
+                                           CardSecretInventoryImportWriter cardSecretInventoryImportWriter,
                                            AdminManagedEnvService managedEnvService,
                                            AdminProductDetailCacheService detailCacheService,
                                            PublicProductDetailCacheService publicDetailCacheService,
                                            AdminProductSpuIndexService productIndexService,
                                            HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
                                            ObjectMapper objectMapper) {
-        this.cardSecretInventoryMapper = cardSecretInventoryMapper;
         this.productSpuMapper = productSpuMapper;
-        this.orderProductSkuMapper = orderProductSkuMapper;
+        this.cardSecretInventoryImportWriter = cardSecretInventoryImportWriter;
         this.managedEnvService = managedEnvService;
         this.detailCacheService = detailCacheService;
         this.publicDetailCacheService = publicDetailCacheService;
@@ -136,12 +133,16 @@ public class AdminCardSecretInventoryServiceImpl implements AdminCardSecretInven
                 importSource,
                 importActor
         );
-        Map<String, Object> result = cardSecretInventoryMapper.batchInsertIgnoreDuplicates(spuId, skuIdBytes, toJson(items));
-        int insertedCount = intValue(result == null ? null : result.get("insertedCount"));
+        CardSecretInventoryImportWriter.ImportResult importResult = cardSecretInventoryImportWriter.importAndEnqueueStockIncrease(
+                spuId,
+                skuIdBytes,
+                skuIdHex,
+                finalBatchNo,
+                toJson(items),
+                batchFingerprint(spuId, skuIdHex, finalBatchNo, items)
+        );
+        int insertedCount = importResult.insertedCount();
         int duplicateInDbCount = Math.max(0, items.size() - insertedCount);
-        if (insertedCount > 0) {
-            orderProductSkuMapper.increaseNormalSkuStock(skuIdBytes, insertedCount);
-        }
         int skuStockQuantity = intValue(skuRow.get("stockQuantity")) + insertedCount;
         invalidateSkuProductAfterCommit(spuId);
         return new AdminCardSecretImportResponse(
@@ -404,6 +405,31 @@ public class AdminCardSecretInventoryServiceImpl implements AdminCardSecretInven
             throw new AdminServiceException(
                     "ADMIN_CARD_SECRET_IMPORT_SERIALIZE_FAILED",
                     "Card secret import payload serialize failed.",
+                    HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    private String batchFingerprint(Long spuId,
+                                    String skuIdHex,
+                                    String batchNo,
+                                    List<CardSecretInventoryInsertItem> items) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update(String.valueOf(spuId).getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) '|');
+            digest.update(skuIdHex.getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) '|');
+            digest.update(String.valueOf(batchNo).getBytes(StandardCharsets.UTF_8));
+            for (CardSecretInventoryInsertItem item : items) {
+                digest.update((byte) '|');
+                digest.update(String.valueOf(item.secretHash()).getBytes(StandardCharsets.UTF_8));
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (GeneralSecurityException ex) {
+            throw new AdminServiceException(
+                    "ADMIN_CARD_SECRET_IMPORT_FINGERPRINT_FAILED",
+                    "Card secret import fingerprint failed.",
                     HttpStatus.INTERNAL_SERVER_ERROR
             );
         }

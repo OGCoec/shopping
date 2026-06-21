@@ -1,7 +1,5 @@
 package com.example.ShoppingSystem.order.service;
 
-import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
-import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,7 +9,6 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -20,29 +17,20 @@ public class OrderClosingCompensateScheduler {
     private static final Logger log = LoggerFactory.getLogger(OrderClosingCompensateScheduler.class);
 
     private final OrderRedisSnapshotService orderRedisSnapshotService;
-    private final OrderInventoryReleaseService orderInventoryReleaseService;
-    private final OrderCouponService orderCouponService;
-    private final OrderCouponUsageService orderCouponUsageService;
-    private final RoutedTransactionExecutor routedTransactionExecutor;
+    private final OrderInventoryReleaseRequestWriter orderInventoryReleaseRequestWriter;
     private final boolean enabled;
     private final int batchSize;
     private final int maxBatchesPerRun;
     private final Duration lockTtl;
 
     public OrderClosingCompensateScheduler(OrderRedisSnapshotService orderRedisSnapshotService,
-                                           OrderInventoryReleaseService orderInventoryReleaseService,
-                                           OrderCouponService orderCouponService,
-                                           OrderCouponUsageService orderCouponUsageService,
-                                           RoutedTransactionExecutor routedTransactionExecutor,
+                                           OrderInventoryReleaseRequestWriter orderInventoryReleaseRequestWriter,
                                            @Value("${shopping.order.closing-compensate-enabled:true}") boolean enabled,
                                            @Value("${shopping.order.closing-compensate-batch-size:100}") int batchSize,
                                            @Value("${shopping.order.closing-compensate-max-batches-per-run:20}") int maxBatchesPerRun,
                                            @Value("${shopping.order.closing-compensate-lock-ttl-ms:1800000}") long lockTtlMs) {
         this.orderRedisSnapshotService = orderRedisSnapshotService;
-        this.orderInventoryReleaseService = orderInventoryReleaseService;
-        this.orderCouponService = orderCouponService;
-        this.orderCouponUsageService = orderCouponUsageService;
-        this.routedTransactionExecutor = routedTransactionExecutor;
+        this.orderInventoryReleaseRequestWriter = orderInventoryReleaseRequestWriter;
         this.enabled = enabled;
         this.batchSize = batchSize <= 0 ? 100 : batchSize;
         this.maxBatchesPerRun = Math.max(1, maxBatchesPerRun);
@@ -94,7 +82,7 @@ public class OrderClosingCompensateScheduler {
 
             ResourceReleaseResult releaseResult = new ResourceReleaseResult(0, 0);
             try {
-                releaseResult = releaseResources(batch.changedSnapshots());
+                releaseResult = releaseResources(batch.changedSnapshots(), now);
                 if (releaseResult == null) {
                     releaseResult = new ResourceReleaseResult(0, 0);
                 }
@@ -150,20 +138,17 @@ public class OrderClosingCompensateScheduler {
         }
     }
 
-    private ResourceReleaseResult releaseResources(List<OrderRedisSnapshot> snapshots) {
+    private ResourceReleaseResult releaseResources(List<OrderRedisSnapshot> snapshots, OffsetDateTime now) {
         if (snapshots == null || snapshots.isEmpty()) {
             return new ResourceReleaseResult(0, 0);
         }
-        int inventoryItemCount = routedTransactionExecutor.execute(
-                DataSourceRoute.PRODUCT,
-                () -> orderInventoryReleaseService.releaseAll(snapshots)
+        OrderInventoryReleaseRequestWriter.ResourceReleaseResult result =
+                orderInventoryReleaseRequestWriter.requestReleaseForSnapshots(
+                        snapshots,
+                        now,
+                        OrderInventoryReleaseRequestWriter.REASON_CLOSING_COMPENSATE
         );
-        List<Map<String, Object>> released = routedTransactionExecutor.execute(DataSourceRoute.TRADE, () -> {
-            List<Map<String, Object>> rows = orderCouponService.releaseLockedCoupons(snapshots);
-            orderCouponUsageService.writeReleases(rows);
-            return rows;
-        });
-        return new ResourceReleaseResult(inventoryItemCount, released.size());
+        return new ResourceReleaseResult(result.inventoryItemCount(), result.couponCount());
     }
 
     private record ResourceReleaseResult(int inventoryItemCount,

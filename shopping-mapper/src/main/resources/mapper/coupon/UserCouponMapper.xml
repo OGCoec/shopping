@@ -349,4 +349,15 @@ FROM updated
         WHERE status = 'UNUSED'
           AND valid_end_at &lt; NOW()
     </update>
+
+    <update id="expireUnusedCouponsByTemplateIds">
+        UPDATE user_coupon
+        SET status = 'EXPIRED',
+            updated_at = NOW()
+        WHERE status = 'UNUSED'
+          AND coupon_template_id IN
+          <foreach collection="templateIdHexes" item="templateIdHex" open="(" separator="," close=")">
+              decode(#{templateIdHex}, 'hex')
+          </foreach>
+    </update>
 </mapper>

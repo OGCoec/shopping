@@ -42,6 +42,46 @@ ON CONFLICT (event_id) DO NOTHING
         ]]>
     </insert>
 
+    <insert id="insertEvents">
+INSERT INTO outbox_event (
+    event_id,
+    event_type,
+    aggregate_type,
+    aggregate_id,
+    exchange_name,
+    routing_key,
+    payload_json,
+    idempotency_key,
+    status,
+    retry_count,
+    next_retry_at,
+    last_error,
+    created_at,
+    updated_at,
+    published_at
+) VALUES
+        <foreach collection="events" item="event" separator=",">
+(
+    #{event.eventId},
+    #{event.eventType},
+    #{event.aggregateType},
+    #{event.aggregateId},
+    #{event.exchangeName},
+    #{event.routingKey},
+    CAST(#{event.payloadJson} AS jsonb),
+    #{event.idempotencyKey},
+    'NEW',
+    0,
+    NULL,
+    NULL,
+    #{event.createdAt},
+    #{event.createdAt},
+    NULL
+)
+        </foreach>
+ON CONFLICT (event_id) DO NOTHING
+    </insert>
+
     <select id="claimBatch" resultType="map">
         <![CDATA[
 WITH candidates AS (

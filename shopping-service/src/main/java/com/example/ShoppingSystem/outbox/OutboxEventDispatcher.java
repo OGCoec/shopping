@@ -5,6 +5,8 @@ import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
 import com.example.ShoppingSystem.mapper.common.OutboxEventMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -12,6 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -77,18 +80,24 @@ public class OutboxEventDispatcher {
             String payloadJson = text(event, "payloadJson");
             // 鍏宠仈 publisher confirm锛岀‘璁?broker 钀借处鍚庢墠鏍囪 PUBLISHED
             CorrelationData correlationData = new CorrelationData(eventId);
-            rabbitTemplate.convertAndSend(exchangeName, routingKey, payloadJson, message -> {
-                MessageProperties messageProperties = message.getMessageProperties();
-                messageProperties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
-                messageProperties.setMessageId(eventId);
-                messageProperties.setHeader("eventId", eventId);
-                messageProperties.setHeader("eventType", text(event, "eventType"));
-                messageProperties.setHeader("aggregateType", text(event, "aggregateType"));
-                messageProperties.setHeader("aggregateId", text(event, "aggregateId"));
-                messageProperties.setHeader("idempotencyKey", text(event, "idempotencyKey"));
-                messageProperties.setHeader("sourceRoute", route.name());
-                return message;
-            }, correlationData);
+            // Send the stored JSON text as-is (raw bytes, contentType=json) so the
+            // consumer's Jackson converter deserializes the target type directly.
+            // Using convertAndSend(String) would double-encode the JSON into a quoted string.
+            MessageProperties messageProperties = new MessageProperties();
+            messageProperties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
+            messageProperties.setContentEncoding(StandardCharsets.UTF_8.name());
+            messageProperties.setMessageId(eventId);
+            messageProperties.setHeader("eventId", eventId);
+            messageProperties.setHeader("eventType", text(event, "eventType"));
+            messageProperties.setHeader("aggregateType", text(event, "aggregateType"));
+            messageProperties.setHeader("aggregateId", text(event, "aggregateId"));
+            messageProperties.setHeader("idempotencyKey", text(event, "idempotencyKey"));
+            messageProperties.setHeader("sourceRoute", route.name());
+            Message amqpMessage = MessageBuilder
+                    .withBody(payloadJson.getBytes(StandardCharsets.UTF_8))
+                    .andProperties(messageProperties)
+                    .build();
+            rabbitTemplate.send(exchangeName, routingKey, amqpMessage, correlationData);
             awaitConfirm(eventId, correlationData);
             routedTransactionExecutor.executeWithoutResult(
                     route,

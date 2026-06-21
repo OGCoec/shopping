@@ -53,7 +53,7 @@ public class AdminCardSecretQueryServiceImpl implements AdminCardSecretQueryServ
 
     private static final Set<String> INVENTORY_STATUSES = Set.of("UNUSED", "SOLD", "DISABLED");
     private static final Set<String> DELIVERY_STATUSES = Set.of("DELIVERED", "REVOKED", "REFUNDED", "REPLACED");
-    private static final Set<String> ORDER_STATUSES = Set.of("PENDING_PAYMENT", "CLOSING", "PAID", "CANCELLED", "CLOSED");
+    private static final Set<String> ORDER_STATUSES = Set.of("STOCK_CONFIRMING", "PENDING_PAYMENT", "CLOSING", "PAID", "CANCELLED", "CLOSED");
     private static final Set<String> IMPORT_SOURCES = Set.of("TEXT_INPUT", "TXT_FILE", "MIXED");
 
     private final CardSecretInventoryMapper cardSecretInventoryMapper;

@@ -1,6 +1,7 @@
 package com.example.ShoppingSystem.outbox;
 
 import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
+import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,12 +18,15 @@ public class InboxIdempotentConsumerExecutor {
     private static final Logger log = LoggerFactory.getLogger(InboxIdempotentConsumerExecutor.class);
 
     private final InboxEventService inboxEventService;
+    private final RoutedTransactionExecutor routedTransactionExecutor;
     private final long processingTimeoutMs;
 
     public InboxIdempotentConsumerExecutor(
             InboxEventService inboxEventService,
+            RoutedTransactionExecutor routedTransactionExecutor,
             @Value("${shopping.inbox.processing-timeout-ms:60000}") long processingTimeoutMs) {
         this.inboxEventService = inboxEventService;
+        this.routedTransactionExecutor = routedTransactionExecutor;
         this.processingTimeoutMs = Math.max(1000L, processingTimeoutMs);
     }
 
@@ -44,6 +48,14 @@ public class InboxIdempotentConsumerExecutor {
                            String eventId,
                            String consumerName,
                            InboxWork work) throws Exception {
+        return execute(route, eventId, consumerName, false, work);
+    }
+
+    public boolean execute(DataSourceRoute route,
+                           String eventId,
+                           String consumerName,
+                           boolean transactional,
+                           InboxWork work) throws Exception {
         if (route == null) {
             throw new IllegalArgumentException("Inbox route is required.");
         }
@@ -59,12 +71,55 @@ public class InboxIdempotentConsumerExecutor {
             return false;
         }
         try {
-            work.run();
-        } catch (Exception e) {
-            inboxEventService.markFailed(route, eventId, consumerName, e.getMessage());
+            if (transactional) {
+                executeTransactional(route, eventId, consumerName, work);
+            } else {
+                work.run();
+                inboxEventService.markProcessed(route, eventId, consumerName);
+            }
+        } catch (Throwable t) {
+            inboxEventService.markFailed(route, eventId, consumerName, t.getMessage());
+            throwThrowable(t);
+        }
+        return true;
+    }
+
+    private void executeTransactional(DataSourceRoute route,
+                                      String eventId,
+                                      String consumerName,
+                                      InboxWork work) throws Exception {
+        try {
+            routedTransactionExecutor.executeWithoutResult(route, () -> {
+                try {
+                    work.run();
+                } catch (Exception e) {
+                    throw new InboxWorkFailedException(e);
+                }
+                inboxEventService.markProcessedInCurrentTransaction(eventId, consumerName);
+            });
+        } catch (InboxWorkFailedException e) {
+            throw e.getCauseException();
+        }
+    }
+
+    private void throwThrowable(Throwable t) throws Exception {
+        if (t instanceof Exception e) {
             throw e;
         }
-        inboxEventService.markProcessed(route, eventId, consumerName);
-        return true;
+        if (t instanceof Error e) {
+            throw e;
+        }
+        throw new IllegalStateException(t);
+    }
+
+    private static final class InboxWorkFailedException extends RuntimeException {
+
+        private InboxWorkFailedException(Exception cause) {
+            super(cause);
+        }
+
+        private Exception getCauseException() {
+            return (Exception) getCause();
+        }
     }
 }

@@ -33,7 +33,11 @@ if endAtText and endAtText ~= '' then
 end
 
 if redis.call('HEXISTS', userKey, userId) == 1 then
-    return {5, redis.call('HGET', userKey, userId)}
+    local existingOrderNo = redis.call('HGET', userKey, userId)
+    if existingOrderNo == orderNo then
+        return {0, tonumber(redis.call('GET', stockKey) or '0')}
+    end
+    return {5, existingOrderNo}
 end
 
 local stock = tonumber(redis.call('GET', stockKey) or '')

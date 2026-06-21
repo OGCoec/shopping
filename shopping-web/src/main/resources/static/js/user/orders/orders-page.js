@@ -34,6 +34,7 @@
   };
 
   const statusLabels = {
+    STOCK_CONFIRMING: "库存确认中",
     PENDING_PAYMENT: "待支付",
     CLOSING: "关闭确认中",
     PAID: "已支付",
@@ -236,7 +237,9 @@
     panel.dataset.status = String(order?.status || "");
     panel.appendChild(statusBadge(order?.status));
     const copy = document.createElement("p");
-    if (order?.status === "CLOSING") {
+    if (order?.status === "STOCK_CONFIRMING") {
+      copy.textContent = "订单库存正在确认，确认成功后可继续支付。";
+    } else if (order?.status === "CLOSING") {
       copy.textContent = `订单正在关闭中，系统等待支付结果确认到 ${formatDate(order?.closingDeadlineAt)}。`;
     } else if (order?.status === "PENDING_PAYMENT") {
       copy.textContent = `请在 ${formatDate(order?.expireAt)} 前完成支付。`;

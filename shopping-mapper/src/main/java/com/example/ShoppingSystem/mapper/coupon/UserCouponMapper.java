@@ -79,4 +79,6 @@ public interface UserCouponMapper {
     List<Map<String, Object>> useLockedCouponsByOrderNos(@Param("ordersJson") String ordersJson);
 
     int expireUnusedCoupons();
+
+    int expireUnusedCouponsByTemplateIds(@Param("templateIdHexes") List<String> templateIdHexes);
 }

@@ -153,7 +153,8 @@ public class OrderQueryServiceImpl implements OrderQueryService {
         if (value.isEmpty()) {
             return null;
         }
-        if (!OrderStatus.PENDING_PAYMENT.equals(value)
+        if (!OrderStatus.STOCK_CONFIRMING.equals(value)
+                && !OrderStatus.PENDING_PAYMENT.equals(value)
                 && !OrderStatus.CLOSING.equals(value)
                 && !OrderStatus.PAID.equals(value)
                 && !OrderStatus.CANCELLED.equals(value)

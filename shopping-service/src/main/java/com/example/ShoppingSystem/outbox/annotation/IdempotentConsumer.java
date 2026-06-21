@@ -25,4 +25,6 @@ public @interface IdempotentConsumer {
 
     /** 取 eventId 的 SpEL 表达式，引用方法入参名，例如 "#message.eventId"。 */
     String eventId();
+
+    boolean transactional() default false;
 }

@@ -5,13 +5,7 @@ import cn.hutool.json.JSONUtil;
 import com.example.ShoppingSystem.Utils.SnowflakeIdWorker;
 import com.example.ShoppingSystem.common.transaction.AfterCommitExecutor;
 import com.example.ShoppingSystem.entity.entity.UserLoginIdentity;
-import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
 import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
-import com.example.ShoppingSystem.outbox.OutboxEventRequest;
-import com.example.ShoppingSystem.outbox.OutboxEventService;
-import com.example.ShoppingSystem.outbox.accountsync.AccountStatusSyncMessage;
-import com.example.ShoppingSystem.outbox.accountsync.AccountStatusSyncRouting;
-import com.example.ShoppingSystem.mapper.risk.UserRiskAccountTerminationMapper;
 import com.example.ShoppingSystem.mapper.risk.UserRiskProfileMapper;
 import com.example.ShoppingSystem.redisdata.UserAuthRiskRedisKeys;
 import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
@@ -59,24 +53,24 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
     private final StringRedisTemplate stringRedisTemplate;
     private final UserRiskProfileMapper userRiskProfileMapper;
     private final UserLoginIdentityMapper userLoginIdentityMapper;
-    private final UserRiskAccountTerminationMapper userRiskAccountTerminationMapper;
     private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
     private final SnowflakeIdWorker snowflakeIdWorker;
-    private final OutboxEventService outboxEventService;
+    private final AuthLockRiskWriter authLockRiskWriter;
+    private final AuthLockRecoveryCoreWriter authLockRecoveryCoreWriter;
 
     public UserAuthFailureRiskServiceImpl(StringRedisTemplate stringRedisTemplate,
                                           UserRiskProfileMapper userRiskProfileMapper,
                                           UserLoginIdentityMapper userLoginIdentityMapper,
-                                          UserRiskAccountTerminationMapper userRiskAccountTerminationMapper,
                                           TerminatedAccountEmailBloomService terminatedAccountEmailBloomService,
                                           SnowflakeIdWorker snowflakeIdWorker,
-                                          OutboxEventService outboxEventService) {
+                                          AuthLockRiskWriter authLockRiskWriter,
+                                          AuthLockRecoveryCoreWriter authLockRecoveryCoreWriter) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.userRiskProfileMapper = userRiskProfileMapper;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
-        this.userRiskAccountTerminationMapper = userRiskAccountTerminationMapper;
         this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
-        this.outboxEventService = outboxEventService;
+        this.authLockRiskWriter = authLockRiskWriter;
+        this.authLockRecoveryCoreWriter = authLockRecoveryCoreWriter;
         this.snowflakeIdWorker = snowflakeIdWorker;
     }
 
@@ -193,50 +187,61 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
         int nextBehaviorScoreDelta;
         String eventType;
         String lockReason;
+        String targetStatus;
+        String expectedStatus;
+        AuthLockRiskWriter.TerminationData termination;
         if (decision.terminationRequired()) {
             scoreAfter = 0;
             nextBehaviorScoreDelta = -currentEnvScore;
             eventType = EVENT_TERMINATION_REQUIRED;
             lockReason = REASON_TERMINATION_REQUIRED;
-            upsertRiskTermination(userId, now, lockReason);
-            // RISK -> CORE 账号状态同步：CORE 库 user_login_identity.status 改由 outbox_event 异步可靠同步
-            enqueueAccountStatusSync(userId, STATUS_RISK_TERMINATED, null, lockReason, now);
+            targetStatus = STATUS_RISK_TERMINATED;
+            expectedStatus = null;
+            // CORE identity is read before the RISK outbox writer records termination details.
+            termination = buildTerminationData(userId);
         } else {
             nextBehaviorScoreDelta = behaviorScoreDelta - decision.penaltyScore();
             scoreAfter = clampScore(currentEnvScore + nextBehaviorScoreDelta);
             eventType = EVENT_AUTH_FAIL_LOCK;
             lockReason = REASON_AUTH_FAIL_LOCK;
-            userLoginIdentityMapper.updateStatusByUserIdIfStatus(userId, STATUS_ACTIVE, STATUS_LOCKED);
+            targetStatus = STATUS_LOCKED;
+            // CORE status is updated asynchronously through the account status sync event.
+            expectedStatus = STATUS_ACTIVE;
+            termination = null;
         }
         String riskLevelAfter = resolveRiskLevel(scoreAfter);
 
-        userRiskProfileMapper.upsertUserAuthLockState(
+        // RISK writes and the CORE status sync event share the same RISK outbox transaction.
+        authLockRiskWriter.applyLockAndEnqueue(new AuthLockRiskWriter.AuthLockWrite(
                 userId,
                 currentEnvScore,
                 nextBehaviorScoreDelta,
+                scoreBefore,
                 scoreAfter,
+                riskLevelBefore,
                 riskLevelAfter,
                 nextLockCount,
                 now,
                 lockUntil,
                 lockReason,
-                now
-        );
-        userRiskProfileMapper.insertUserRiskScoreEvent(
-                snowflakeIdWorker.nextId(),
-                userId,
                 eventType,
-                scoreBefore,
-                scoreAfter - scoreBefore,
-                scoreAfter,
-                riskLevelBefore,
-                riskLevelAfter,
-                lockReason,
+                snowflakeIdWorker.nextId(),
                 normalizeText(ip),
                 normalizeText(deviceFingerprint),
                 buildMetadata(snapshot, nextLockCount, decision),
-                now
-        );
+                targetStatus,
+                expectedStatus,
+                termination
+        ));
+        if (termination != null) {
+            String terminatedEmailHash = termination.emailHash();
+            try {
+                terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(terminatedEmailHash);
+            } catch (Exception e) {
+                log.warn("Terminated account email bloom sync failed, userId={}, reason={}",
+                        userId, e.getMessage());
+            }
+        }
         AfterCommitExecutor.run(() -> {
             try {
                 stringRedisTemplate.delete(failureKeys(userId));
@@ -284,10 +289,7 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
                     .build();
         }
 
-        int activated = userLoginIdentityMapper.updateStatusByUserIdIfStatus(userId, STATUS_LOCKED, STATUS_ACTIVE);
-        if (activated > 0) {
-            userRiskProfileMapper.markRiskRecoveryStarted(userId, now);
-        }
+        authLockRecoveryCoreWriter.activateAndEnqueueRiskRecovery(userId, now);
         return UserAuthLockStatus.allowed();
     }
 
@@ -325,71 +327,26 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
     }
 
     /**
-     * 写入 RISK 库 outbox_event，由 OutboxEventDispatcher 投递到 CORE 账号状态同步队列。
-     * 与风控本地写在同一 RISK 事务内提交，保证状态变更与事件投递的原子性。
+     * Builds optional termination metadata from CORE identity data before the RISK writer runs.
      */
-    private void enqueueAccountStatusSync(Long userId,
-                                          String targetStatus,
-                                          String expectedStatus,
-                                          String reason,
-                                          OffsetDateTime occurredAt) {
-        long occurredAtMillis = occurredAt == null
-                ? System.currentTimeMillis()
-                : occurredAt.toInstant().toEpochMilli();
-        String eventId = "acct-status-" + userId + "-" + targetStatus + "-" + occurredAtMillis;
-        AccountStatusSyncMessage payload = new AccountStatusSyncMessage(
-                eventId,
-                userId,
-                targetStatus,
-                expectedStatus,
-                reason,
-                occurredAtMillis
-        );
-        outboxEventService.append(
-                DataSourceRoute.RISK,
-                new OutboxEventRequest(
-                        eventId,
-                        AccountStatusSyncRouting.EVENT_TYPE,
-                        AccountStatusSyncRouting.AGGREGATE_TYPE,
-                        String.valueOf(userId),
-                        AccountStatusSyncRouting.EXCHANGE,
-                        AccountStatusSyncRouting.ROUTING_KEY,
-                        payload,
-                        eventId
-                )
-        );
-    }
-
-    private void upsertRiskTermination(Long userId, OffsetDateTime now, String reason) {
+    private AuthLockRiskWriter.TerminationData buildTerminationData(Long userId) {
         UserLoginIdentity identity = userLoginIdentityMapper.findByUserId(userId);
         if (identity == null) {
-            return;
+            return null;
         }
         String email = normalizeEmail(identity.getEmail());
         if (StrUtil.isBlank(email)) {
-            return;
+            return null;
         }
         String emailHash = sha256(email);
         String phone = Boolean.TRUE.equals(identity.getPhoneVerified()) ? normalizeText(identity.getPhone()) : null;
-        userRiskAccountTerminationMapper.upsertRiskTermination(
+        return new AuthLockRiskWriter.TerminationData(
                 snowflakeIdWorker.nextId(),
-                userId,
                 email,
                 emailHash,
                 phone,
-                phone == null ? null : sha256(phone),
-                reason,
-                now,
-                now
+                phone == null ? null : sha256(phone)
         );
-        AfterCommitExecutor.run(() -> {
-            try {
-                terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(emailHash);
-            } catch (Exception e) {
-                log.warn("Terminated account email bloom sync failed, userId={}, reason={}",
-                        userId, e.getMessage());
-            }
-        });
     }
 
     private FailureWindowSnapshot readSnapshot(Long userId) {

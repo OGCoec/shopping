@@ -1,6 +1,5 @@
 package com.example.ShoppingSystem.coupon.service;
 
-import com.example.ShoppingSystem.mapper.coupon.CouponTemplateMapper;
 import com.example.ShoppingSystem.mapper.coupon.UserCouponMapper;
 import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
 import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
@@ -14,14 +13,14 @@ public class CouponExpireScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(CouponExpireScheduler.class);
 
-    private final CouponTemplateMapper couponTemplateMapper;
+    private final CouponTemplateExpireWriter couponTemplateExpireWriter;
     private final UserCouponMapper userCouponMapper;
     private final RoutedTransactionExecutor routedTransactionExecutor;
 
-    public CouponExpireScheduler(CouponTemplateMapper couponTemplateMapper,
+    public CouponExpireScheduler(CouponTemplateExpireWriter couponTemplateExpireWriter,
                                  UserCouponMapper userCouponMapper,
                                  RoutedTransactionExecutor routedTransactionExecutor) {
-        this.couponTemplateMapper = couponTemplateMapper;
+        this.couponTemplateExpireWriter = couponTemplateExpireWriter;
         this.userCouponMapper = userCouponMapper;
         this.routedTransactionExecutor = routedTransactionExecutor;
     }
@@ -37,11 +36,7 @@ public class CouponExpireScheduler {
     }
 
     private int expireTemplates() {
-        Integer expired = routedTransactionExecutor.execute(
-                DataSourceRoute.COUPON,
-                couponTemplateMapper::expireTemplates
-        );
-        return expired == null ? 0 : expired;
+        return couponTemplateExpireWriter.expireTemplates();
     }
 
     private int expireUserCoupons() {

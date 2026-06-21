@@ -1,9 +1,11 @@
 -- KEYS[1] = total count key，例如 ip2location:quota:count
+-- KEYS[2] = index set key，例如 ip2location:quota:index
 -- ARGV[1] = quota key 前缀，例如 ip2location:quota:
 -- ARGV[2] = entry count
 -- 后续每 4 个参数一组：apiKey, quotaKey, quota, ttlSeconds
 
 local totalKey = KEYS[1]
+local indexKey = KEYS[2]
 local prefix = ARGV[1]
 local entryCount = tonumber(ARGV[2])
 
@@ -39,24 +41,21 @@ for i = 1, entryCount do
     table.insert(entries, {quotaKey, quota, ttlSeconds})
 end
 
-local cursor = "0"
+-- 从索引获取已有 key，按 apiKey 匹配删除旧 key
+local existingKeys = redis.call('SMEMBERS', indexKey)
 local oldDeleted = 0
 
-repeat
-    local result = redis.call('SCAN', cursor, 'MATCH', prefix .. '*', 'COUNT', 100)
-    cursor = result[1]
-    local keys = result[2]
-
-    for _, key in ipairs(keys) do
-        if key ~= totalKey then
-            local apiKey = string.match(key, "([^:]+)$")
-            if apiKey ~= nil and apiKeys[apiKey] then
-                oldDeleted = oldDeleted + redis.call('DEL', key)
-            end
+for _, key in ipairs(existingKeys) do
+    if key ~= totalKey then
+        local keyApiKey = string.match(key, "([^:]+)$")
+        if keyApiKey ~= nil and apiKeys[keyApiKey] then
+            oldDeleted = oldDeleted + redis.call('DEL', key)
+            redis.call('SREM', indexKey, key)
         end
     end
-until cursor == "0"
+end
 
+-- 写入新 key 并注册到索引
 for _, entry in ipairs(entries) do
     local quotaKey = entry[1]
     local quota = entry[2]
@@ -68,29 +67,27 @@ for _, entry in ipairs(entries) do
     else
         redis.call('PERSIST', quotaKey)
     end
+    redis.call('SADD', indexKey, quotaKey)
 end
 
-cursor = "0"
+-- 用索引重建总额度
+local updatedKeys = redis.call('SMEMBERS', indexKey)
 local total = 0
 
-repeat
-    local result = redis.call('SCAN', cursor, 'MATCH', prefix .. '*', 'COUNT', 100)
-    cursor = result[1]
-    local keys = result[2]
-
-    for _, key in ipairs(keys) do
-        if key ~= totalKey then
-            local keyType = redis.call('TYPE', key)['ok']
-            if keyType == 'string' then
-                local rawQuota = redis.call('GET', key)
-                local quota = tonumber(rawQuota)
-                if quota ~= nil then
-                    total = total + quota
-                end
+if #updatedKeys > 0 then
+    local updatedValues = redis.call('MGET', unpack(updatedKeys))
+    for i = 1, #updatedKeys do
+        local val = updatedValues[i]
+        if val == false then
+            redis.call('SREM', indexKey, updatedKeys[i])
+        else
+            local quota = tonumber(val)
+            if quota ~= nil then
+                total = total + quota
             end
         end
     end
-until cursor == "0"
+end
 
 redis.call('SET', totalKey, total)
 

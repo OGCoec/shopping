@@ -269,12 +269,18 @@
           AND t.status IN ('ACTIVE', 'DISABLED', 'EXPIRED')
     </update>
 
-    <update id="expireTemplates">
+    <select id="expireTemplates" resultType="string">
+        WITH updated AS (
         UPDATE coupon_template
         SET status = 'EXPIRED',
             version = version + 1,
             updated_at = NOW()
         WHERE status = 'ACTIVE'
           AND receive_end_at &lt; NOW()
-    </update>
+        RETURNING id
+        )
+        SELECT encode(id, 'hex')
+        FROM updated
+        ORDER BY 1
+    </select>
 </mapper>

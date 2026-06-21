@@ -589,7 +589,8 @@ public class PaymentCallbackDispatchServiceImpl implements PaymentCallbackDispat
             return "UNKNOWN";
         }
         return switch (value) {
-            case OrderStatus.PENDING_PAYMENT,
+            case OrderStatus.STOCK_CONFIRMING,
+                    OrderStatus.PENDING_PAYMENT,
                     OrderStatus.CLOSING,
                     OrderStatus.PAID,
                     OrderStatus.CANCELLED,

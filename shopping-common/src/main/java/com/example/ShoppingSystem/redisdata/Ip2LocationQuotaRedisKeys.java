@@ -31,6 +31,11 @@ public final class Ip2LocationQuotaRedisKeys {
     public static final String QUOTA_ROUND_ROBIN_CURSOR_KEY = "ip2location:round-robin:cursor";
 
     /**
+     * Set that tracks all active quota key names, used as index to replace SCAN.
+     */
+    public static final String QUOTA_INDEX_KEY = "ip2location:quota:index";
+
+    /**
      * Trial lifecycle for FREE-account keys.
      */
     public static final Duration FREE_TRIAL_TTL = Duration.ofDays(7);

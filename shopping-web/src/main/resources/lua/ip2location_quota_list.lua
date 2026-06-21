@@ -1,39 +1,34 @@
 -- KEYS[1] = total count key，例如 ip2location:quota:count
--- ARGV[1] = quota key 前缀，例如 ip2location:quota:
+-- KEYS[2] = index set key，例如 ip2location:quota:index
 
 local totalKey = KEYS[1]
-local prefix = ARGV[1]
+local indexKey = KEYS[2]
 
-local cursor = "0"
-local quotaKeys = {}
+local allKeys = redis.call('SMEMBERS', indexKey)
 
-repeat
-    local result = redis.call('SCAN', cursor, 'MATCH', prefix .. '*', 'COUNT', 100)
-    cursor = result[1]
-    local keys = result[2]
+if #allKeys == 0 then
+    redis.call('SET', totalKey, 0)
+    return {0, "0", "0"}
+end
 
-    for _, key in ipairs(keys) do
-        if key ~= totalKey then
-            table.insert(quotaKeys, key)
-        end
-    end
-until cursor == "0"
+table.sort(allKeys)
 
-table.sort(quotaKeys)
+local allValues = redis.call('MGET', unpack(allKeys))
 
 local total = 0
 local rows = {}
 
-for _, key in ipairs(quotaKeys) do
-    local keyType = redis.call('TYPE', key)['ok']
-    if keyType == 'string' then
-        local rawQuota = redis.call('GET', key)
-        local quota = tonumber(rawQuota)
+for i = 1, #allKeys do
+    local val = allValues[i]
+    if val == false then
+        redis.call('SREM', indexKey, allKeys[i])
+    else
+        local quota = tonumber(val)
         if quota ~= nil then
             total = total + quota
-            table.insert(rows, key)
+            table.insert(rows, allKeys[i])
             table.insert(rows, tostring(quota))
-            table.insert(rows, tostring(redis.call('TTL', key)))
+            table.insert(rows, tostring(redis.call('TTL', allKeys[i])))
         end
     end
 end

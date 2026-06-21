@@ -1,0 +1,54 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] shopping-common                                                    [jar]
+[INFO] shopping-model                                                     [jar]
+[INFO] shopping-mapper                                                    [jar]
+[INFO] shopping-service                                                   [jar]
+[INFO] 
+[INFO] --------------------< com.example:shopping-common >---------------------
+[INFO] Building shopping-common 0.0.1-SNAPSHOT                            [1/4]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ shopping-common ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-common\src\main\resources
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-common\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:compile (default-compile) @ shopping-common ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ shopping-common ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-common\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:testCompile (default-testCompile) @ shopping-common ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.5.3:test (default-test) @ shopping-common ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ shopping-common ---
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ shopping-common ---
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-common\pom.xml to C:\Users\damn\.m2\repository\com\example\shopping-common\0.0.1-SNAPSHOT\shopping-common-0.0.1-SNAPSHOT.pom
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for shopping-common 0.0.1-SNAPSHOT:
+[INFO] 
+[INFO] shopping-common .................................... FAILURE [ 28.930 s]
+[INFO] shopping-model ..................................... SKIPPED
+[INFO] shopping-mapper .................................... SKIPPED
+[INFO] shopping-service ................................... SKIPPED
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  31.549 s
+[INFO] Finished at: 2026-06-20T12:12:38-07:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-install-plugin:3.1.4:install (default-install) on project shopping-common: Failed to install artifact com.example:shopping-common:pom:0.0.1-SNAPSHOT: C:\Users\damn\.m2\repository\com\example\shopping-common\0.0.1-SNAPSHOT\shopping-common-0.0.1-SNAPSHOT.pom.12894930622015311159.tmp -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException

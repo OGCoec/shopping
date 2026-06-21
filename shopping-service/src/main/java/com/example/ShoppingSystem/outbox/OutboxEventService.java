@@ -3,11 +3,15 @@ package com.example.ShoppingSystem.outbox;
 import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
 import com.example.ShoppingSystem.common.datasource.RoutedTransactionExecutor;
 import com.example.ShoppingSystem.mapper.common.OutboxEventMapper;
+import com.example.ShoppingSystem.mapper.common.OutboxEventRow;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -26,30 +30,43 @@ public class OutboxEventService {
     }
 
     public String append(DataSourceRoute route, OutboxEventRequest request) {
+        List<String> eventIds = appendBatch(route, List.of(request));
+        return eventIds.get(0);
+    }
+
+    public List<String> appendBatch(DataSourceRoute route, Collection<OutboxEventRequest> requests) {
         if (route == null) {
             throw new IllegalArgumentException("Outbox route is required.");
         }
-        if (request == null) {
-            throw new IllegalArgumentException("Outbox event request is required.");
+        if (requests == null) {
+            throw new IllegalArgumentException("Outbox event requests are required.");
         }
-        String eventId = normalizeOrGenerate(request.eventId());
-        String eventType = requireText(request.eventType(), "eventType");
-        String exchangeName = requireText(request.exchangeName(), "exchangeName");
-        String routingKey = requireText(request.routingKey(), "routingKey");
-        String payloadJson = toJson(request.payload());
+        if (requests.isEmpty()) {
+            return List.of();
+        }
         OffsetDateTime now = OffsetDateTime.now();
-        routedTransactionExecutor.executeWithoutResult(route, () -> outboxEventMapper.insertEvent(
-                eventId,
-                eventType,
-                blankToNull(request.aggregateType()),
-                blankToNull(request.aggregateId()),
-                exchangeName,
-                routingKey,
-                payloadJson,
-                blankToNull(request.idempotencyKey()),
-                now
-        ));
-        return eventId;
+        List<OutboxEventRow> rows = new ArrayList<>(requests.size());
+        List<String> eventIds = new ArrayList<>(requests.size());
+        for (OutboxEventRequest request : requests) {
+            if (request == null) {
+                throw new IllegalArgumentException("Outbox event request is required.");
+            }
+            String eventId = normalizeOrGenerate(request.eventId());
+            rows.add(new OutboxEventRow(
+                    eventId,
+                    requireText(request.eventType(), "eventType"),
+                    blankToNull(request.aggregateType()),
+                    blankToNull(request.aggregateId()),
+                    requireText(request.exchangeName(), "exchangeName"),
+                    requireText(request.routingKey(), "routingKey"),
+                    toJson(request.payload()),
+                    blankToNull(request.idempotencyKey()),
+                    now
+            ));
+            eventIds.add(eventId);
+        }
+        routedTransactionExecutor.executeWithoutResult(route, () -> outboxEventMapper.insertEvents(rows));
+        return List.copyOf(eventIds);
     }
 
     private String normalizeOrGenerate(String value) {

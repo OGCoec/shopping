@@ -336,6 +336,7 @@ public class AdminRiskApiConfigServiceImpl implements AdminRiskApiConfigService 
         if (!safeRedisKey.startsWith(Ip2LocationQuotaRedisKeys.QUOTA_PREFIX)
                 || Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY.equals(safeRedisKey)
                 || Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY.equals(safeRedisKey)
+                || Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY.equals(safeRedisKey)
                 || parts.length < 5
                 || AccountType.parseOrNull(parts[2]) == null
                 || !StringUtils.hasText(parts[3])

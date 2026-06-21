@@ -78,6 +78,14 @@ public interface OrderMapper {
     Map<String, Object> closeClosingOrder(@Param("orderNo") String orderNo,
                                           @Param("now") OffsetDateTime now);
 
+    Map<String, Object> confirmStockDeducted(@Param("orderNo") String orderNo,
+                                             @Param("userId") Long userId,
+                                             @Param("now") OffsetDateTime now);
+
+    Map<String, Object> cancelStockConfirming(@Param("orderNo") String orderNo,
+                                              @Param("userId") Long userId,
+                                              @Param("now") OffsetDateTime now);
+
     Map<String, Object> markPaidOrder(@Param("orderNo") String orderNo,
                                       @Param("paidAt") OffsetDateTime paidAt);
 

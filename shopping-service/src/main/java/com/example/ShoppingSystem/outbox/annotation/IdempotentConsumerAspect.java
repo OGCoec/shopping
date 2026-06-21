@@ -16,9 +16,11 @@ import org.springframework.stereotype.Component;
 import java.lang.reflect.Method;
 
 /**
- * @IdempotentConsumer 切面。
- * 解析 eventId SpEL（引用方法入参），经 InboxIdempotentConsumerExecutor 在目标库做数据库级幂等，
- * 业务异常已 markFailed 并向上抛出，交由监听容器（defaultRequeueRejected=false）投递死信。
+ * @IdempotentConsumer aspect.
+ * Resolves the eventId SpEL (referencing method args), then runs DB-level
+ * idempotency in the target DB via InboxIdempotentConsumerExecutor. On business
+ * failure the inbox row is markFailed and the error is rethrown so the listener
+ * (defaultRequeueRejected=false) routes the message to the dead-letter queue.
  */
 @Aspect
 @Component
@@ -32,15 +34,30 @@ public class IdempotentConsumerAspect {
         this.inboxExecutor = inboxExecutor;
     }
 
-    @Around("@annotation(idempotentConsumer)")
-    public Object around(ProceedingJoinPoint joinPoint, IdempotentConsumer idempotentConsumer) throws Throwable {
+    @Around("@annotation(com.example.ShoppingSystem.outbox.annotation.IdempotentConsumer)")
+    public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
+        IdempotentConsumer idempotentConsumer = resolveAnnotation(joinPoint);
+        if (idempotentConsumer == null) {
+            return proceedRaw(joinPoint);
+        }
         String eventId = resolveEventId(idempotentConsumer.eventId(), joinPoint);
         inboxExecutor.execute(
                 idempotentConsumer.route(),
                 eventId,
                 idempotentConsumer.consumer(),
+                idempotentConsumer.transactional(),
                 () -> proceed(joinPoint));
         return null;
+    }
+
+    private IdempotentConsumer resolveAnnotation(ProceedingJoinPoint joinPoint) {
+        MethodSignature signature = (MethodSignature) joinPoint.getSignature();
+        Method method = signature.getMethod();
+        return method.getAnnotation(IdempotentConsumer.class);
+    }
+
+    private Object proceedRaw(ProceedingJoinPoint joinPoint) throws Throwable {
+        return joinPoint.proceed();
     }
 
     private void proceed(ProceedingJoinPoint joinPoint) throws Exception {

@@ -18,6 +18,7 @@
   const el = {};
 
   const statusLabels = {
+    STOCK_CONFIRMING: "库存确认中",
     PENDING_PAYMENT: "待支付",
     CLOSING: "关闭确认中",
     PAID: "已支付",
@@ -378,7 +379,9 @@
   function stateCopy(order) {
     const node = document.createElement("p");
     node.className = "admin-order-state-copy";
-    if (order.status === "CLOSING") {
+    if (order.status === "STOCK_CONFIRMING") {
+      node.textContent = "订单库存正在确认，确认成功后进入待支付。";
+    } else if (order.status === "CLOSING") {
       node.textContent = `订单正在关闭中，系统等待支付结果确认到 ${formatDate(order.closingDeadlineAt)}。`;
     } else if (order.status === "PENDING_PAYMENT") {
       node.textContent = `订单待支付，支付截止时间 ${formatDate(order.expireAt)}。`;

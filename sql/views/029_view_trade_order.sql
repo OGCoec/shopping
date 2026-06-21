@@ -36,7 +36,7 @@ COMMENT ON VIEW v_trade_order IS '订单主表可读视图：id 为数据库自�
 COMMENT ON COLUMN v_trade_order.id IS '数据库订单主键，使用 PostgreSQL 自增 BIGINT，只用于数据库内部索引、排序和物理存储优化';
 COMMENT ON COLUMN v_trade_order.order_no IS '订单号，保存 HybridSemaphoreIdWorker 生成的 16 字节订单标识的 Base62 编码，用于用户展示、支付平台、客服查询、Redis、MQ 和对账';
 COMMENT ON COLUMN v_trade_order.user_id IS '下单用户 ID，对应 user_profile.id';
-COMMENT ON COLUMN v_trade_order.status IS '订单状态：PENDING_PAYMENT 待支付，CLOSING 关闭确认中，PAID 已支付，CANCELLED 已取消，CLOSED 已关闭';
+COMMENT ON COLUMN v_trade_order.status IS '订单状态：STOCK_CONFIRMING 库存确认中，PENDING_PAYMENT 待支付，CLOSING 关闭确认中，PAID 已支付，CANCELLED 已取消，CLOSED 已关闭';
 COMMENT ON COLUMN v_trade_order.total_amount_yuan IS '订单商品总金额，单位：元，未扣减优惠前的金额';
 COMMENT ON COLUMN v_trade_order.discount_amount_yuan IS '订单优惠金额，单位：元，包括优惠券、活动等优惠抵扣';
 COMMENT ON COLUMN v_trade_order.pay_amount_yuan IS '订单应付金额，单位：元，等于商品总金额扣减优惠后的实际待支付金额';

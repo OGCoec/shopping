@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS payment_callback_inbox (
         CHECK (
             result_order_status IS NULL
             OR result_order_status IN (
+                'STOCK_CONFIRMING',
                 'PENDING_PAYMENT',
                 'CLOSING',
                 'PAID',

@@ -5,7 +5,7 @@
 -- 1. 一行代表用户一次确认下单生成的交易单；
 -- 2. id 使用 PostgreSQL 自增 BIGINT 主键，只作为数据库内部物理主键；
 -- 3. order_no 保存 HybridSemaphoreIdWorker 生成的 16 字节订单标识的 Base62 编码，用于用户展示、支付平台、客服查询、Redis、MQ 和对账；
--- 4. 异步创建中的状态不写入本表，订单成功落库后的初始状态为 PENDING_PAYMENT；
+-- 4. 订单创建 Saga 落库后的初始状态为 STOCK_CONFIRMING，库存确认成功后转为 PENDING_PAYMENT；
 -- 5. 本表记录订单整体金额、优惠券、支付超时和状态流转信息。
 -- ============================================
 
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS trade_order (
     -- 下单用户 ID，对应 user_profile.id
     user_id BIGINT NOT NULL,
 
-    -- 订单状态：PENDING_PAYMENT 待支付，CLOSING 关闭确认中，PAID 已支付，CANCELLED 已取消，CLOSED 已关闭
+    -- 订单状态：STOCK_CONFIRMING 库存确认中，PENDING_PAYMENT 待支付，CLOSING 关闭确认中，PAID 已支付，CANCELLED 已取消，CLOSED 已关闭
     status VARCHAR(32) NOT NULL DEFAULT 'PENDING_PAYMENT',
 
     -- 订单商品总金额，单位：元，未扣减优惠前的金额
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS trade_order (
         CHECK (user_id > 0),
 
     CONSTRAINT ck_trade_order_status
-        CHECK (status IN ('PENDING_PAYMENT', 'CLOSING', 'PAID', 'CANCELLED', 'CLOSED')),
+        CHECK (status IN ('STOCK_CONFIRMING', 'PENDING_PAYMENT', 'CLOSING', 'PAID', 'CANCELLED', 'CLOSED')),
 
     CONSTRAINT ck_trade_order_amount
         CHECK (
@@ -152,7 +152,7 @@ COMMENT ON TABLE trade_order IS '订单主表：一行代表用户一次确认�
 COMMENT ON COLUMN trade_order.id IS '数据库订单主键，使用 PostgreSQL 自增 BIGINT，只用于数据库内部索引、排序和物理存储优化；业务接口、Redis、MQ 和对账使用 order_no';
 COMMENT ON COLUMN trade_order.order_no IS '订单号，保存 HybridSemaphoreIdWorker 生成的 16 字节订单标识的 Base62 编码，用于用户展示、支付平台、客服查询、Redis、MQ 和对账';
 COMMENT ON COLUMN trade_order.user_id IS '下单用户 ID，对应 user_profile.id';
-COMMENT ON COLUMN trade_order.status IS '订单状态：PENDING_PAYMENT 待支付，CLOSING 关闭确认中，PAID 已支付，CANCELLED 已取消，CLOSED 已关闭';
+COMMENT ON COLUMN trade_order.status IS '订单状态：STOCK_CONFIRMING 库存确认中，PENDING_PAYMENT 待支付，CLOSING 关闭确认中，PAID 已支付，CANCELLED 已取消，CLOSED 已关闭';
 COMMENT ON COLUMN trade_order.total_amount_yuan IS '订单商品总金额，单位：元，未扣减优惠前的金额';
 COMMENT ON COLUMN trade_order.discount_amount_yuan IS '订单优惠金额，单位：元，包括优惠券、活动等优惠抵扣';
 COMMENT ON COLUMN trade_order.pay_amount_yuan IS '订单应付金额，单位：元，等于商品总金额扣减优惠后的实际待支付金额';

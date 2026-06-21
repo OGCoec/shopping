@@ -61,6 +61,14 @@ public class InboxEventService {
         );
     }
 
+    public void markProcessedInCurrentTransaction(String eventId, String consumerName) {
+        inboxEventMapper.markProcessed(
+                requireText(eventId, "eventId"),
+                requireText(consumerName, "consumerName"),
+                OffsetDateTime.now()
+        );
+    }
+
     public void markFailed(DataSourceRoute route, String eventId, String consumerName, String lastError) {
         routedTransactionExecutor.executeWithoutResult(
                 route,

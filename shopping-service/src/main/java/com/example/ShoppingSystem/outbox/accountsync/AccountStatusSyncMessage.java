@@ -18,6 +18,7 @@ public class AccountStatusSyncMessage {
     private String expectedStatus;
     private String reason;
     private long occurredAtEpochMillis;
+    private String loadtestFault;
 
     public AccountStatusSyncMessage() {
     }
@@ -34,6 +35,14 @@ public class AccountStatusSyncMessage {
         this.expectedStatus = expectedStatus;
         this.reason = reason;
         this.occurredAtEpochMillis = occurredAtEpochMillis;
+    }
+
+    public String getLoadtestFault() {
+        return loadtestFault;
+    }
+
+    public void setLoadtestFault(String loadtestFault) {
+        this.loadtestFault = loadtestFault;
     }
 
     public int getSchemaVersion() {

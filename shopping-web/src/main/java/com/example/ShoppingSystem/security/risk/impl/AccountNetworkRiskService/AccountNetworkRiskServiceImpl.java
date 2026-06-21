@@ -10,7 +10,6 @@ import com.example.ShoppingSystem.filter.preauth.domain.TrustedExitIpMatcher;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthIpNormalizer;
 import com.example.ShoppingSystem.filter.preauth.support.PreAuthRequestResolver;
 import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
-import com.example.ShoppingSystem.mapper.risk.UserRiskAccountTerminationMapper;
 import com.example.ShoppingSystem.mapper.risk.UserRiskProfileMapper;
 import com.example.ShoppingSystem.quota.IpCountryQueryService;
 import com.example.ShoppingSystem.quota.IpGeoSnapshot;
@@ -20,7 +19,6 @@ import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskDecision;
 import com.example.ShoppingSystem.security.risk.webrtc.WebRtcRiskStatus;
 import com.example.ShoppingSystem.security.token.AuthTokenService;
 import com.example.ShoppingSystem.service.user.auth.register.risk.IpReputationEvidence;
-import com.example.ShoppingSystem.service.user.auth.risk.TerminatedAccountEmailBloomService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -98,8 +96,7 @@ public class AccountNetworkRiskServiceImpl implements AccountNetworkRiskService 
     private final StringRedisTemplate stringRedisTemplate;
     private final UserRiskProfileMapper userRiskProfileMapper;
     private final UserLoginIdentityMapper userLoginIdentityMapper;
-    private final UserRiskAccountTerminationMapper userRiskAccountTerminationMapper;
-    private final TerminatedAccountEmailBloomService terminatedAccountEmailBloomService;
+    private final AccountNetworkRiskLockWriter accountNetworkRiskLockWriter;
     private final PreAuthRequestResolver requestResolver;
     private final IpCountryQueryService ipCountryQueryService;
     private final IpReputationMultiLevelQueryService ipReputationMultiLevelQueryService;
@@ -110,8 +107,7 @@ public class AccountNetworkRiskServiceImpl implements AccountNetworkRiskService 
     public AccountNetworkRiskServiceImpl(StringRedisTemplate stringRedisTemplate,
                                      UserRiskProfileMapper userRiskProfileMapper,
                                      UserLoginIdentityMapper userLoginIdentityMapper,
-                                     UserRiskAccountTerminationMapper userRiskAccountTerminationMapper,
-                                     TerminatedAccountEmailBloomService terminatedAccountEmailBloomService,
+                                     AccountNetworkRiskLockWriter accountNetworkRiskLockWriter,
                                      PreAuthRequestResolver requestResolver,
                                      IpCountryQueryService ipCountryQueryService,
                                      IpReputationMultiLevelQueryService ipReputationMultiLevelQueryService,
@@ -121,8 +117,7 @@ public class AccountNetworkRiskServiceImpl implements AccountNetworkRiskService 
         this.stringRedisTemplate = stringRedisTemplate;
         this.userRiskProfileMapper = userRiskProfileMapper;
         this.userLoginIdentityMapper = userLoginIdentityMapper;
-        this.userRiskAccountTerminationMapper = userRiskAccountTerminationMapper;
-        this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
+        this.accountNetworkRiskLockWriter = accountNetworkRiskLockWriter;
         this.requestResolver = requestResolver;
         this.ipCountryQueryService = ipCountryQueryService;
         this.ipReputationMultiLevelQueryService = ipReputationMultiLevelQueryService;
@@ -402,49 +397,48 @@ public class AccountNetworkRiskServiceImpl implements AccountNetworkRiskService 
         int nextBehaviorScoreDelta;
         String eventType;
         String lockReason;
+        String targetStatus;
+        String expectedStatus;
+        AccountNetworkRiskLockWriter.TerminationData termination = null;
         if (decision.terminationRequired()) {
             scoreAfter = 0;
             nextBehaviorScoreDelta = -currentEnvScore;
             eventType = EVENT_TERMINATION_REQUIRED;
             lockReason = REASON_TERMINATION_REQUIRED;
-            userLoginIdentityMapper.updateStatusByUserId(userId, STATUS_RISK_TERMINATED);
-            upsertRiskTermination(userId, now, lockReason);
+            targetStatus = STATUS_RISK_TERMINATED;
+            expectedStatus = null;
+            termination = buildTerminationData(userId);
         } else {
             nextBehaviorScoreDelta = behaviorScoreDelta - decision.penaltyScore();
             scoreAfter = clampScore(currentEnvScore + nextBehaviorScoreDelta);
             eventType = EVENT_NETWORK_LOCK;
             lockReason = REASON_NETWORK_LOCK;
-            userLoginIdentityMapper.updateStatusByUserIdIfStatus(userId, STATUS_ACTIVE, STATUS_LOCKED);
+            targetStatus = STATUS_LOCKED;
+            expectedStatus = STATUS_ACTIVE;
         }
         String riskLevelAfter = resolveRiskLevel(scoreAfter);
 
-        userRiskProfileMapper.upsertUserAuthLockState(
+        accountNetworkRiskLockWriter.applyLockAndEnqueue(new AccountNetworkRiskLockWriter.NetworkLockWrite(
                 userId,
                 currentEnvScore,
                 nextBehaviorScoreDelta,
+                scoreBefore,
                 scoreAfter,
+                riskLevelBefore,
                 riskLevelAfter,
                 nextLockCount,
                 now,
                 lockUntil,
                 lockReason,
-                now
-        );
-        userRiskProfileMapper.insertUserRiskScoreEvent(
-                snowflakeIdWorker.nextId(),
-                userId,
                 eventType,
-                scoreBefore,
-                scoreAfter - scoreBefore,
-                scoreAfter,
-                riskLevelBefore,
-                riskLevelAfter,
-                lockReason,
+                snowflakeIdWorker.nextId(),
                 normalizeText(currentIp),
                 normalizeText(deviceFingerprint),
                 buildMetadata(riskEvaluation, windowSnapshot, nextLockCount, decision),
-                now
-        );
+                targetStatus,
+                expectedStatus,
+                termination
+        ));
         AfterCommitExecutor.run(() -> {
             try {
                 stringRedisTemplate.delete(networkWindowKeys(userId));
@@ -538,36 +532,24 @@ public class AccountNetworkRiskServiceImpl implements AccountNetworkRiskService 
         };
     }
 
-    private void upsertRiskTermination(Long userId, OffsetDateTime now, String reason) {
+    private AccountNetworkRiskLockWriter.TerminationData buildTerminationData(Long userId) {
         UserLoginIdentity identity = userLoginIdentityMapper.findByUserId(userId);
         if (identity == null) {
-            return;
+            return null;
         }
         String email = normalizeEmail(identity.getEmail());
         if (StrUtil.isBlank(email)) {
-            return;
+            return null;
         }
         String emailHash = sha256(email);
         String phone = Boolean.TRUE.equals(identity.getPhoneVerified()) ? normalizeText(identity.getPhone()) : null;
-        userRiskAccountTerminationMapper.upsertRiskTermination(
+        return new AccountNetworkRiskLockWriter.TerminationData(
                 snowflakeIdWorker.nextId(),
-                userId,
                 email,
                 emailHash,
                 phone,
-                phone == null ? null : sha256(phone),
-                reason,
-                now,
-                now
+                phone == null ? null : sha256(phone)
         );
-        AfterCommitExecutor.run(() -> {
-            try {
-                terminatedAccountEmailBloomService.addTerminatedEmailHashAsync(emailHash);
-            } catch (Exception e) {
-                log.warn("Terminated account email bloom sync failed, userId={}, reason={}",
-                        userId, e.getMessage());
-            }
-        });
     }
 
     private int impossibleTravelPenalty(IpGeoSnapshot previousGeo,

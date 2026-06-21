@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS payment_refund_record (
         CHECK (
             order_status_when_detected IS NULL
             OR order_status_when_detected IN (
+                'STOCK_CONFIRMING',
                 'PENDING_PAYMENT',
                 'CLOSING',
                 'PAID',

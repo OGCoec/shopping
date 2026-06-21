@@ -401,6 +401,11 @@ body {
   padding: 0 10px;
 }
 
+.order-status-badge[data-status="STOCK_CONFIRMING"] {
+  background: rgba(226, 232, 240, 0.9);
+  color: #334155;
+}
+
 .order-status-badge[data-status="CLOSING"] {
   background: rgba(254, 243, 199, 0.88);
   color: #92400e;

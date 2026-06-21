@@ -525,6 +525,37 @@ FROM updated
         ]]>
     </select>
 
+    <select id="confirmStockDeducted" resultType="map">
+        WITH updated AS (
+            UPDATE trade_order
+            SET status = 'PENDING_PAYMENT',
+                updated_at = #{now},
+                version = version + 1
+            WHERE order_no = #{orderNo}
+              AND user_id = #{userId}
+              AND status = 'STOCK_CONFIRMING'
+            RETURNING *
+        )
+        SELECT <include refid="OrderSelectColumns"/>
+        FROM updated
+    </select>
+
+    <select id="cancelStockConfirming" resultType="map">
+        WITH updated AS (
+            UPDATE trade_order
+            SET status = 'CANCELLED',
+                cancelled_at = #{now},
+                updated_at = #{now},
+                version = version + 1
+            WHERE order_no = #{orderNo}
+              AND user_id = #{userId}
+              AND status = 'STOCK_CONFIRMING'
+            RETURNING *
+        )
+        SELECT <include refid="OrderSelectColumns"/>
+        FROM updated
+    </select>
+
     <select id="markPaidOrder" resultType="map">
         <![CDATA[
 WITH updated AS (

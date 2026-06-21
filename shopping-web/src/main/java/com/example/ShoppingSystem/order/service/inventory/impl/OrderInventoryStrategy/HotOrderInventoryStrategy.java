@@ -131,6 +131,7 @@ public class HotOrderInventoryStrategy implements OrderInventoryStrategy {
             stringRedisTemplate.execute(batchCompensateScript, keys, args.toArray(new Object[0]));
         } catch (Exception e) {
             log.warn("[Order] hot SKU inventory batch release failed, size={}", validItems.size(), e);
+            throw new IllegalStateException("Hot SKU inventory batch release failed.", e);
         }
     }
 

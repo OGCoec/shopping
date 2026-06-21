@@ -87,5 +87,5 @@ public interface CouponTemplateMapper {
 
     int batchUpdateRemainingQuantity(@Param("itemsJson") String itemsJson);
 
-    int expireTemplates();
+    List<String> expireTemplates();
 }

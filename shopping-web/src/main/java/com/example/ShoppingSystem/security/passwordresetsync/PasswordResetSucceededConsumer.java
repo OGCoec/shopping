@@ -29,7 +29,7 @@ public class PasswordResetSucceededConsumer {
             queues = "#{passwordResetSucceededQueue.name}",
             containerFactory = "passwordResetSucceededRabbitListenerContainerFactory"
     )
-    @IdempotentConsumer(route = DataSourceRoute.RISK, consumer = "password-reset-succeeded-risk", eventId = "#message.eventId")
+    @IdempotentConsumer(route = DataSourceRoute.RISK, consumer = "password-reset-succeeded-risk", eventId = "#message.eventId", transactional = true)
     public void consume(PasswordResetSucceededMessage message) {
         if (!isUsable(message)) {
             log.warn("[PasswordResetSucceeded] invalid message skipped, message={}", message);

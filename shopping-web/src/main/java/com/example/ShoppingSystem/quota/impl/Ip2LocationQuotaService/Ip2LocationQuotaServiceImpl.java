@@ -93,6 +93,7 @@ public class Ip2LocationQuotaServiceImpl implements Ip2LocationQuotaService {
                 String.valueOf(safeRemainingQuota)
         );
         applyQuotaKeyLifecycle(quotaKey, safeAccountType);
+        quotaRedisTemplate.opsForSet().add(Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY, quotaKey);
         log.info("Initialized IP2Location quota key, quotaKey={}, accountType={}, remainingQuota={}, defaultMonthlyQuota={}, ttl={}",
                 quotaKey,
                 safeAccountType,
@@ -121,9 +122,9 @@ public class Ip2LocationQuotaServiceImpl implements Ip2LocationQuotaService {
                 ACQUIRE_SCRIPT,
                 Arrays.asList(
                         Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY,
-                        Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY
-                ),
-                Ip2LocationQuotaRedisKeys.QUOTA_PREFIX
+                        Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY,
+                        Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY
+                )
         );
         return resolveAcquireResult(result);
     }
@@ -144,7 +145,10 @@ public class Ip2LocationQuotaServiceImpl implements Ip2LocationQuotaService {
     public List rebuildQuotaCount() {
         return quotaRedisTemplate.execute(
                 REBUILD_SCRIPT,
-                Collections.singletonList(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
+                Arrays.asList(
+                        Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY,
+                        Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY
+                ),
                 Ip2LocationQuotaRedisKeys.QUOTA_PREFIX
         );
     }
@@ -152,8 +156,10 @@ public class Ip2LocationQuotaServiceImpl implements Ip2LocationQuotaService {
     public QuotaKeyListResult listQuotaKeys() {
         List result = quotaRedisTemplate.execute(
                 LIST_SCRIPT,
-                Collections.singletonList(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
-                Ip2LocationQuotaRedisKeys.QUOTA_PREFIX
+                Arrays.asList(
+                        Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY,
+                        Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY
+                )
         );
         return resolveQuotaKeyListResult(result);
     }
@@ -173,7 +179,10 @@ public class Ip2LocationQuotaServiceImpl implements Ip2LocationQuotaService {
         }
         List result = quotaRedisTemplate.execute(
                 BATCH_UPSERT_SCRIPT,
-                Collections.singletonList(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY),
+                Arrays.asList(
+                        Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY,
+                        Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY
+                ),
                 args.toArray()
         );
         return resolveQuotaBatchUpsertResult(result);
@@ -191,7 +200,8 @@ public class Ip2LocationQuotaServiceImpl implements Ip2LocationQuotaService {
                 BATCH_DELETE_SCRIPT,
                 Arrays.asList(
                         Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY,
-                        Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY
+                        Ip2LocationQuotaRedisKeys.QUOTA_ROUND_ROBIN_CURSOR_KEY,
+                        Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY
                 ),
                 args.toArray()
         );
@@ -336,11 +346,10 @@ public class Ip2LocationQuotaServiceImpl implements Ip2LocationQuotaService {
     }
 
     private Set<String> getQuotaKeys() {
-        Set<String> keys = quotaRedisTemplate.keys(Ip2LocationQuotaRedisKeys.QUOTA_PREFIX + "*");
+        Set<String> keys = quotaRedisTemplate.opsForSet().members(Ip2LocationQuotaRedisKeys.QUOTA_INDEX_KEY);
         if (keys == null || keys.isEmpty()) {
             return Collections.emptySet();
         }
-        keys.remove(Ip2LocationQuotaRedisKeys.QUOTA_COUNT_KEY);
         return keys;
     }
 

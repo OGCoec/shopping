@@ -4,37 +4,38 @@ import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
 import com.example.ShoppingSystem.mapper.user.UserLoginIdentityMapper;
 import com.example.ShoppingSystem.outbox.annotation.IdempotentConsumer;
 import com.example.ShoppingSystem.outbox.accountsync.AccountStatusSyncMessage;
+import com.example.ShoppingSystem.outbox.fault.FaultInjector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
-/**
- * CORE 账号状态同步消费者。
- * 消费 RISK 投递的 AccountStatusSyncMessage，在 CORE 库更新 user_login_identity.status；
- * 数据库级幂等由 @IdempotentConsumer 切面统一处理，重复事件只生效一次。
- */
 @Component
 public class AccountStatusSyncConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(AccountStatusSyncConsumer.class);
 
     private final UserLoginIdentityMapper userLoginIdentityMapper;
+    private final FaultInjector faultInjector;
 
-    public AccountStatusSyncConsumer(UserLoginIdentityMapper userLoginIdentityMapper) {
+    public AccountStatusSyncConsumer(UserLoginIdentityMapper userLoginIdentityMapper,
+                                     FaultInjector faultInjector) {
         this.userLoginIdentityMapper = userLoginIdentityMapper;
+        this.faultInjector = faultInjector;
     }
 
     @RabbitListener(
             queues = "#{accountStatusSyncQueue.name}",
             containerFactory = "accountStatusSyncRabbitListenerContainerFactory"
     )
-    @IdempotentConsumer(route = DataSourceRoute.CORE, consumer = "account-status-sync-core", eventId = "#message.eventId")
+    @IdempotentConsumer(route = DataSourceRoute.CORE, consumer = "account-status-sync-core",
+            eventId = "#message.eventId", transactional = true)
     public void consume(AccountStatusSyncMessage message) {
         if (!isUsable(message)) {
             log.warn("[AccountStatusSync] invalid message skipped, message={}", message);
             return;
         }
+        faultInjector.maybeFail("account-status-sync-core", message.getLoadtestFault());
         String expected = normalize(message.getExpectedStatus());
         int updated;
         if (expected == null) {

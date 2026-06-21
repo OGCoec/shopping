@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
 import java.util.List;
 
@@ -36,6 +37,23 @@ public class OutboxEventCollector {
                     "OutboxEventCollector.register(...) must be called inside a @TransactionalOutbox method.");
         }
         stack.peek().add(request);
+    }
+
+    public void registerAll(Collection<OutboxEventRequest> requests) {
+        if (requests == null) {
+            throw new IllegalArgumentException("Outbox event requests are required.");
+        }
+        Deque<List<OutboxEventRequest>> stack = STACK.get();
+        if (stack.isEmpty()) {
+            throw new IllegalStateException(
+                    "OutboxEventCollector.registerAll(...) must be called inside a @TransactionalOutbox method.");
+        }
+        for (OutboxEventRequest request : requests) {
+            if (request == null) {
+                throw new IllegalArgumentException("Outbox event request is required.");
+            }
+        }
+        stack.peek().addAll(requests);
     }
 
     /** 切面读取当前层登记的事件列表。 */

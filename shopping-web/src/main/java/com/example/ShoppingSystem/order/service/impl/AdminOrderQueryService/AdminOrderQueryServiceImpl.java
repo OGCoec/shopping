@@ -35,6 +35,7 @@ public class AdminOrderQueryServiceImpl implements AdminOrderQueryService {
     private static final String SOURCE_DB = "DB";
     private static final String SOURCE_MERGED = "MERGED";
     private static final Set<String> SUPPORTED_STATUSES = Set.of(
+            OrderStatus.STOCK_CONFIRMING,
             OrderStatus.PENDING_PAYMENT,
             OrderStatus.CLOSING,
             OrderStatus.PAID,

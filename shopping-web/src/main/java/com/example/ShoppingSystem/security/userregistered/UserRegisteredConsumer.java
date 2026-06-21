@@ -37,7 +37,7 @@ public class UserRegisteredConsumer {
             queues = "#{userRegisteredQueue.name}",
             containerFactory = "userRegisteredRabbitListenerContainerFactory"
     )
-    @IdempotentConsumer(route = DataSourceRoute.RISK, consumer = "user-registered-risk", eventId = "#message.eventId")
+    @IdempotentConsumer(route = DataSourceRoute.RISK, consumer = "user-registered-risk", eventId = "#message.eventId", transactional = true)
     public void consume(UserRegisteredMessage message) {
         if (!isUsable(message)) {
             log.warn("[UserRegistered] invalid message skipped, message={}", message);

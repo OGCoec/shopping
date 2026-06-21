@@ -1,4 +1,4 @@
-# Spring Boot 框架级配置。
+﻿# Spring Boot 框架级配置。
 spring:
   # Spring Security 安全相关配置。
   security:
@@ -919,6 +919,16 @@ shopping:
   # Inbox 幂等：PROCESSING 抢占超时时间，超时后允许其他消费者抢回重试
   inbox:
     processing-timeout-ms: 60000
+  # Outbox fault injection: enabled=false by default; set per-consumer probabilities (0.0-1.0) for loadtest
+  fault:
+    enabled: ${APP_OUTBOX_FAULT_ENABLED:false}
+    consumer-probabilities:
+      order-stock-deduct-product: ${FAULT_PROB_ORDER_STOCK_DEDUCT:0.0}
+      order-inventory-release-product: ${FAULT_PROB_ORDER_INVENTORY_RELEASE:0.0}
+      card-secret-inventory-imported-product: ${FAULT_PROB_CARD_SECRET_IMPORT:0.0}
+      coupon-templates-expired-trade: ${FAULT_PROB_COUPON_EXPIRE:0.0}
+      account-status-sync-core: ${FAULT_PROB_ACCOUNT_STATUS_SYNC:0.0}
+      account-risk-recovery-started-risk: ${FAULT_PROB_ACCOUNT_RISK_RECOVERY:0.0}
   sign-in:
     zone-id: ${SHOPPING_SIGN_IN_ZONE_ID:Asia/Shanghai}
     period-unit: ${SHOPPING_SIGN_IN_PERIOD_UNIT:SECOND}
@@ -956,7 +966,7 @@ shopping:
   datasource:
     # SQL 路由诊断：打印每条 SQL 的 routeContext / expectedRoute / jdbcPort，用于排查跨库路由错位
     route-diagnostics:
-      enabled: true
+      enabled: false
       log-sql: true
       log-jdbc-url: true
     trade:
