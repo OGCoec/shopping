@@ -1,25 +1,10 @@
 package com.example.ShoppingSystem.admin.service.product;
-
-import com.example.ShoppingSystem.Utils.HybridSemaphoreIdWorker;
-import com.example.ShoppingSystem.Utils.ProductSkuIdCodec;
 import com.example.ShoppingSystem.admin.dto.AdminProductSkuCreateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSkuUpdateRequest;
 import com.example.ShoppingSystem.admin.dto.AdminProductSpuDetailSkuUpdateRequest;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import org.springframework.http.HttpStatus;
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import com.example.ShoppingSystem.admin.service.common.AdminServiceException;
-
 public interface AdminProductSkuService {
     public record NormalizedSkuUpdate(String requestedId,
                                           String finalId,

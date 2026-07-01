@@ -16,11 +16,10 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 
-import com.example.ShoppingSystem.quota.IpReputationMultiLevelQueryService;
-import com.example.ShoppingSystem.quota.Ip2LocationQuotaHttpService;
-import com.example.ShoppingSystem.quota.IpingApiHttpService;
 import com.example.ShoppingSystem.quota.IpRiskCachedPayload;
 import com.example.ShoppingSystem.quota.IpRiskLocalCacheStore;
+import com.example.ShoppingSystem.quota.IpReputationMultiLevelQueryService;
+import com.example.ShoppingSystem.quota.IpRiskApiProvider;
 /**
  * Multi-level IP reputation lookup pipeline: local cache -> Redis -> DB -> upstream APIs.
  * Returns the first usable score or evidence and warms lower layers asynchronously when possible.
@@ -47,8 +46,7 @@ public class IpReputationMultiLevelQueryServiceImpl implements IpReputationMulti
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
     private final IpReputationProfileMapper ipReputationProfileMapper;
-    private final Ip2LocationQuotaHttpService ip2LocationQuotaHttpService;
-    private final IpingApiHttpService ipingApiHttpService;
+    private final Map<String, IpRiskApiProvider> ipRiskApiProviders;
     private final IpRiskLocalCacheStore localCacheStore;
     private final IpRiskWritebackOrchestrator writebackOrchestrator;
 
@@ -70,15 +68,13 @@ public class IpReputationMultiLevelQueryServiceImpl implements IpReputationMulti
     public IpReputationMultiLevelQueryServiceImpl(StringRedisTemplate stringRedisTemplate,
                                               ObjectMapper objectMapper,
                                               IpReputationProfileMapper ipReputationProfileMapper,
-                                              Ip2LocationQuotaHttpService ip2LocationQuotaHttpService,
-                                              IpingApiHttpService ipingApiHttpService,
+                                              Map<String, IpRiskApiProvider> ipRiskApiProviders,
                                               IpRiskLocalCacheStore localCacheStore,
                                               IpRiskWritebackOrchestrator writebackOrchestrator) {
         this.stringRedisTemplate = stringRedisTemplate;
         this.objectMapper = objectMapper;
         this.ipReputationProfileMapper = ipReputationProfileMapper;
-        this.ip2LocationQuotaHttpService = ip2LocationQuotaHttpService;
-        this.ipingApiHttpService = ipingApiHttpService;
+        this.ipRiskApiProviders = ipRiskApiProviders;
         this.localCacheStore = localCacheStore;
         this.writebackOrchestrator = writebackOrchestrator;
     }
@@ -281,13 +277,30 @@ public class IpReputationMultiLevelQueryServiceImpl implements IpReputationMulti
     }
 
     private IpRiskCachedPayload readFromApi(String ip, long now) {
-        Ip2LocationQuotaHttpService.Ip2LocationQueryResult ip2LocationResult = ip2LocationQuotaHttpService.queryByIp(ip);
+        IpRiskApiProvider ip2LocationProvider = ipRiskApiProviders.get(IpRiskApiProvider.PROVIDER_IP2LOCATION);
+        if (ip2LocationProvider == null) {
+            log.warn("IP reputation provider missing, provider={}", IpRiskApiProvider.PROVIDER_IP2LOCATION);
+            return null;
+        }
+
+        IpRiskApiProvider.IpRiskApiResult ip2LocationResult = ip2LocationProvider.queryByIp(ip);
         if (ip2LocationResult != null && ip2LocationResult.success() && ip2LocationResult.riskFields() != null) {
             return toCachedPayload(ip2LocationResult.riskFields(), now, PROVIDER_IP2LOCATION);
         }
 
         if (shouldFallbackToIping(ip2LocationResult)) {
-            IpingApiHttpService.IpingQueryResult ipingResult = ipingApiHttpService.queryByIp(ip);
+            IpRiskApiProvider ipingProvider = ipRiskApiProviders.get(IpRiskApiProvider.PROVIDER_IPING);
+            if (ipingProvider == null) {
+                log.warn("IP reputation provider missing, provider={}", IpRiskApiProvider.PROVIDER_IPING);
+                writeMissToRedis(
+                        ip,
+                        now,
+                        ip2LocationResult != null ? ip2LocationResult.reason() : "null_result",
+                        "provider_missing");
+                return null;
+            }
+
+            IpRiskApiProvider.IpRiskApiResult ipingResult = ipingProvider.queryByIp(ip);
             if (ipingResult != null && ipingResult.success() && ipingResult.riskFields() != null) {
                 log.info("IP reputation fallback succeeded, ip={}, primaryProvider={}, primaryReason={}, fallbackProvider={}, fallbackReason={}",
                         ip,
@@ -332,7 +345,7 @@ public class IpReputationMultiLevelQueryServiceImpl implements IpReputationMulti
         }
     }
 
-    private IpRiskCachedPayload toCachedPayload(Ip2LocationQuotaHttpService.RiskRelevantFields fields,
+    private IpRiskCachedPayload toCachedPayload(IpRiskApiProvider.RiskRelevantFields fields,
                                                 long now,
                                                 String sourceProvider) {
         NormalizedRisk normalized = normalize(fields);
@@ -367,8 +380,9 @@ public class IpReputationMultiLevelQueryServiceImpl implements IpReputationMulti
         );
     }
 
-    private boolean shouldFallbackToIping(Ip2LocationQuotaHttpService.Ip2LocationQueryResult ip2LocationResult) {
-        return ip2LocationResult != null && ip2LocationResult.blockedByQuota();
+    private boolean shouldFallbackToIping(IpRiskApiProvider.IpRiskApiResult ip2LocationResult) {
+        return ip2LocationResult != null
+                && ip2LocationResult.failureType() == IpRiskApiProvider.FailureType.QUOTA_BLOCKED;
     }
 
     private IpReputationEvidence toEvidence(IpRiskCachedPayload payload) {
@@ -467,7 +481,7 @@ public class IpReputationMultiLevelQueryServiceImpl implements IpReputationMulti
         return node.asText();
     }
 
-    private NormalizedRisk normalize(Ip2LocationQuotaHttpService.RiskRelevantFields fields) {
+    private NormalizedRisk normalize(IpRiskApiProvider.RiskRelevantFields fields) {
         String proxyType = normalizeToken(fields.proxyType());
         boolean isProxy = toBoolean(fields.isProxy());
         boolean isTor = toBoolean(fields.proxyIsTor()) || "TOR".equals(proxyType);

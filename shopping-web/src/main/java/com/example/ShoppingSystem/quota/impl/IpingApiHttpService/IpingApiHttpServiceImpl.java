@@ -19,17 +19,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import com.example.ShoppingSystem.quota.IpingApiHttpService;
-import com.example.ShoppingSystem.quota.Ip2LocationQuotaHttpService;
+import com.example.ShoppingSystem.quota.IpRiskApiProvider;
 import com.example.ShoppingSystem.quota.RiskApiConfigStoreService;
 /**
  * iPing API fallback service.
  * This service is used only as a degrade path when IP2Location quota is exhausted.
  */
-@Service
-public class IpingApiHttpServiceImpl implements IpingApiHttpService {
+@Service(IpRiskApiProvider.PROVIDER_IPING)
+public class IpingApiHttpServiceImpl implements IpRiskApiProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(IpingApiHttpService.class);
+    private static final Logger log = LoggerFactory.getLogger(IpingApiHttpServiceImpl.class);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(8);
     private static final String ENABLED_CONFIG_NAME = "IPING_API_ENABLED";
     private static final String API_URL_CONFIG_NAME = "IPING_API_URL";
@@ -60,17 +59,23 @@ public class IpingApiHttpServiceImpl implements IpingApiHttpService {
         this.defaultLanguage = language;
     }
 
-    public IpingQueryResult queryByIp(String ip) {
+    @Override
+    public String providerCode() {
+        return PROVIDER_IPING;
+    }
+
+    @Override
+    public IpRiskApiResult queryByIp(String ip) {
         IpingRuntimeConfig config = currentConfig();
         if (!config.enabled()) {
-            return IpingQueryResult.failed("iping_disabled", 0);
+            return IpRiskApiResult.failed(providerCode(), FailureType.PROVIDER_DISABLED, "iping_disabled", 0);
         }
         if (isBlank(ip)) {
-            return IpingQueryResult.failed("invalid_ip", 0);
+            return IpRiskApiResult.failed(providerCode(), FailureType.INVALID_REQUEST, "invalid_ip", 0);
         }
         if (ip.contains(":")) {
             // iping public document currently states only IPv4 query is supported.
-            return IpingQueryResult.failed("ipv6_not_supported", 0);
+            return IpRiskApiResult.failed(providerCode(), FailureType.INVALID_REQUEST, "ipv6_not_supported", 0);
         }
 
         HttpRequest request = HttpRequest.newBuilder(buildUri(ip.trim(), config))
@@ -82,7 +87,7 @@ public class IpingApiHttpServiceImpl implements IpingApiHttpService {
             int statusCode = response.statusCode();
             if (statusCode < 200 || statusCode >= 300) {
                 log.warn("IPING查询失败：ip={}，httpStatus={}，body={}", ip, statusCode, response.body());
-                return IpingQueryResult.failed("http_status_" + statusCode, statusCode);
+                return IpRiskApiResult.failed(providerCode(), FailureType.HTTP_STATUS, "http_status_" + statusCode, statusCode);
             }
 
             JsonNode root = objectMapper.readTree(response.body());
@@ -91,21 +96,21 @@ public class IpingApiHttpServiceImpl implements IpingApiHttpService {
             if (code != null && code != 200) {
                 String msg = text(root, "msg");
                 log.warn("IPING业务返回非成功：ip={}，code={}，msg={}", ip, code, msg);
-                return IpingQueryResult.failed("business_code_" + code, statusCode);
+                return IpRiskApiResult.failed(providerCode(), FailureType.BUSINESS_CODE, "business_code_" + code, statusCode);
             }
             if (payload == null || payload.isNull() || payload.isMissingNode()) {
-                return IpingQueryResult.failed("empty_payload", statusCode);
+                return IpRiskApiResult.failed(providerCode(), FailureType.EMPTY_PAYLOAD, "empty_payload", statusCode);
             }
 
-            Ip2LocationQuotaHttpService.RiskRelevantFields fields = extractRiskFields(payload);
+            RiskRelevantFields fields = extractRiskFields(payload);
             log.info("IPING查询成功：ip={}，httpStatus={}，riskFields={}", ip, statusCode, formatRiskFields(fields));
-            return IpingQueryResult.succeeded(statusCode, payload, fields);
+            return IpRiskApiResult.succeeded(providerCode(), statusCode, payload, fields);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             log.warn("IPING查询异常：ip={}，reason={}", ip, e.getMessage());
-            return IpingQueryResult.failed("http_error", 0);
+            return IpRiskApiResult.failed(providerCode(), FailureType.IO_ERROR, "http_error", 0);
         }
     }
 
@@ -147,13 +152,13 @@ public class IpingApiHttpServiceImpl implements IpingApiHttpService {
         return root;
     }
 
-    private Ip2LocationQuotaHttpService.RiskRelevantFields extractRiskFields(JsonNode payload) {
+    private RiskRelevantFields extractRiskFields(JsonNode payload) {
         String usageType = normalizeUsageType(text(payload, "usage_type"));
         boolean isDataCenter = "DCH".equals(usageType);
         String isProxy = normalizeBooleanText(text(payload, "is_proxy"));
         String proxyType = isDataCenter ? "DCH" : "";
         String asUsageType = normalizeAsUsageType(text(payload, "as_type"), usageType);
-        return new Ip2LocationQuotaHttpService.RiskRelevantFields(
+        return new RiskRelevantFields(
                 text(payload, "risk_score"),
                 isProxy,
                 usageType,
@@ -338,7 +343,7 @@ public class IpingApiHttpServiceImpl implements IpingApiHttpService {
         }
     }
 
-    private String formatRiskFields(Ip2LocationQuotaHttpService.RiskRelevantFields fields) {
+    private String formatRiskFields(RiskRelevantFields fields) {
         return "fraudScore=" + fields.fraudScore()
                 + ", isProxy=" + fields.isProxy()
                 + ", usageType=" + fields.usageType()

@@ -21,6 +21,9 @@ public interface ProductSpuMapper {
                                                @Param("categoryId") Long categoryId,
                                                @Param("status") String status);
 
+    List<Map<String, Object>> listActivePublicSpuCandidatesByExactName(@Param("name") String name,
+                                                                       @Param("limit") int limit);
+
     List<Map<String, Object>> listSpuIndexDocuments(@Param("limit") int limit,
                                                     @Param("offset") long offset);
 

@@ -1,21 +1,6 @@
 package com.example.ShoppingSystem.filter.preauth.domain;
-
-import cn.hutool.core.util.StrUtil;
-import com.example.ShoppingSystem.filter.preauth.PreAuthHeaders;
 import com.example.ShoppingSystem.filter.preauth.model.PreAuthBinding;
-import com.example.ShoppingSystem.filter.preauth.store.PreAuthBindingRepository;
-import com.example.ShoppingSystem.filter.preauth.support.PreAuthIpNormalizer;
-import com.example.ShoppingSystem.filter.preauth.support.PreAuthProperties;
-import com.example.ShoppingSystem.filter.preauth.support.PreAuthRequestResolver;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-
 public interface WebRtcIpConsistencyService {
     public static final String STATUS_OK = "ok";
 

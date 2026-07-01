@@ -1,15 +1,7 @@
 package com.example.ShoppingSystem.order.service;
-
-import com.example.ShoppingSystem.Utils.HybridIdCodec;
-import com.example.ShoppingSystem.mapper.coupon.UserCouponMapper;
 import com.example.ShoppingSystem.order.dto.OrderCouponOptionResponse;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpStatus;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 

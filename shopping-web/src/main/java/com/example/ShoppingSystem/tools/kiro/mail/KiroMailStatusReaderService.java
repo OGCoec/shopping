@@ -1,31 +1,6 @@
 package com.example.ShoppingSystem.tools.kiro.mail;
-
-import com.example.ShoppingSystem.common.proxy.LocalProxyResolver;
-import com.example.ShoppingSystem.tools.ip2location.verify.imap.ImapFolderScanPlanner;
 import com.example.ShoppingSystem.tools.ip2location.verify.oauth.MicrosoftImapAccessTokenClient;
-import com.example.ShoppingSystem.tools.openai.mail.OpenAiMailBodyExtractor;
-import com.example.ShoppingSystem.tools.openai.mail.OpenAiMailImapScanner;
-import com.example.ShoppingSystem.tools.openai.mail.OpenAiMailMatcher;
-import com.example.ShoppingSystem.tools.openai.mail.OpenAiMailStatusReaderService;
-import com.example.ShoppingSystem.tools.openai.mail.OpenAiMailStatusReaderService.MailStatusScanResult;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.net.Socket;
-import java.net.http.HttpClient;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-
 public interface KiroMailStatusReaderService {
     public static final String STATUS_NOT_REGISTERED = "KIRO_NOT_REGISTERED";
 

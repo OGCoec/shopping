@@ -20,16 +20,16 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
 
-import com.example.ShoppingSystem.quota.Ip2LocationQuotaHttpService;
 import com.example.ShoppingSystem.quota.Ip2LocationQuotaService;
+import com.example.ShoppingSystem.quota.IpRiskApiProvider;
 import com.example.ShoppingSystem.quota.RiskApiConfigStoreService;
 /**
  * Queries IP2Location with Redis-backed quota enforcement.
  */
-@Service
-public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpService {
+@Service(IpRiskApiProvider.PROVIDER_IP2LOCATION)
+public class Ip2LocationQuotaHttpServiceImpl implements IpRiskApiProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(Ip2LocationQuotaHttpService.class);
+    private static final Logger log = LoggerFactory.getLogger(Ip2LocationQuotaHttpServiceImpl.class);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final String API_URL_CONFIG_NAME = "IP2LOCATION_IO_API_URL";
 
@@ -69,14 +69,19 @@ public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpServ
      * Queries IP2Location by IP.
      * Logs quota denials, raw payloads, extracted risk fields, and transport failures.
      */
-    public Ip2LocationQueryResult queryByIp(String ip) {
+    @Override
+    public String providerCode() {
+        return PROVIDER_IP2LOCATION;
+    }
+
+    @Override
+    public IpRiskApiResult queryByIp(String ip) {
         if (isBlank(ip)) {
-            return Ip2LocationQueryResult.failed(
+            return IpRiskApiResult.failed(
+                    providerCode(),
+                    FailureType.INVALID_REQUEST,
                     "invalid_ip",
-                    null,
-                    quotaService.getTotalQuotaCount(),
-                    0,
-                    false);
+                    0);
         }
 
         Ip2LocationQuotaService.QuotaAcquireResult acquireResult = quotaService.acquireQuotaForCall();
@@ -85,7 +90,11 @@ public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpServ
                     ip,
                     acquireResult.reason(),
                     acquireResult.totalQuotaCount());
-            return Ip2LocationQueryResult.blocked(acquireResult.reason(), acquireResult.totalQuotaCount());
+            return IpRiskApiResult.failed(
+                    providerCode(),
+                    FailureType.QUOTA_BLOCKED,
+                    acquireResult.reason(),
+                    0);
         }
 
         String quotaKey = acquireResult.quotaKey();
@@ -99,12 +108,11 @@ public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpServ
                     quotaKey,
                     accountType,
                     ttl);
-            return Ip2LocationQueryResult.failed(
+            return IpRiskApiResult.failed(
+                    providerCode(),
+                    FailureType.INVALID_REQUEST,
                     "invalid_quota_key",
-                    quotaKey,
-                    quotaService.getTotalQuotaCount(),
-                    0,
-                    true);
+                    0);
         }
 
         HttpRequest request = buildRequest(apiKey, ip.trim());
@@ -120,12 +128,11 @@ public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpServ
                         ttl,
                         statusCode,
                         response.body());
-                return Ip2LocationQueryResult.failed(
+                return IpRiskApiResult.failed(
+                        providerCode(),
+                        FailureType.HTTP_STATUS,
                         "http_status_" + statusCode,
-                        quotaKey,
-                        quotaService.getTotalQuotaCount(),
-                        statusCode,
-                        true);
+                        statusCode);
             }
 
             JsonNode payload = objectMapper.readTree(response.body());
@@ -140,9 +147,8 @@ public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpServ
                     formatRiskFields(riskFields));
             log.info("IP2Location raw response, ip={}, payload={}", ip, payload.toString());
 
-            return Ip2LocationQueryResult.succeeded(
-                    quotaKey,
-                    quotaService.getTotalQuotaCount(),
+            return IpRiskApiResult.succeeded(
+                    providerCode(),
                     statusCode,
                     payload,
                     riskFields);
@@ -157,12 +163,11 @@ public class Ip2LocationQuotaHttpServiceImpl implements Ip2LocationQuotaHttpServ
                     accountType,
                     ttl,
                     e.getMessage());
-            return Ip2LocationQueryResult.failed(
+            return IpRiskApiResult.failed(
+                    providerCode(),
+                    FailureType.IO_ERROR,
                     "http_error",
-                    quotaKey,
-                    quotaService.getTotalQuotaCount(),
-                    0,
-                    true);
+                    0);
         }
     }
 

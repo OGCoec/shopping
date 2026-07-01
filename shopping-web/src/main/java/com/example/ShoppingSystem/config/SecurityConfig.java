@@ -26,6 +26,7 @@ public class SecurityConfig {
 
     private static final String COUPON_API_PATTERN = "/shopping/user/api/coupons/**";
     private static final String ORDER_API_PATTERN = "/shopping/user/api/orders/**";
+    private static final String AI_CHAT_API_PATTERN = "/shopping/user/api/ai/**";
     private static final String SIGN_IN_API_PATTERN = "/shopping/user/api/sign-in";
     private static final String SIGN_IN_API_SUB_PATH_PATTERN = "/shopping/user/api/sign-in/**";
     private static final String PAYMENT_CALLBACK_PATTERN = "/shopping/api/payments/callback/**";
@@ -122,6 +123,7 @@ public class SecurityConfig {
             "/shopping/user/totp/**",
             COUPON_API_PATTERN,
             ORDER_API_PATTERN,
+            AI_CHAT_API_PATTERN,
             SIGN_IN_API_PATTERN,
             SIGN_IN_API_SUB_PATH_PATTERN,
             PAYMENT_CALLBACK_PATTERN,

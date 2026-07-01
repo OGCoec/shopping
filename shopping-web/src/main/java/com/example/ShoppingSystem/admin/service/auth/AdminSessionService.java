@@ -1,21 +1,8 @@
 package com.example.ShoppingSystem.admin.service.auth;
-
-import cn.hutool.core.util.IdUtil;
-import cn.hutool.core.util.StrUtil;
-import com.example.ShoppingSystem.admin.config.AdminSecurityProperties;
 import com.example.ShoppingSystem.admin.dto.AdminSessionMeResponse;
 import com.example.ShoppingSystem.admin.model.AdminAccount;
-import com.example.ShoppingSystem.filter.preauth.support.PreAuthRequestResolver;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.ResponseCookie;
-import java.time.Duration;
-import java.time.OffsetDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 public interface AdminSessionService {
     public void authenticate(HttpServletRequest request,
                              HttpServletResponse response,

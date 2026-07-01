@@ -1,23 +1,9 @@
 package com.example.ShoppingSystem.quota;
-
-import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys;
 import com.example.ShoppingSystem.redisdata.Ip2LocationQuotaRedisKeys.AccountType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.scripting.support.ResourceScriptSource;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-
 public interface Ip2LocationQuotaService {
     public record QuotaAcquireResult(boolean allowCall, String quotaKey, long totalQuotaCount, String reason) {
 

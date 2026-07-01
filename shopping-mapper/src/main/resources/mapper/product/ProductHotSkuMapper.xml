@@ -53,6 +53,79 @@ WHERE h.spu_id = #{spuId}
         ]]>
     </select>
 
+    <select id="listActiveHotSkus" resultType="map">
+        <![CDATA[
+SELECT encode(h.id, 'hex') AS "id",
+       h.spu_id AS "spuId",
+       p.name AS "spuName",
+       p.subtitle AS "spuSubtitle",
+       p.brand_name AS "brandName",
+       p.main_image_url AS "mainImageUrl",
+       p.category_id AS "categoryId",
+       c.name AS "categoryName",
+       encode(h.sku_id, 'hex') AS "skuId",
+       s.sku_code AS "skuCode",
+       s.sku_name AS "skuName",
+       s.stock_quantity AS "skuStockQuantity",
+       h.stock_quantity AS "stockQuantity",
+       h.remaining_quantity AS "remainingQuantity",
+       h.status AS "status",
+       h.start_at AS "startAt",
+       h.end_at AS "endAt",
+       h.version AS "version",
+       h.created_at AS "createdAt",
+       h.updated_at AS "updatedAt"
+FROM product_hot_sku h
+INNER JOIN product_sku s ON s.id = h.sku_id
+INNER JOIN product_spu p ON p.id = h.spu_id
+INNER JOIN product_category c ON c.id = p.category_id
+WHERE h.status = 'ENABLED'
+  AND s.status = 'ACTIVE'
+  AND p.status = 'ACTIVE'
+  AND c.status = 'ACTIVE'
+  AND (h.start_at IS NULL OR h.start_at <= #{now})
+  AND (h.end_at IS NULL OR h.end_at > #{now})
+ORDER BY h.updated_at DESC, h.created_at DESC, h.sku_id ASC
+LIMIT #{limit} OFFSET #{offset}
+        ]]>
+    </select>
+
+    <select id="findActiveHotSkuBySkuId" resultType="map">
+        <![CDATA[
+SELECT encode(h.id, 'hex') AS "id",
+       h.spu_id AS "spuId",
+       p.name AS "spuName",
+       p.subtitle AS "spuSubtitle",
+       p.brand_name AS "brandName",
+       p.main_image_url AS "mainImageUrl",
+       p.category_id AS "categoryId",
+       c.name AS "categoryName",
+       encode(h.sku_id, 'hex') AS "skuId",
+       s.sku_code AS "skuCode",
+       s.sku_name AS "skuName",
+       s.stock_quantity AS "skuStockQuantity",
+       h.stock_quantity AS "stockQuantity",
+       h.remaining_quantity AS "remainingQuantity",
+       h.status AS "status",
+       h.start_at AS "startAt",
+       h.end_at AS "endAt",
+       h.version AS "version",
+       h.created_at AS "createdAt",
+       h.updated_at AS "updatedAt"
+FROM product_hot_sku h
+INNER JOIN product_sku s ON s.id = h.sku_id
+INNER JOIN product_spu p ON p.id = h.spu_id
+INNER JOIN product_category c ON c.id = p.category_id
+WHERE h.sku_id = #{skuId}
+  AND h.status = 'ENABLED'
+  AND s.status = 'ACTIVE'
+  AND p.status = 'ACTIVE'
+  AND c.status = 'ACTIVE'
+  AND (h.start_at IS NULL OR h.start_at <= #{now})
+  AND (h.end_at IS NULL OR h.end_at > #{now})
+        ]]>
+    </select>
+
     <select id="upsertHotSkus" resultType="map">
         <![CDATA[
 WITH target_spu AS (

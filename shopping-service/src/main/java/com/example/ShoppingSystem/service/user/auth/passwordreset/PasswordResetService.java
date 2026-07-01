@@ -1,6 +1,4 @@
 package com.example.ShoppingSystem.service.user.auth.passwordreset;
-
-import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetCryptoKey;
 import com.example.ShoppingSystem.service.user.auth.passwordreset.model.PasswordResetResult;
 
 public interface PasswordResetService {

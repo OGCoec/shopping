@@ -3,6 +3,7 @@ package com.example.ShoppingSystem.mapper.product;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -13,6 +14,13 @@ public interface ProductHotSkuMapper {
 
     Map<String, Object> findHotSkuBySkuId(@Param("spuId") Long spuId,
                                           @Param("skuId") byte[] skuId);
+
+    List<Map<String, Object>> listActiveHotSkus(@Param("now") OffsetDateTime now,
+                                                @Param("limit") int limit,
+                                                @Param("offset") int offset);
+
+    Map<String, Object> findActiveHotSkuBySkuId(@Param("skuId") byte[] skuId,
+                                                @Param("now") OffsetDateTime now);
 
     Map<String, Object> upsertHotSkus(@Param("spuId") Long spuId,
                                       @Param("itemsJson") String itemsJson);

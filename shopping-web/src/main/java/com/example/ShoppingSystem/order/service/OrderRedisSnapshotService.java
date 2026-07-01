@@ -1,27 +1,11 @@
 package com.example.ShoppingSystem.order.service;
-
-import com.example.ShoppingSystem.Utils.HybridIdCodec;
 import com.example.ShoppingSystem.order.dto.OrderCreateResponse;
-import com.example.ShoppingSystem.order.redis.OrderRedisKeys;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.http.HttpStatus;
-import org.springframework.scripting.support.ResourceScriptSource;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 
 public interface OrderRedisSnapshotService {

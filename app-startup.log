@@ -52,3 +52,143 @@
 [ERROR] 
 [ERROR] For more information about the errors and possible solutions, please read the following articles:
 [ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] shopping-common                                                    [jar]
+[INFO] shopping-model                                                     [jar]
+[INFO] shopping-mapper                                                    [jar]
+[INFO] shopping-service                                                   [jar]
+[INFO] 
+[INFO] --------------------< com.example:shopping-common >---------------------
+[INFO] Building shopping-common 0.0.1-SNAPSHOT                            [1/4]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ shopping-common ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-common\src\main\resources
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-common\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:compile (default-compile) @ shopping-common ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ shopping-common ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-common\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:testCompile (default-testCompile) @ shopping-common ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.5.3:test (default-test) @ shopping-common ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ shopping-common ---
+[INFO] Building jar: C:\Users\damn\Desktop\shopping\shopping-common\target\shopping-common-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ shopping-common ---
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-common\pom.xml to C:\Users\damn\.m2\repository\com\example\shopping-common\0.0.1-SNAPSHOT\shopping-common-0.0.1-SNAPSHOT.pom
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-common\target\shopping-common-0.0.1-SNAPSHOT.jar to C:\Users\damn\.m2\repository\com\example\shopping-common\0.0.1-SNAPSHOT\shopping-common-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] ---------------------< com.example:shopping-model >---------------------
+[INFO] Building shopping-model 0.0.1-SNAPSHOT                             [2/4]
+[INFO]   from C:\Users\damn\Desktop\shopping\shopping-model\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ shopping-model ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-model\src\main\resources
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-model\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:compile (default-compile) @ shopping-model ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 3 source files with javac [debug parameters release 21] to target\classes
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ shopping-model ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-model\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:testCompile (default-testCompile) @ shopping-model ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug parameters release 21] to target\test-classes
+[INFO] 
+[INFO] --- surefire:3.5.3:test (default-test) @ shopping-model ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ shopping-model ---
+[INFO] Building jar: C:\Users\damn\Desktop\shopping\shopping-model\target\shopping-model-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ shopping-model ---
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-model\pom.xml to C:\Users\damn\.m2\repository\com\example\shopping-model\0.0.1-SNAPSHOT\shopping-model-0.0.1-SNAPSHOT.pom
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-model\target\shopping-model-0.0.1-SNAPSHOT.jar to C:\Users\damn\.m2\repository\com\example\shopping-model\0.0.1-SNAPSHOT\shopping-model-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --------------------< com.example:shopping-mapper >---------------------
+[INFO] Building shopping-mapper 0.0.1-SNAPSHOT                            [3/4]
+[INFO]   from C:\Users\damn\Desktop\shopping\shopping-mapper\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ shopping-mapper ---
+[INFO] Copying 0 resource from src\main\resources to target\classes
+[INFO] Copying 26 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.14.0:compile (default-compile) @ shopping-mapper ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 26 source files with javac [debug parameters release 21] to target\classes
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ shopping-mapper ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-mapper\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:testCompile (default-testCompile) @ shopping-mapper ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.5.3:test (default-test) @ shopping-mapper ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ shopping-mapper ---
+[INFO] Building jar: C:\Users\damn\Desktop\shopping\shopping-mapper\target\shopping-mapper-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ shopping-mapper ---
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-mapper\pom.xml to C:\Users\damn\.m2\repository\com\example\shopping-mapper\0.0.1-SNAPSHOT\shopping-mapper-0.0.1-SNAPSHOT.pom
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-mapper\target\shopping-mapper-0.0.1-SNAPSHOT.jar to C:\Users\damn\.m2\repository\com\example\shopping-mapper\0.0.1-SNAPSHOT\shopping-mapper-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --------------------< com.example:shopping-service >--------------------
+[INFO] Building shopping-service 0.0.1-SNAPSHOT                           [4/4]
+[INFO]   from C:\Users\damn\Desktop\shopping\shopping-service\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ shopping-service ---
+[INFO] Copying 0 resource from src\main\resources to target\classes
+[INFO] Copying 2 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.14.0:compile (default-compile) @ shopping-service ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 261 source files with javac [debug parameters release 21] to target\classes
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ shopping-service ---
+[INFO] skip non existing resourceDirectory C:\Users\damn\Desktop\shopping\shopping-service\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.14.0:testCompile (default-testCompile) @ shopping-service ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 4 source files with javac [debug parameters release 21] to target\test-classes
+[INFO] /C:/Users/damn/Desktop/shopping/shopping-service/src/test/java/com/example/ShoppingSystem/service/captcha/tianai/impl/TianaiCaptchaServiceImplTest.java: C:\Users\damn\Desktop\shopping\shopping-service\src\test\java\com\example\ShoppingSystem\service\captcha\tianai\impl\TianaiCaptchaServiceImplTest.java使用或覆盖了已过时的 API。
+[INFO] /C:/Users/damn/Desktop/shopping/shopping-service/src/test/java/com/example/ShoppingSystem/service/captcha/tianai/impl/TianaiCaptchaServiceImplTest.java: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+[INFO] 
+[INFO] --- surefire:3.5.3:test (default-test) @ shopping-service ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ shopping-service ---
+[INFO] Building jar: C:\Users\damn\Desktop\shopping\shopping-service\target\shopping-service-0.0.1-SNAPSHOT.jar
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ shopping-service ---
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-service\pom.xml to C:\Users\damn\.m2\repository\com\example\shopping-service\0.0.1-SNAPSHOT\shopping-service-0.0.1-SNAPSHOT.pom
+[INFO] Installing C:\Users\damn\Desktop\shopping\shopping-service\target\shopping-service-0.0.1-SNAPSHOT.jar to C:\Users\damn\.m2\repository\com\example\shopping-service\0.0.1-SNAPSHOT\shopping-service-0.0.1-SNAPSHOT.jar
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for shopping-common 0.0.1-SNAPSHOT:
+[INFO] 
+[INFO] shopping-common .................................... SUCCESS [  8.773 s]
+[INFO] shopping-model ..................................... SUCCESS [  5.010 s]
+[INFO] shopping-mapper .................................... SUCCESS [  3.494 s]
+[INFO] shopping-service ................................... SUCCESS [  9.069 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  27.771 s
+[INFO] Finished at: 2026-06-21T07:53:53-07:00
+[INFO] ------------------------------------------------------------------------

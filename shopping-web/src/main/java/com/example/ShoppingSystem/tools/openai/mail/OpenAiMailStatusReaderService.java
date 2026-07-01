@@ -1,26 +1,6 @@
 package com.example.ShoppingSystem.tools.openai.mail;
-
-import com.example.ShoppingSystem.common.proxy.LocalProxyResolver;
-import com.example.ShoppingSystem.tools.ip2location.verify.imap.ImapFolderScanPlanner;
 import com.example.ShoppingSystem.tools.ip2location.verify.oauth.MicrosoftImapAccessTokenClient;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.net.Socket;
-import java.net.http.HttpClient;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public interface OpenAiMailStatusReaderService {
     public static final String STATUS_NOT_REGISTERED = "NOT_REGISTERED";
 
