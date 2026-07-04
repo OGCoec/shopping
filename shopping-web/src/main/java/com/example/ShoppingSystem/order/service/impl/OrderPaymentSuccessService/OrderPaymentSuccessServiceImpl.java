@@ -13,6 +13,7 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 
 import com.example.ShoppingSystem.order.service.OrderPaymentSuccessService;
+import com.example.ShoppingSystem.order.service.HotSkuOrderGuardService;
 import com.example.ShoppingSystem.order.service.LockedOrderCoupon;
 import com.example.ShoppingSystem.order.service.OrderAmountCalculator;
 import com.example.ShoppingSystem.order.service.OrderCardSecretDeliveryService;
@@ -38,6 +39,7 @@ public class OrderPaymentSuccessServiceImpl implements OrderPaymentSuccessServic
     private final PaymentRefundService paymentRefundService;
     private final OrderCardSecretDeliveryService orderCardSecretDeliveryService;
     private final RoutedTransactionExecutor routedTransactionExecutor;
+    private final HotSkuOrderGuardService hotSkuOrderGuardService;
 
     public OrderPaymentSuccessServiceImpl(OrderRedisSnapshotService orderRedisSnapshotService,
                                       OrderMapper orderMapper,
@@ -45,7 +47,8 @@ public class OrderPaymentSuccessServiceImpl implements OrderPaymentSuccessServic
                                       OrderCouponUsageService orderCouponUsageService,
                                       PaymentRefundService paymentRefundService,
                                       OrderCardSecretDeliveryService orderCardSecretDeliveryService,
-                                      RoutedTransactionExecutor routedTransactionExecutor) {
+                                      RoutedTransactionExecutor routedTransactionExecutor,
+                                      HotSkuOrderGuardService hotSkuOrderGuardService) {
         this.orderRedisSnapshotService = orderRedisSnapshotService;
         this.orderMapper = orderMapper;
         this.orderCouponService = orderCouponService;
@@ -53,6 +56,7 @@ public class OrderPaymentSuccessServiceImpl implements OrderPaymentSuccessServic
         this.paymentRefundService = paymentRefundService;
         this.orderCardSecretDeliveryService = orderCardSecretDeliveryService;
         this.routedTransactionExecutor = routedTransactionExecutor;
+        this.hotSkuOrderGuardService = hotSkuOrderGuardService;
     }
 
     public OrderPaymentMarkResult markPaid(String orderNo,
@@ -89,6 +93,7 @@ public class OrderPaymentSuccessServiceImpl implements OrderPaymentSuccessServic
                 log.info("[Order] order marked paid from Redis snapshot, orderNo={}, externalTradeNo={}",
                         normalizedOrderNo, safeExternalTradeNo(externalTradeNo));
             }
+            hotSkuOrderGuardService.cleanupPaidOrder(normalizedOrderNo);
             deliverCardSecrets(normalizedOrderNo, OrderRowMapper.longValue(redisResult.order(), "userId"), redisResult.items());
             return OrderPaymentMarkResult.paid(normalizedOrderNo, actualPaidAt, externalTradeNo, idempotent);
         }
@@ -137,6 +142,7 @@ public class OrderPaymentSuccessServiceImpl implements OrderPaymentSuccessServic
             ));
             log.info("[Order] current-user order marked paid from Redis snapshot, userId={}, orderNo={}, externalTradeNo={}",
                     userId, normalizedOrderNo, safeExternalTradeNo(externalTradeNo));
+            hotSkuOrderGuardService.cleanupPaidOrder(normalizedOrderNo);
             deliverCardSecrets(normalizedOrderNo, userId, redisResult.items());
             return true;
         }
@@ -166,6 +172,7 @@ public class OrderPaymentSuccessServiceImpl implements OrderPaymentSuccessServic
             log.info("[Order] persisted order marked paid, orderNo={}, externalTradeNo={}",
                     orderNo, safeExternalTradeNo(externalTradeNo));
         }
+        hotSkuOrderGuardService.cleanupPaidOrder(orderNo);
         deliverCardSecrets(orderNo, OrderRowMapper.longValue(row, "userId"), null);
         return OrderPaymentMarkResult.paid(orderNo, paidAt, externalTradeNo, !changed);
     }
@@ -190,6 +197,7 @@ public class OrderPaymentSuccessServiceImpl implements OrderPaymentSuccessServic
             log.info("[Order] persisted current-user order marked paid, userId={}, orderNo={}, externalTradeNo={}",
                     userId, orderNo, safeExternalTradeNo(externalTradeNo));
         }
+        hotSkuOrderGuardService.cleanupPaidOrder(orderNo);
         deliverCardSecrets(orderNo, userId, null);
         return true;
     }

@@ -38,7 +38,7 @@
       <form class="checkout-form" id="checkout-form">
         <label class="checkout-quantity-field">
           <span>购买数量</span>
-          <input id="checkout-quantity" type="number" min="1" max="999" step="1" value="1" inputmode="numeric" />
+          <input id="checkout-quantity" type="text" inputmode="numeric" pattern="[1-9][0-9]{0,2}" maxlength="3" value="1" autocomplete="off" />
         </label>
 
         <section class="checkout-coupons" aria-label="订单优惠券">
@@ -66,6 +66,6 @@
   <script src="/shopping/js/vendor/gsap.min.js"></script>
   <script src="/shopping/js/user/auth/console/console-noomo-background.js?v=4"></script>
   <script src="/shopping/js/user/orders/order-api.js?v=2"></script>
-  <script src="/shopping/js/user/orders/checkout-page.js?v=3"></script>
+  <script src="/shopping/js/user/orders/checkout-page.js?v=4"></script>
 </body>
 </html>

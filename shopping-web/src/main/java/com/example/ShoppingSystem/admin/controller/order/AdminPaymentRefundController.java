@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.admin.controller.order;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.admin.dto.AdminApiResponse;
 import com.example.ShoppingSystem.admin.dto.AdminPaymentRefundDtos.AdminRefundApproveRequest;
 import com.example.ShoppingSystem.admin.dto.AdminPaymentRefundDtos.AdminRefundDispatchResponse;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "后台退款管理", description = "后台支付退款管理接口")
 @RestController
 @RequestMapping("/shopping/admin/api/refunds")
 public class AdminPaymentRefundController {
@@ -32,6 +35,7 @@ public class AdminPaymentRefundController {
         this.paymentRefundDispatchService = paymentRefundDispatchService;
     }
 
+    @Operation(summary = "分页查询后台退款单")
     @GetMapping
     public AdminApiResponse<PaymentRefundPageResponse> page(
             @RequestParam(value = "page", required = false) Integer page,
@@ -52,11 +56,13 @@ public class AdminPaymentRefundController {
         ));
     }
 
+    @Operation(summary = "查询后台退款单详情")
     @GetMapping("/{refundNo}")
     public AdminApiResponse<PaymentRefundResponse> detail(@PathVariable String refundNo) {
         return AdminApiResponse.ok(paymentRefundService.detailForAdmin(refundNo));
     }
 
+    @Operation(summary = "审核通过退款申请")
     @PostMapping("/{refundNo}/approve")
     public AdminApiResponse<PaymentRefundResponse> approve(@PathVariable String refundNo,
                                                            @RequestBody(required = false) AdminRefundApproveRequest request) {
@@ -69,6 +75,7 @@ public class AdminPaymentRefundController {
         ));
     }
 
+    @Operation(summary = "驳回退款申请")
     @PostMapping("/{refundNo}/reject")
     public AdminApiResponse<PaymentRefundResponse> reject(@PathVariable String refundNo,
                                                           @RequestBody(required = false) AdminRefundRejectRequest request) {
@@ -81,6 +88,7 @@ public class AdminPaymentRefundController {
         ));
     }
 
+    @Operation(summary = "标记退款已完成")
     @PostMapping("/{refundNo}/mark-refunded")
     public AdminApiResponse<PaymentRefundResponse> markRefunded(@PathVariable String refundNo,
                                                                 @RequestBody(required = false) AdminRefundMarkRefundedRequest request) {
@@ -94,6 +102,7 @@ public class AdminPaymentRefundController {
         ));
     }
 
+    @Operation(summary = "派发退款处理任务")
     @PostMapping("/dispatch")
     public AdminApiResponse<AdminRefundDispatchResponse> dispatch(@RequestParam(value = "limit", required = false) Integer limit) {
         PaymentRefundDispatchService.DispatchSummary summary = paymentRefundDispatchService.dispatchAvailable(limit);

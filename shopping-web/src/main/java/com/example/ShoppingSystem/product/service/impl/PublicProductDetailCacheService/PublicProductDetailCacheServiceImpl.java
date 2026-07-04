@@ -209,6 +209,12 @@ public class PublicProductDetailCacheServiceImpl implements PublicProductDetailC
             if (!normalizedId.equals(sku.id() == null ? "" : sku.id().trim())) {
                 changed = true;
             }
+            int stockQuantity = sku.stockQuantity() == null ? 0 : sku.stockQuantity();
+            int remainingQuantity = sku.remainingQuantity() == null ? stockQuantity : sku.remainingQuantity();
+            boolean hotSku = Boolean.TRUE.equals(sku.hotSku());
+            if (sku.remainingQuantity() == null || sku.hotSku() == null) {
+                changed = true;
+            }
             normalizedSkus.add(new PublicProductSkuResponse(
                     normalizedId,
                     sku.skuName(),
@@ -216,7 +222,9 @@ public class PublicProductDetailCacheServiceImpl implements PublicProductDetailC
                     sku.skuImageUrls(),
                     sku.priceYuan(),
                     sku.originalPriceYuan(),
-                    sku.stockQuantity()));
+                    stockQuantity,
+                    remainingQuantity,
+                    hotSku));
         }
         if (!changed) {
             return detail;

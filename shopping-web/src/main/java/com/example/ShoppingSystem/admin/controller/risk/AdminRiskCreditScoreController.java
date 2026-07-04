@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.admin.controller.risk;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.admin.dto.AdminApiResponse;
 import com.example.ShoppingSystem.admin.dto.AdminDeviceRiskDetailResponse;
 import com.example.ShoppingSystem.admin.dto.AdminDeviceRiskListResponse;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "后台风控信用分", description = "后台IP和设备风控信用分接口")
 @RestController
 @RequestMapping("/shopping/admin/api/risk-credit")
 public class AdminRiskCreditScoreController {
@@ -25,6 +28,7 @@ public class AdminRiskCreditScoreController {
         this.adminRiskCreditScoreService = adminRiskCreditScoreService;
     }
 
+    @Operation(summary = "分页查询IP风控信用分")
     @GetMapping("/ip/{family}")
     public AdminApiResponse<AdminIpRiskListResponse> listIpRiskProfiles(
             @PathVariable String family,
@@ -45,6 +49,7 @@ public class AdminRiskCreditScoreController {
         ));
     }
 
+    @Operation(summary = "批量更新IP风控信用分")
     @PostMapping("/ip/{family}/batch-update")
     public AdminApiResponse<AdminIpRiskBatchUpdateResponse> batchUpdateIpRiskScores(
             @PathVariable String family,
@@ -57,6 +62,7 @@ public class AdminRiskCreditScoreController {
         }
     }
 
+    @Operation(summary = "分页查询设备风控信用分")
     @GetMapping("/device")
     public AdminApiResponse<AdminDeviceRiskListResponse> listDeviceRiskProfiles(
             @RequestParam(required = false) String level,
@@ -73,6 +79,7 @@ public class AdminRiskCreditScoreController {
         ));
     }
 
+    @Operation(summary = "查询设备风控详情")
     @GetMapping("/device/{deviceId}")
     public AdminApiResponse<AdminDeviceRiskDetailResponse> getDeviceDetail(
             @PathVariable String deviceId) {

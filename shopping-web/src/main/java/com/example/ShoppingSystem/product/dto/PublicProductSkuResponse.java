@@ -10,5 +10,7 @@ public record PublicProductSkuResponse(String id,
                                        JsonNode skuImageUrls,
                                        BigDecimal priceYuan,
                                        BigDecimal originalPriceYuan,
-                                       Integer stockQuantity) {
+                                       Integer stockQuantity,
+                                       Integer remainingQuantity,
+                                       Boolean hotSku) {
 }

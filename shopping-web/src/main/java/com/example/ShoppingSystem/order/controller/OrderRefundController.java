@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.order.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.order.dto.OrderApiResponse;
 import com.example.ShoppingSystem.order.dto.PaymentRefundApplyRequest;
 import com.example.ShoppingSystem.order.dto.PaymentRefundPageResponse;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "用户退款", description = "用户订单退款申请接口")
 @RestController
 @RequestMapping("/shopping/user/api/orders")
 public class OrderRefundController {
@@ -32,6 +35,7 @@ public class OrderRefundController {
         this.paymentRefundService = paymentRefundService;
     }
 
+    @Operation(summary = "申请订单退款")
     @PostMapping("/{orderNo}/refunds")
     public OrderApiResponse<PaymentRefundResponse> apply(@PathVariable String orderNo,
                                                          @RequestBody(required = false) PaymentRefundApplyRequest request,
@@ -41,6 +45,7 @@ public class OrderRefundController {
         return OrderApiResponse.ok("ORDER_REFUND_APPLY_OK", paymentRefundService.applyForUser(userId, orderNo, request));
     }
 
+    @Operation(summary = "分页查询订单退款记录")
     @GetMapping("/{orderNo}/refunds")
     public OrderApiResponse<PaymentRefundPageResponse> page(@PathVariable String orderNo,
                                                             @RequestParam(value = "page", required = false) Integer page,

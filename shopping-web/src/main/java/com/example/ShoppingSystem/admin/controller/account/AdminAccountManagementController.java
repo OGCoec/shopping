@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.admin.controller.account;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.admin.dto.AdminAccountManagementDtos.AccountCreditDetailResponse;
 import com.example.ShoppingSystem.admin.dto.AdminAccountManagementDtos.AccountCreditListResponse;
 import com.example.ShoppingSystem.admin.dto.AdminAccountManagementDtos.AccountRestoreRequest;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "后台账号管理", description = "后台账号信用分和账号终止管理接口")
 @RestController
 @RequestMapping("/shopping/admin/api/accounts")
 public class AdminAccountManagementController {
@@ -36,6 +39,7 @@ public class AdminAccountManagementController {
         this.adminSessionService = adminSessionService;
     }
 
+    @Operation(summary = "分页查询账号信用分")
     @GetMapping("/credit")
     public AdminApiResponse<AccountCreditListResponse> listAccountCredits(
             @RequestParam(required = false) Long userId,
@@ -56,11 +60,13 @@ public class AdminAccountManagementController {
         ));
     }
 
+    @Operation(summary = "查询账号信用分详情")
     @GetMapping("/credit/{userId}")
     public AdminApiResponse<AccountCreditDetailResponse> getAccountCreditDetail(@PathVariable Long userId) {
         return AdminApiResponse.ok(adminAccountManagementService.getAccountCreditDetail(userId));
     }
 
+    @Operation(summary = "查询账号信用分事件")
     @GetMapping("/credit/{userId}/events")
     public AdminApiResponse<AccountRiskScoreEventListResponse> listAccountCreditEvents(
             @PathVariable Long userId,
@@ -69,6 +75,7 @@ public class AdminAccountManagementController {
         return AdminApiResponse.ok(adminAccountManagementService.listAccountCreditEvents(userId, page, pageSize));
     }
 
+    @Operation(summary = "调整账号信用分")
     @PostMapping("/credit/{userId}/adjust")
     public AdminApiResponse<AccountScoreAdjustResponse> adjustAccountScore(
             @PathVariable Long userId,
@@ -81,6 +88,7 @@ public class AdminAccountManagementController {
         ));
     }
 
+    @Operation(summary = "分页查询用户自助注销记录")
     @GetMapping("/terminations/self")
     public AdminApiResponse<AccountSelfTerminationListResponse> listSelfTerminations(
             @RequestParam(required = false) String scope,
@@ -99,6 +107,7 @@ public class AdminAccountManagementController {
         ));
     }
 
+    @Operation(summary = "恢复用户自助注销账号")
     @PostMapping("/terminations/self/{id}/restore")
     public AdminApiResponse<AccountRestoreResponse> restoreSelfTermination(
             @PathVariable Long id,
@@ -111,6 +120,7 @@ public class AdminAccountManagementController {
         ));
     }
 
+    @Operation(summary = "分页查询风控终止账号记录")
     @GetMapping("/terminations/risk")
     public AdminApiResponse<AccountRiskTerminationListResponse> listRiskTerminations(
             @RequestParam(required = false) Long userId,
@@ -127,6 +137,7 @@ public class AdminAccountManagementController {
         ));
     }
 
+    @Operation(summary = "查询风控终止账号详情")
     @GetMapping("/terminations/risk/{id}")
     public AdminApiResponse<AccountRiskTerminationDetailResponse> getRiskTerminationDetail(@PathVariable Long id) {
         return AdminApiResponse.ok(adminAccountManagementService.getRiskTerminationDetail(id));

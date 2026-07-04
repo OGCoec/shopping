@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.user.profile;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.security.token.AuthUserContext;
 import com.example.ShoppingSystem.service.user.profile.UserAvatarService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "用户头像", description = "用户头像上传和删除接口")
 @RestController
 @RequestMapping("/shopping/user/profile/avatar")
 public class UserAvatarController {
@@ -24,6 +27,7 @@ public class UserAvatarController {
         this.userAvatarService = userAvatarService;
     }
 
+    @Operation(summary = "上传用户头像")
     @PostMapping
     public ResponseEntity<AvatarActionResponse> uploadAvatar(@RequestParam("file") MultipartFile[] files,
                                                              Authentication authentication,
@@ -54,6 +58,7 @@ public class UserAvatarController {
         }
     }
 
+    @Operation(summary = "删除用户头像")
     @DeleteMapping
     public ResponseEntity<AvatarActionResponse> deleteAvatar(Authentication authentication,
                                                              HttpServletRequest request) {

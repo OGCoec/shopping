@@ -4,7 +4,7 @@
   const STREAM_PATH = "/shopping/user/api/ai/chat/stream";
   const COMPRESS_PATH = "/shopping/user/api/ai/chat/compress";
   const DEFAULT_TRIGGER_TOKENS = 52000;
-  const FALLBACK_MODEL = "kiro-haiku-4.5";
+  const FALLBACK_MODEL = "gpt-5.4-mini";
 
   const state = loadState();
   let compressionTriggerTokens = DEFAULT_TRIGGER_TOKENS;
@@ -109,7 +109,7 @@
 
   function renderModels(models, defaultModelKey) {
     modelSelect.innerHTML = "";
-    const enabledModels = models.length ? models : [{ modelKey: FALLBACK_MODEL, displayName: "Kiro Haiku 4.5" }];
+    const enabledModels = models.length ? models : [{ modelKey: FALLBACK_MODEL, displayName: "GPT-5.4 Mini" }];
     enabledModels.forEach((model) => {
       const option = document.createElement("option");
       option.value = model.modelKey;

@@ -202,10 +202,12 @@
       cancelButton.dataset.orderNo = String(order?.orderNo || "");
       cancelButton.textContent = "取消订单";
       actions.appendChild(cancelButton);
+    } else if (order?.status === "PAID") {
+      actions.appendChild(cardSecretsButton(order?.orderNo));
     }
     toolbar.append(titleWrap, actions);
 
-    content.append(
+    const detailNodes = [
       toolbar,
       detailStatusPanel(order),
       detailGrid([
@@ -225,7 +227,11 @@
         ["关闭时间", formatDate(order?.closedAt)]
       ]),
       itemSection(order?.items)
-    );
+    ];
+    if (order?.status === "PAID") {
+      detailNodes.push(cardSecretsSection(order?.orderNo));
+    }
+    content.append(...detailNodes);
     detailView.appendChild(content);
     startPaymentCountdown(order);
     document.title = `订单 ${order?.orderNo || ""} - Shopping`;
@@ -310,6 +316,126 @@
     const amount = document.createElement("strong");
     amount.textContent = formatMoney(item?.lineAmountYuan);
     row.append(media, body, price, amount);
+    return row;
+  }
+
+  function cardSecretsSection(orderNo) {
+    const section = document.createElement("section");
+    section.className = "order-card-secrets";
+    section.dataset.role = "order-card-secrets";
+    section.dataset.orderNo = String(orderNo || "");
+    section.hidden = true;
+    return section;
+  }
+
+  async function loadCardSecrets(orderNo, button) {
+    if (!orderNo) {
+      return;
+    }
+    const section = detailView.querySelector("[data-role='order-card-secrets']");
+    if (!section) {
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "正在加载卡密";
+    setStatus("正在加载卡密");
+    renderCardSecretsLoading(section);
+    try {
+      const payload = await orderApi.cardSecrets(orderNo);
+      renderCardSecrets(section, payload);
+      button.textContent = "刷新卡密";
+      setStatus("", "ok");
+    } catch (error) {
+      const message = error.message || "卡密加载失败";
+      renderCardSecretsError(section, message);
+      button.textContent = "重新加载卡密";
+      setStatus(message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function renderCardSecretsLoading(section) {
+    section.hidden = false;
+    section.replaceChildren(cardSecretsHeading(null), emptyNode("正在加载卡密"));
+  }
+
+  function renderCardSecretsError(section, message) {
+    section.hidden = false;
+    section.replaceChildren(cardSecretsHeading(null), emptyNode(message || "卡密加载失败"));
+  }
+
+  function renderCardSecrets(section, payload) {
+    section.hidden = false;
+    const list = document.createElement("div");
+    list.className = "order-card-secret-list";
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    let renderedSecrets = 0;
+    items.forEach((item) => {
+      const group = cardSecretGroup(item);
+      if (group) {
+        renderedSecrets += Number(group.dataset.secretCount || 0);
+        list.appendChild(group);
+      }
+    });
+    const nodes = [cardSecretsHeading(payload)];
+    if (renderedSecrets > 0) {
+      nodes.push(list);
+    }
+    if (payload?.deliveryStatus === "PENDING" || renderedSecrets <= 0) {
+      nodes.push(emptyNode("卡密正在交付中，请稍后刷新"));
+    }
+    section.replaceChildren(...nodes);
+  }
+
+  function cardSecretsHeading(payload) {
+    const header = document.createElement("div");
+    header.className = "order-card-secrets-heading";
+    const title = document.createElement("h2");
+    title.textContent = "卡密信息";
+    header.appendChild(title);
+    if (payload) {
+      const summary = document.createElement("p");
+      summary.textContent = `已交付 ${Number(payload?.deliveredCount || 0)} / 应交付 ${Number(payload?.requiredCount || 0)}`;
+      header.appendChild(summary);
+    }
+    return header;
+  }
+
+  function cardSecretGroup(item) {
+    const secrets = Array.isArray(item?.secrets) ? item.secrets : [];
+    if (!secrets.length) {
+      return null;
+    }
+    const group = document.createElement("article");
+    group.className = "order-card-secret-group";
+    group.dataset.skuId = String(item?.skuId || "");
+    group.dataset.secretCount = String(secrets.length);
+
+    const header = document.createElement("div");
+    header.className = "order-card-secret-group-heading";
+    const title = document.createElement("strong");
+    title.textContent = String(item?.skuName || "订单商品");
+    const count = document.createElement("span");
+    count.textContent = `${Number(item?.deliveredCount || secrets.length)} / ${Number(item?.quantity || secrets.length)}`;
+    header.append(title, count);
+
+    const rows = document.createElement("div");
+    rows.className = "order-card-secret-rows";
+    secrets.forEach((secret) => rows.appendChild(cardSecretRow(secret)));
+    group.append(header, rows);
+    return group;
+  }
+
+  function cardSecretRow(secret) {
+    const row = document.createElement("div");
+    row.className = "order-card-secret-row";
+    row.dataset.cardSecretId = String(secret?.cardSecretId || "");
+    const value = document.createElement("code");
+    value.textContent = String(secret?.secret || "");
+    const deliveredAt = document.createElement("span");
+    deliveredAt.textContent = formatDate(secret?.deliveredAt);
+    row.append(value, deliveredAt);
     return row;
   }
 
@@ -462,6 +588,16 @@
     return button;
   }
 
+  function cardSecretsButton(orderNo) {
+    const button = document.createElement("button");
+    button.className = "order-primary-button";
+    button.type = "button";
+    button.dataset.action = "show-card-secrets";
+    button.dataset.orderNo = String(orderNo || "");
+    button.textContent = "查看卡密";
+    return button;
+  }
+
   function emptyNode(message) {
     const node = document.createElement("div");
     node.className = "order-empty";
@@ -590,6 +726,10 @@
     }
     if (target.dataset.action === "pay-order") {
       payCurrentOrder(currentOrderNo(), target.dataset.paymentType || "", target);
+      return;
+    }
+    if (target.dataset.action === "show-card-secrets") {
+      loadCardSecrets(target.dataset.orderNo || currentOrderNo(), target);
     }
   });
 

@@ -47,6 +47,7 @@ public class AdminProductHotSkuServiceImpl implements AdminProductHotSkuService 
     private static final Set<String> SUPPORTED_STATUS = Set.of(STATUS_ENABLED, STATUS_DISABLED, STATUS_SOLD_OUT);
     private static final String HOT_SKU_META_KEY_PREFIX = "shopping:product:hot-sku:meta:";
     private static final String HOT_SKU_STOCK_KEY_PREFIX = "shopping:product:hot-sku:stock:";
+    private static final String HOT_SKU_STOCK_DIRTY_KEY = "shopping:product:hot-sku:stock:dirty";
 
     private final ProductHotSkuMapper productHotSkuMapper;
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker;
@@ -272,8 +273,10 @@ public class AdminProductHotSkuServiceImpl implements AdminProductHotSkuService 
                 @Override
                 @SuppressWarnings({"rawtypes", "unchecked"})
                 public Object execute(RedisOperations operations) {
+                    List<String> skuIds = new ArrayList<>(items.size());
                     for (RedisHotSkuItem item : items) {
                         String skuId = ProductSkuIdCodec.hexToBase62(item.skuId());
+                        skuIds.add(skuId);
                         String metaKey = hotSkuMetaKey(skuId);
                         String stockKey = hotSkuStockKey(skuId);
                         Map<String, String> meta = new LinkedHashMap<>();
@@ -291,6 +294,7 @@ public class AdminProductHotSkuServiceImpl implements AdminProductHotSkuService 
                         operations.opsForValue().set(stockKey, String.valueOf(item.remainingQuantity()));
                         operations.persist(stockKey);
                     }
+                    operations.opsForSet().remove(HOT_SKU_STOCK_DIRTY_KEY, skuIds.toArray(new Object[0]));
                     return null;
                 }
             });
@@ -310,6 +314,10 @@ public class AdminProductHotSkuServiceImpl implements AdminProductHotSkuService 
         }
         try {
             stringRedisTemplate.delete(keys);
+            stringRedisTemplate.opsForSet().remove(
+                    HOT_SKU_STOCK_DIRTY_KEY,
+                    skuIds.toArray(new Object[0])
+            );
         } catch (Exception e) {
             log.warn("[Product Hot SKU] Redis hot SKU delete failed, count={}", skuIds.size(), e);
         }

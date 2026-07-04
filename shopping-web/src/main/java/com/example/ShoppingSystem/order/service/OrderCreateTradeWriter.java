@@ -3,15 +3,16 @@ package com.example.ShoppingSystem.order.service;
 import com.example.ShoppingSystem.Utils.HybridIdCodec;
 import com.example.ShoppingSystem.common.datasource.DataSourceRoute;
 import com.example.ShoppingSystem.mapper.order.OrderMapper;
-import com.example.ShoppingSystem.outbox.OutboxEventRequest;
-import com.example.ShoppingSystem.outbox.annotation.OutboxEventCollector;
 import com.example.ShoppingSystem.outbox.annotation.TransactionalOutbox;
-import com.example.ShoppingSystem.outbox.orderstock.OrderStockDeductRequestedMessage;
-import com.example.ShoppingSystem.outbox.orderstock.OrderStockDeductRequestedRouting;
+import com.example.ShoppingSystem.order.rabbit.OrderExpireMessagePublisher;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -22,26 +23,31 @@ import java.util.Map;
 @Component
 public class OrderCreateTradeWriter {
 
+    private static final Logger log = LoggerFactory.getLogger(OrderCreateTradeWriter.class);
+
     private final OrderMapper orderMapper;
     private final OrderCouponService orderCouponService;
     private final OrderCouponUsageService orderCouponUsageService;
-    private final OutboxEventCollector outboxEventCollector;
+    private final OrderRedisSnapshotService orderRedisSnapshotService;
+    private final OrderExpireMessagePublisher orderExpireMessagePublisher;
     private final ObjectMapper objectMapper;
 
     public OrderCreateTradeWriter(OrderMapper orderMapper,
                                   OrderCouponService orderCouponService,
                                   OrderCouponUsageService orderCouponUsageService,
-                                  OutboxEventCollector outboxEventCollector,
+                                  OrderRedisSnapshotService orderRedisSnapshotService,
+                                  OrderExpireMessagePublisher orderExpireMessagePublisher,
                                   ObjectMapper objectMapper) {
         this.orderMapper = orderMapper;
         this.orderCouponService = orderCouponService;
         this.orderCouponUsageService = orderCouponUsageService;
-        this.outboxEventCollector = outboxEventCollector;
+        this.orderRedisSnapshotService = orderRedisSnapshotService;
+        this.orderExpireMessagePublisher = orderExpireMessagePublisher;
         this.objectMapper = objectMapper;
     }
 
     @TransactionalOutbox(DataSourceRoute.TRADE)
-    public OrderCreateDraft createAndRequestStockDeduct(OrderCreateContext context) {
+    public OrderCreateDraft createPendingPaymentOrder(OrderCreateContext context) {
         if (context == null || context.sku() == null) {
             throw new OrderServiceException("ORDER_CREATE_CONTEXT_INVALID", "Order create context is invalid.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -63,7 +69,7 @@ public class OrderCreateTradeWriter {
         int inserted = orderMapper.insertOrder(
                 context.orderNo(),
                 context.userId(),
-                OrderStatus.STOCK_CONFIRMING,
+                OrderStatus.PENDING_PAYMENT,
                 totalAmount,
                 discountAmount,
                 payAmount,
@@ -77,51 +83,11 @@ public class OrderCreateTradeWriter {
             throw new OrderServiceException("ORDER_CREATE_FAILED", "Order create failed.", HttpStatus.INTERNAL_SERVER_ERROR);
         }
         orderMapper.insertOrderItems(orderItemsJson(context, totalAmount));
-        outboxEventCollector.register(stockDeductRequest(context));
+        afterCommit(() -> {
+            saveRedisSnapshot(context, lockedCoupon, totalAmount, discountAmount, payAmount, requiredPoints);
+            publishPaymentCheck(context);
+        });
         return new OrderCreateDraft(lockedCoupon, totalAmount, discountAmount, payAmount, requiredPoints);
-    }
-
-    public static String stockDeductRequestEventId(String orderNo) {
-        return "order-stock-deduct-requested:" + normalizeOrderNo(orderNo);
-    }
-
-    private OutboxEventRequest stockDeductRequest(OrderCreateContext context) {
-        String eventId = stockDeductRequestEventId(context.orderNo());
-        OrderSkuSnapshot sku = context.sku();
-        OrderStockDeductRequestedMessage message = new OrderStockDeductRequestedMessage(
-                eventId,
-                context.orderNo(),
-                context.userId(),
-                HybridIdCodec.toHex(sku.skuId()),
-                sku.skuIdText(),
-                sku.spuId(),
-                sku.categoryId(),
-                sku.skuCode(),
-                sku.skuName(),
-                sku.specJson(),
-                sku.skuImageUrl(),
-                OrderAmountCalculator.money(sku.priceYuan()).toPlainString(),
-                sku.pointExchangeEnabled(),
-                pointExchangePoints(sku),
-                sku.hotSku(),
-                context.quantity(),
-                context.idempotencyKey(),
-                context.rawUserCouponId(),
-                epochMillis(context.now()),
-                epochMillis(context.expireAt()),
-                context.inventoryType().name(),
-                epochMillis(OffsetDateTime.now())
-        );
-        return new OutboxEventRequest(
-                eventId,
-                OrderStockDeductRequestedRouting.EVENT_TYPE,
-                OrderStockDeductRequestedRouting.AGGREGATE_TYPE,
-                context.orderNo(),
-                OrderStockDeductRequestedRouting.EXCHANGE,
-                OrderStockDeductRequestedRouting.ROUTING_KEY,
-                message,
-                eventId
-        );
     }
 
     private String orderItemsJson(OrderCreateContext context, BigDecimal lineAmount) {
@@ -173,12 +139,49 @@ public class OrderCreateTradeWriter {
         return (value == null ? OffsetDateTime.now() : value).toInstant().toEpochMilli();
     }
 
-    private static String normalizeOrderNo(String orderNo) {
-        String normalized = orderNo == null ? "" : orderNo.trim();
-        if (normalized.isEmpty()) {
-            throw new IllegalArgumentException("Order number is required.");
+    private void afterCommit(Runnable task) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+            return;
         }
-        return normalized;
+        task.run();
+    }
+
+    private void saveRedisSnapshot(OrderCreateContext context,
+                                   LockedOrderCoupon lockedCoupon,
+                                   BigDecimal totalAmount,
+                                   BigDecimal discountAmount,
+                                   BigDecimal payAmount,
+                                   long requiredPoints) {
+        try {
+            orderRedisSnapshotService.saveCreatedOrder(
+                    context,
+                    lockedCoupon,
+                    totalAmount,
+                    discountAmount,
+                    payAmount,
+                    requiredPoints
+            );
+        } catch (Exception e) {
+            log.warn("[Order] Redis snapshot save failed after order create, orderNo={}", context.orderNo(), e);
+        }
+    }
+
+    private void publishPaymentCheck(OrderCreateContext context) {
+        try {
+            orderExpireMessagePublisher.publishPaymentCheck(
+                    context.orderNo(),
+                    context.userId(),
+                    context.expireAt().toInstant().toEpochMilli()
+            );
+        } catch (Exception e) {
+            log.warn("[Order] payment check publish failed after order create, orderNo={}", context.orderNo(), e);
+        }
     }
 
     public record OrderCreateDraft(LockedOrderCoupon lockedCoupon,

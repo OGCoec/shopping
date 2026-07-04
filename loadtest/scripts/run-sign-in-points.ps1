@@ -1,16 +1,16 @@
 [CmdletBinding()]
 param(
-    [int] $ContinuousUserId = 2,
-    [int] $ResetUserId = 3,
+    [Alias("ContinuousUserId")]
+    [int] $RepeatUserId = 2,
+    [Alias("ResetUserId")]
+    [int] $OtherUserId = 3,
     [int] $ConcurrentUserId = 1,
 
-    [int] $ContinuousLoops = 33,
-    [int] $ContinuousBoundaryOffsetMs = 120,
-    [int] $ResetBreakMs = 2100,
+    [Alias("ContinuousLoops")]
+    [int] $RepeatLoops = 2,
     [ValidateSet(50)]
     [int] $ConcurrentThreads = 50,
     [int] $ConcurrentRampUp = 1,
-    [int] $ConcurrentBoundaryOffsetMs = 80,
 
     [string] $HostName = "127.0.0.1",
     [int] $Port = 6655,
@@ -20,7 +20,7 @@ param(
     [string] $JMeterPath,
     [switch] $Clean,
     [switch] $Verify,
-    [string] $PostgresUrl = "postgresql://postgres:123456@127.0.0.1:5432/shopping",
+    [string] $PostgresUrl = "postgresql://postgres@127.0.0.1:5434/shopping_trade",
     [string] $PsqlPath
 )
 
@@ -106,11 +106,11 @@ if (-not (Test-Path -LiteralPath $TokenCsv)) {
 }
 $TokenCsv = (Resolve-Path -LiteralPath $TokenCsv).Path
 
-$continuousTokenCsv = Join-Path $runDir "sign-in-user-$ContinuousUserId-token.csv"
-$resetTokenCsv = Join-Path $runDir "sign-in-user-$ResetUserId-token.csv"
+$repeatTokenCsv = Join-Path $runDir "sign-in-user-$RepeatUserId-token.csv"
+$otherTokenCsv = Join-Path $runDir "sign-in-user-$OtherUserId-token.csv"
 $concurrentTokenCsv = Join-Path $runDir "sign-in-user-$ConcurrentUserId-token.csv"
-Write-TokenCsvForUser -UserId $ContinuousUserId -SourceCsv $TokenCsv -OutputPath $continuousTokenCsv
-Write-TokenCsvForUser -UserId $ResetUserId -SourceCsv $TokenCsv -OutputPath $resetTokenCsv
+Write-TokenCsvForUser -UserId $RepeatUserId -SourceCsv $TokenCsv -OutputPath $repeatTokenCsv
+Write-TokenCsvForUser -UserId $OtherUserId -SourceCsv $TokenCsv -OutputPath $otherTokenCsv
 Write-TokenCsvForUser -UserId $ConcurrentUserId -SourceCsv $TokenCsv -OutputPath $concurrentTokenCsv
 
 $jtlPath = Join-Path $runDir "sign-in-points.jtl"
@@ -125,15 +125,12 @@ $verifyOutputPath = Join-Path $runDir "verify-output.txt"
 $config = [ordered]@{
     plan = $plan
     tokenCsv = $TokenCsv
-    continuousUserId = $ContinuousUserId
-    resetUserId = $ResetUserId
+    repeatUserId = $RepeatUserId
+    otherUserId = $OtherUserId
     concurrentUserId = $ConcurrentUserId
-    continuousLoops = $ContinuousLoops
-    continuousBoundaryOffsetMs = $ContinuousBoundaryOffsetMs
-    resetBreakMs = $ResetBreakMs
+    repeatLoops = $RepeatLoops
     concurrentThreads = $ConcurrentThreads
     concurrentRampUp = $ConcurrentRampUp
-    concurrentBoundaryOffsetMs = $ConcurrentBoundaryOffsetMs
     hostName = $HostName
     port = $Port
     protocol = $Protocol
@@ -141,7 +138,7 @@ $config = [ordered]@{
 $config | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $configPath -Encoding UTF8
 
 if ($Clean) {
-    $userIds = @($ContinuousUserId, $ResetUserId, $ConcurrentUserId) | Sort-Object -Unique
+    $userIds = @($RepeatUserId, $OtherUserId, $ConcurrentUserId) | Sort-Object -Unique
     $userIdList = ($userIds -join ",")
     $cleanSql = "DELETE FROM user_sign_record WHERE user_id IN ($userIdList); DELETE FROM user_point_account WHERE user_id IN ($userIdList);"
     Write-Host "Cleaning sign-in test data for user ids: $userIdList"
@@ -159,15 +156,12 @@ $arguments = @(
     "-JHOST=$HostName",
     "-JPORT=$Port",
     "-JPROTOCOL=$Protocol",
-    "-JTOKEN_CSV_CONTINUOUS=$continuousTokenCsv",
-    "-JTOKEN_CSV_RESET=$resetTokenCsv",
+    "-JTOKEN_CSV_REPEAT=$repeatTokenCsv",
+    "-JTOKEN_CSV_OTHER=$otherTokenCsv",
     "-JTOKEN_CSV_CONCURRENT=$concurrentTokenCsv",
-    "-JCONTINUOUS_LOOPS=$ContinuousLoops",
-    "-JCONTINUOUS_BOUNDARY_OFFSET_MS=$ContinuousBoundaryOffsetMs",
-    "-JRESET_BREAK_MS=$ResetBreakMs",
+    "-JREPEAT_LOOPS=$RepeatLoops",
     "-JCONCURRENT_THREADS=$ConcurrentThreads",
     "-JCONCURRENT_RAMP_UP=$ConcurrentRampUp",
-    "-JCONCURRENT_BOUNDARY_OFFSET_MS=$ConcurrentBoundaryOffsetMs",
     "-Jjmeter.save.saveservice.output_format=csv",
     "-Jjmeter.save.saveservice.print_field_names=true"
 )
@@ -189,8 +183,8 @@ if ($failureCount -gt 0) {
 
 $verifyCommand = @(
     "psql `"$PostgresUrl`"",
-    "-v continuous_user_id=$ContinuousUserId",
-    "-v reset_user_id=$ResetUserId",
+    "-v repeat_user_id=$RepeatUserId",
+    "-v other_user_id=$OtherUserId",
     "-v concurrent_user_id=$ConcurrentUserId",
     "-f $verifySql"
 ) -join " "
@@ -201,8 +195,8 @@ if ($Verify) {
     $psqlArgs = @(
         $PostgresUrl,
         "-v", "ON_ERROR_STOP=1",
-        "-v", "continuous_user_id=$ContinuousUserId",
-        "-v", "reset_user_id=$ResetUserId",
+        "-v", "repeat_user_id=$RepeatUserId",
+        "-v", "other_user_id=$OtherUserId",
         "-v", "concurrent_user_id=$ConcurrentUserId",
         "-f", $verifySql
     )

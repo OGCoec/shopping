@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.signin.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.security.token.AuthUserContext;
 import com.example.ShoppingSystem.security.token.AuthUserContextHolder;
 import com.example.ShoppingSystem.signin.dto.UserSignInResponse;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "用户签到", description = "用户签到和签到状态接口")
 @RestController
 @RequestMapping("/shopping/user/api/sign-in")
 public class UserSignInController {
@@ -27,6 +30,7 @@ public class UserSignInController {
         this.userSignInService = userSignInService;
     }
 
+    @Operation(summary = "查询用户签到状态")
     @GetMapping("/status")
     public ResponseEntity<UserSignInStatusResponse> status(Authentication authentication,
                                                           HttpServletRequest request) {
@@ -37,6 +41,7 @@ public class UserSignInController {
         return ResponseEntity.ok(userSignInService.status(userId));
     }
 
+    @Operation(summary = "执行用户签到")
     @PostMapping
     public ResponseEntity<UserSignInResponse> signIn(Authentication authentication,
                                                      HttpServletRequest request) {

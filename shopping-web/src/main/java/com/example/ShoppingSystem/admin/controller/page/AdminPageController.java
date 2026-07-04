@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.admin.controller.page;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.admin.service.config.AdminConfigService;
 import com.example.ShoppingSystem.admin.service.auth.AdminSessionService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
+@Tag(name = "后台页面", description = "后台管理页面路由接口")
 @Controller
 public class AdminPageController {
 
@@ -26,6 +29,7 @@ public class AdminPageController {
     private static final String CONSOLE_BASE_PATH = "/shopping/admin/console";
     private static final int RETURN_TO_MAX_LENGTH = 512;
 
+    @Operation(summary = "打开后台登录页面")
     @GetMapping("/shopping/admin/login")
     public Object adminLoginPage(HttpServletRequest request) {
         if (!adminConfigService.isInitialized()) {
@@ -56,6 +60,7 @@ public class AdminPageController {
         return path.equals(CONSOLE_BASE_PATH) || path.startsWith(CONSOLE_BASE_PATH + "/");
     }
 
+    @Operation(summary = "打开后台首次登录页面")
     @GetMapping("/shopping/admin/firstlogin")
     public Object adminFirstLoginPage() {
         if (adminConfigService.isInitialized()) {
@@ -64,16 +69,19 @@ public class AdminPageController {
         return htmlPage("admin-firstlogin.html");
     }
 
+    @Operation(summary = "打开旧后台登录页面")
     @GetMapping("/shopping/user/lojin")
     public String legacyAdminLoginPage() {
         return "redirect:/shopping/admin/login";
     }
 
+    @Operation(summary = "打开旧后台首次登录页面")
     @GetMapping("/shopping/user/firstlogin")
     public String legacyAdminFirstLoginPage() {
         return "redirect:/shopping/admin/firstlogin";
     }
 
+    @Operation(summary = "打开后台控制台页面")
     @GetMapping({
             "/shopping/admin/console",
             "/shopping/admin/console/{section}",

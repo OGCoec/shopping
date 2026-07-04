@@ -276,7 +276,7 @@
     const price = document.createElement("strong");
     price.textContent = formatPrice(sku?.priceYuan);
     const stock = document.createElement("span");
-    stock.textContent = `库存 ${Number(sku?.stockQuantity || 0)}`;
+    stock.textContent = formatStockText(sku);
     const buyLink = document.createElement("a");
     buyLink.className = "product-detail-buy-link";
     buyLink.href = checkoutPath(sku?.id);
@@ -400,6 +400,21 @@
       return "价格待定";
     }
     return `¥${number.toFixed(2)}`;
+  }
+
+  function formatStockText(sku) {
+    const total = formatStockNumber(sku?.stockQuantity);
+    if (sku?.remainingQuantity === null || sku?.remainingQuantity === undefined) {
+      return `库存 ${total}`;
+    }
+    const remaining = formatStockNumber(sku.remainingQuantity);
+    const prefix = sku?.hotSku ? "热点库存 · " : "";
+    return `${prefix}库存 剩余 ${remaining} / 总 ${total}`;
+  }
+
+  function formatStockNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0;
   }
 
   function checkoutPath(skuId) {

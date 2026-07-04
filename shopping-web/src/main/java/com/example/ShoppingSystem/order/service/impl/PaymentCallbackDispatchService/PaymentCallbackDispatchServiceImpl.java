@@ -29,6 +29,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.example.ShoppingSystem.order.service.PaymentCallbackDispatchService;
+import com.example.ShoppingSystem.order.service.HotSkuOrderGuardService;
 import com.example.ShoppingSystem.order.service.OrderAmountCalculator;
 import com.example.ShoppingSystem.order.service.OrderCardSecretDeliveryService;
 import com.example.ShoppingSystem.order.service.OrderRedisSnapshotService;
@@ -68,6 +69,7 @@ public class PaymentCallbackDispatchServiceImpl implements PaymentCallbackDispat
     private final HybridSemaphoreIdWorker hybridSemaphoreIdWorker;
     private final ObjectMapper objectMapper;
     private final RoutedTransactionExecutor routedTransactionExecutor;
+    private final HotSkuOrderGuardService hotSkuOrderGuardService;
 
     public PaymentCallbackDispatchServiceImpl(PaymentCallbackInboxMapper paymentCallbackInboxMapper,
                                           OrderRedisSnapshotService orderRedisSnapshotService,
@@ -83,7 +85,8 @@ public class PaymentCallbackDispatchServiceImpl implements PaymentCallbackDispat
                                           PaymentCallbackStreamProperties paymentCallbackStreamProperties,
                                           HybridSemaphoreIdWorker hybridSemaphoreIdWorker,
                                           ObjectMapper objectMapper,
-                                          RoutedTransactionExecutor routedTransactionExecutor) {
+                                          RoutedTransactionExecutor routedTransactionExecutor,
+                                          HotSkuOrderGuardService hotSkuOrderGuardService) {
         this.paymentCallbackInboxMapper = paymentCallbackInboxMapper;
         this.orderRedisSnapshotService = orderRedisSnapshotService;
         this.orderMapper = orderMapper;
@@ -99,6 +102,7 @@ public class PaymentCallbackDispatchServiceImpl implements PaymentCallbackDispat
         this.hybridSemaphoreIdWorker = hybridSemaphoreIdWorker;
         this.objectMapper = objectMapper;
         this.routedTransactionExecutor = routedTransactionExecutor;
+        this.hotSkuOrderGuardService = hotSkuOrderGuardService;
     }
 
     public DispatchSummary dispatchAvailable(Integer rawLimit) {
@@ -222,6 +226,9 @@ public class PaymentCallbackDispatchServiceImpl implements PaymentCallbackDispat
                     return PaymentCallbackOutcome.PAID.equals(outcome) || PaymentCallbackOutcome.PAID_IDEMPOTENT.equals(outcome);
                 })
                 .toList();
+        hotSkuOrderGuardService.cleanupPaidOrders(paidRows.stream()
+                .map(row -> OrderRowMapper.text(row, "orderNo"))
+                .toList());
         return new DispatchBatchResult(written, refundWriteResult.refundNos(), paidRows);
     }
 

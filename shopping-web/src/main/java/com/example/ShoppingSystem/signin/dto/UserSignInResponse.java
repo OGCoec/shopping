@@ -67,7 +67,7 @@ public record UserSignInResponse(boolean success,
         return new UserSignInResponse(
                 true,
                 "SIGN_IN_ALREADY_DONE",
-                "当前周期已经签到",
+                "当天已经签到",
                 false,
                 true,
                 0,

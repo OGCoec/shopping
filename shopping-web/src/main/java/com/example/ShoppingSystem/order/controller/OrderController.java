@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.order.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.order.dto.OrderApiResponse;
 import com.example.ShoppingSystem.order.dto.OrderCancelRequest;
 import com.example.ShoppingSystem.order.dto.OrderCancelResponse;
@@ -35,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "用户订单", description = "用户订单创建、查询和支付接口")
 @RestController
 @RequestMapping("/shopping/user/api/orders")
 public class OrderController {
@@ -62,6 +65,7 @@ public class OrderController {
         this.orderCardSecretQueryService = orderCardSecretQueryService;
     }
 
+    @Operation(summary = "预览订单")
     @PostMapping("/preview")
     public OrderApiResponse<OrderPreviewResponse> preview(@RequestBody(required = false) OrderPreviewRequest request,
                                                           Authentication authentication,
@@ -70,6 +74,7 @@ public class OrderController {
         return OrderApiResponse.ok("ORDER_PREVIEW_OK", orderPreviewService.preview(userId, request));
     }
 
+    @Operation(summary = "创建订单")
     @PostMapping
     public OrderApiResponse<OrderCreateResponse> create(@RequestBody(required = false) OrderCreateRequest request,
                                                         Authentication authentication,
@@ -78,6 +83,7 @@ public class OrderController {
         return OrderApiResponse.ok("ORDER_CREATE_OK", orderCreateService.create(userId, request));
     }
 
+    @Operation(summary = "查询订单详情")
     @GetMapping("/{orderNo}")
     public OrderApiResponse<OrderDetailResponse> detail(@PathVariable String orderNo,
                                                         Authentication authentication,
@@ -86,6 +92,7 @@ public class OrderController {
         return OrderApiResponse.ok("ORDER_DETAIL_OK", orderQueryService.detail(userId, orderNo));
     }
 
+    @Operation(summary = "查询订单卡密")
     @GetMapping("/{orderNo}/card-secrets")
     public ResponseEntity<OrderApiResponse<OrderCardSecretResponse>> cardSecrets(@PathVariable String orderNo,
                                                                                  Authentication authentication,
@@ -100,6 +107,7 @@ public class OrderController {
                 .body(OrderApiResponse.ok(code, response));
     }
 
+    @Operation(summary = "分页查询用户订单")
     @GetMapping
     public OrderApiResponse<OrderPageResponse> page(@RequestParam(value = "page", required = false) Integer page,
                                                     @RequestParam(value = "pageSize", required = false) Integer pageSize,
@@ -110,6 +118,7 @@ public class OrderController {
         return OrderApiResponse.ok("ORDER_PAGE_OK", orderQueryService.page(userId, page, pageSize, status));
     }
 
+    @Operation(summary = "取消订单")
     @PostMapping("/{orderNo}/cancel")
     public ResponseEntity<OrderApiResponse<OrderCancelResponse>> cancel(@PathVariable String orderNo,
                                                                         @RequestBody(required = false) OrderCancelRequest request,
@@ -119,6 +128,7 @@ public class OrderController {
         return ResponseEntity.ok(OrderApiResponse.ok("ORDER_CANCEL_OK", orderCancelService.cancel(userId, orderNo)));
     }
 
+    @Operation(summary = "支付订单")
     @PostMapping("/{orderNo}/pay")
     public ResponseEntity<OrderApiResponse<OrderPaymentResponse>> pay(@PathVariable String orderNo,
                                                                       @RequestBody(required = false) OrderPaymentRequest request,

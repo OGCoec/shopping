@@ -17,6 +17,11 @@ public interface AuthTokenService {
 
     public AuthUserContext authenticateAccessToken(String accessToken, String riskLevel, boolean allowCachedContextFastPath);
 
+    public AuthTokenAuthenticationResult authenticateOrRefresh(HttpServletRequest request,
+                                                               HttpServletResponse response,
+                                                               String riskLevel,
+                                                               boolean allowCachedContextFastPath);
+
     public AuthTokenRefreshResult refresh(HttpServletRequest request, HttpServletResponse response);
 
     public void logoutCurrentDevice(HttpServletRequest request, HttpServletResponse response);

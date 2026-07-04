@@ -141,6 +141,18 @@ public class UserAuthFailureRiskServiceImpl implements UserAuthFailureRiskServic
         return triggerLock(userId, snapshot, ip, deviceFingerprint);
     }
 
+    @Override
+    public void clearAuthFailureWindow(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        try {
+            stringRedisTemplate.delete(failureKeys(userId));
+        } catch (Exception e) {
+            log.warn("Auth failure window cleanup failed, userId={}, reason={}", userId, e.getMessage());
+        }
+    }
+
     private long incrementFailureCounter(Long userId, UserAuthFailureType failureType) {
         String key = failureType == null
                 ? UserAuthRiskRedisKeys.failTotal30mKey(userId)

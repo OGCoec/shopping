@@ -3,7 +3,7 @@ package com.example.ShoppingSystem.mapper.signin;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDate;
 import java.util.Map;
 
 @Mapper
@@ -14,8 +14,7 @@ public interface UserSignInMapper {
     Map<String, Object> findLatestSignRecordByUserId(@Param("userId") Long userId);
 
     int insertSignRecordIgnore(@Param("userId") Long userId,
-                               @Param("signPeriodKey") String signPeriodKey,
-                               @Param("signDate") OffsetDateTime signDate,
+                               @Param("signDate") LocalDate signDate,
                                @Param("rewardPoints") int rewardPoints,
                                @Param("continuousCount") int continuousCount,
                                @Param("cycleDay") int cycleDay);

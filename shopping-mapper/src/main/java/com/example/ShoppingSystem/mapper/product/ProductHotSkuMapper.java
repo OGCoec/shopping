@@ -22,8 +22,14 @@ public interface ProductHotSkuMapper {
     Map<String, Object> findActiveHotSkuBySkuId(@Param("skuId") byte[] skuId,
                                                 @Param("now") OffsetDateTime now);
 
+    List<Map<String, Object>> listRuntimeStocksBySkuIds(@Param("spuId") Long spuId,
+                                                        @Param("ids") List<byte[]> ids,
+                                                        @Param("now") OffsetDateTime now);
+
     Map<String, Object> upsertHotSkus(@Param("spuId") Long spuId,
                                       @Param("itemsJson") String itemsJson);
+
+    Map<String, Object> batchWritebackRuntimeStock(@Param("itemsJson") String itemsJson);
 
     Map<String, Object> deleteHotSkusBySkuIds(@Param("spuId") Long spuId,
                                               @Param("ids") List<byte[]> ids);

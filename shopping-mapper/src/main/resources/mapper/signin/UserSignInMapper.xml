@@ -16,7 +16,6 @@
     <select id="findLatestSignRecordByUserId" resultType="map">
         SELECT id,
                user_id AS "userId",
-               sign_period_key AS "signPeriodKey",
                sign_date AS "signDate",
                reward_points AS "rewardPoints",
                continuous_count AS "continuousCount",
@@ -24,14 +23,13 @@
                created_at AS "createdAt"
         FROM user_sign_record
         WHERE user_id = #{userId}
-        ORDER BY id DESC
+        ORDER BY sign_date DESC, id DESC
         LIMIT 1
     </select>
 
     <insert id="insertSignRecordIgnore">
         INSERT INTO user_sign_record (
             user_id,
-            sign_period_key,
             sign_date,
             reward_points,
             continuous_count,
@@ -40,14 +38,13 @@
         )
         VALUES (
             #{userId},
-            #{signPeriodKey},
             #{signDate},
             #{rewardPoints},
             #{continuousCount},
             #{cycleDay},
             NOW()
         )
-        ON CONFLICT (user_id, sign_period_key) DO NOTHING
+        ON CONFLICT (user_id, sign_date) DO NOTHING
     </insert>
 
     <select id="addRewardPoints" resultType="map">

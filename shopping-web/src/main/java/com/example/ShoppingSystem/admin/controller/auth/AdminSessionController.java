@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.admin.controller.auth;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.admin.dto.AdminApiResponse;
 import com.example.ShoppingSystem.admin.dto.AdminRedirectResponse;
 import com.example.ShoppingSystem.admin.dto.AdminSessionMeResponse;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "后台会话", description = "后台管理员会话接口")
 @RestController
 @RequestMapping("/shopping/admin")
 public class AdminSessionController {
@@ -36,11 +39,13 @@ public class AdminSessionController {
         this.webRtcRiskStateQueryService = webRtcRiskStateQueryService;
     }
 
+    @Operation(summary = "查询当前后台会话")
     @GetMapping("/session/me")
     public AdminApiResponse<AdminSessionMeResponse> current(HttpServletRequest request) {
         return AdminApiResponse.ok(adminSessionService.current(request));
     }
 
+    @Operation(summary = "退出后台登录")
     @PostMapping("/logout")
     public AdminApiResponse<AdminRedirectResponse> logout(HttpServletRequest request,
                                                           HttpServletResponse response) {
@@ -48,12 +53,14 @@ public class AdminSessionController {
         return AdminApiResponse.ok(new AdminRedirectResponse(ADMIN_LOGIN_PATH));
     }
 
+    @Operation(summary = "上报后台会话WebRTC状态")
     @PostMapping("/session/webrtc/report")
     public ResponseEntity<WebRtcRiskReportResponse> reportWebRtc(@RequestBody(required = false) WebRtcRiskReportRequest report,
                                                                  HttpServletRequest request) {
         return ResponseEntity.accepted().body(webRtcRiskReportService.reportAdmin(request, report));
     }
 
+    @Operation(summary = "查询后台会话WebRTC状态")
     @GetMapping("/session/webrtc/state")
     public WebRtcRiskStateResponse webRtcState(HttpServletRequest request) {
         return webRtcRiskStateQueryService.queryAdmin(request);

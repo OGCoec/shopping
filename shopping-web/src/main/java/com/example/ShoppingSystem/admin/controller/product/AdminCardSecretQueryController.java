@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.admin.controller.product;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.admin.dto.AdminApiResponse;
 import com.example.ShoppingSystem.admin.dto.AdminCardSecretQueryDtos.AdminCardSecretDeliveryPageResponse;
 import com.example.ShoppingSystem.admin.dto.AdminCardSecretQueryDtos.AdminCardSecretInventoryPageResponse;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "后台卡密查询", description = "后台卡密库存和交付查询接口")
 @RestController
 @RequestMapping("/shopping/admin/api/card-secrets")
 public class AdminCardSecretQueryController {
@@ -28,6 +31,7 @@ public class AdminCardSecretQueryController {
         this.adminSessionService = adminSessionService;
     }
 
+    @Operation(summary = "分页查询卡密库存")
     @GetMapping("/inventory")
     public AdminApiResponse<AdminCardSecretInventoryPageResponse> inventory(
             @RequestParam(value = "page", required = false) Integer page,
@@ -67,6 +71,7 @@ public class AdminCardSecretQueryController {
         );
     }
 
+    @Operation(summary = "分页查询卡密交付记录")
     @GetMapping("/deliveries")
     public AdminApiResponse<AdminCardSecretDeliveryPageResponse> deliveries(
             @RequestParam(value = "page", required = false) Integer page,
@@ -100,6 +105,7 @@ public class AdminCardSecretQueryController {
         );
     }
 
+    @Operation(summary = "查看卡密明文")
     @GetMapping("/{cardSecretId}/reveal")
     public AdminApiResponse<AdminCardSecretRevealResponse> reveal(@PathVariable String cardSecretId,
                                                                   HttpServletRequest request,

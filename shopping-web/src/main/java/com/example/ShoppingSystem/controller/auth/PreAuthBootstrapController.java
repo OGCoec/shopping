@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.auth;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.controller.auth.dto.PreAuthBootstrapResponse;
 import com.example.ShoppingSystem.controller.auth.dto.PreAuthPhoneCountryResponse;
 import com.example.ShoppingSystem.controller.auth.dto.PreAuthPhoneValidationRequest;
@@ -39,6 +41,7 @@ import java.util.Map;
 
 /**
  * 妫板嫮娅ヨぐ鏇礄PreAuth閿涘绱╃€靛吋甯堕崚璺烘珤閵? */
+@Tag(name = "预认证初始化", description = "登录注册前置风控初始化接口")
 @RestController
 @RequestMapping("/shopping/auth/preauth")
 public class PreAuthBootstrapController {
@@ -73,6 +76,7 @@ public class PreAuthBootstrapController {
 
     /**
      * 妫板嫮娅ヨぐ鏇炵穿鐎靛吋甯撮崣锝冣偓?     * 瑜版挻顥呭ù瀣煂閸?token 閹稿洨姹?UA 娑撯偓閼风繝绲?IP 閸欐ê瀵叉稉鏃€婀€瑰本鍨?WAF 妤犲矁鐦夐弮璁圭礉鏉╂柨娲?409 + verifyUrl閵?     */
+    @Operation(summary = "初始化预认证环境")
     @PostMapping("/bootstrap")
     public ResponseEntity<?> bootstrap(
             @RequestHeader(value = PreAuthHeaders.HEADER_DEVICE_FINGERPRINT, required = false) String fingerprint,
@@ -113,6 +117,7 @@ public class PreAuthBootstrapController {
         ));
     }
 
+    @Operation(summary = "查询手机号国家区号")
     @GetMapping("/phone-country")
     public PreAuthPhoneCountryResponse resolvePhoneCountry(HttpServletRequest request) {
         String clientIp = resolveClientIp(request);
@@ -123,6 +128,7 @@ public class PreAuthBootstrapController {
         return new PreAuthPhoneCountryResponse(false, result.reason(), null, result.source());
     }
 
+    @Operation(summary = "上报预认证WebRTC状态")
     @PostMapping("/webrtc/report")
     public ResponseEntity<WebRtcRiskReportResponse> reportWebRtc(
             @RequestBody(required = false) WebRtcRiskReportRequest report,
@@ -130,11 +136,13 @@ public class PreAuthBootstrapController {
         return ResponseEntity.accepted().body(webRtcRiskReportService.reportPreAuthOrUser(request, report));
     }
 
+    @Operation(summary = "查询预认证WebRTC状态")
     @GetMapping("/webrtc/state")
     public WebRtcRiskStateResponse webRtcState(HttpServletRequest request) {
         return webRtcRiskStateQueryService.queryPreAuthOrUser(request);
     }
 
+    @Operation(summary = "校验手机号格式")
     @PostMapping("/phone-validate")
     public PreAuthPhoneValidationResponse validatePhoneNumber(@RequestBody PreAuthPhoneValidationRequest request) {
         PhoneNumberValidationService.ValidationResult result =

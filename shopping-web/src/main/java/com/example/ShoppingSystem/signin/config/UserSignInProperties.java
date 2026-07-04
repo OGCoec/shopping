@@ -13,22 +13,12 @@ public class UserSignInProperties {
 
     private String zoneId = DEFAULT_ZONE_ID.getId();
 
-    private PeriodUnit periodUnit = PeriodUnit.SECOND;
-
     public String getZoneId() {
         return zoneId;
     }
 
     public void setZoneId(String zoneId) {
         this.zoneId = zoneId;
-    }
-
-    public PeriodUnit getPeriodUnit() {
-        return periodUnit;
-    }
-
-    public void setPeriodUnit(PeriodUnit periodUnit) {
-        this.periodUnit = periodUnit;
     }
 
     public ZoneId resolvedZoneId() {
@@ -40,14 +30,5 @@ public class UserSignInProperties {
         } catch (Exception ignored) {
             return DEFAULT_ZONE_ID;
         }
-    }
-
-    public PeriodUnit resolvedPeriodUnit() {
-        return periodUnit == null ? PeriodUnit.SECOND : periodUnit;
-    }
-
-    public enum PeriodUnit {
-        DAY,
-        SECOND
     }
 }

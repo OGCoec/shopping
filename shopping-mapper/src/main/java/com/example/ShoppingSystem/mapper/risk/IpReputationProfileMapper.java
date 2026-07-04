@@ -144,6 +144,25 @@ public interface IpReputationProfileMapper {
                               @Param("queriedAt") OffsetDateTime queriedAt,
                               @Param("expiresAt") OffsetDateTime expiresAt);
 
+    int upsertIpv4GeoOnly(@Param("ip") String ip,
+                          @Param("country") String country,
+                          @Param("region") String region,
+                          @Param("city") String city,
+                          @Param("latitude") BigDecimal latitude,
+                          @Param("longitude") BigDecimal longitude,
+                          @Param("sourceProvider") String sourceProvider,
+                          @Param("rawJson") String rawJson,
+                          @Param("queriedAt") OffsetDateTime queriedAt);
+
+    int upsertIpv6GeoOnly(@Param("ip") String ip,
+                          @Param("country") String country,
+                          @Param("region") String region,
+                          @Param("city") String city,
+                          @Param("latitude") BigDecimal latitude,
+                          @Param("longitude") BigDecimal longitude,
+                          @Param("sourceProvider") String sourceProvider,
+                          @Param("rawJson") String rawJson,
+                          @Param("queriedAt") OffsetDateTime queriedAt);
 
     Integer applyIpv4AutomationPenalty(@Param("ip") String ip,
                                        @Param("penaltyScore") int penaltyScore,

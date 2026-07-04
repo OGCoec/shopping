@@ -13,6 +13,7 @@
   const couponListEl = document.getElementById("checkout-coupon-list");
   const amountsEl = document.getElementById("checkout-amounts");
   const submitButton = document.getElementById("checkout-submit");
+  const MAX_QUANTITY = 999;
 
   function safeImageUrl(value) {
     return window.ShoppingSecurityUrls?.safeImageUrl?.(value, "", {
@@ -56,16 +57,55 @@
   }
 
   function readQuantity() {
-    const value = Number(new URLSearchParams(window.location.search || "").get("quantity"));
+    const value = new URLSearchParams(window.location.search || "").get("quantity");
     return normalizeQuantity(value);
   }
 
+  function sanitizeQuantityText(value) {
+    return String(value ?? "").replace(/[^\d]/g, "").replace(/^0+(?=\d)/, "");
+  }
+
   function normalizeQuantity(value) {
-    const number = Number(value);
+    const cleaned = sanitizeQuantityText(value);
+    if (!cleaned) {
+      return 1;
+    }
+    const number = Number(cleaned);
     if (!Number.isFinite(number)) {
       return 1;
     }
-    return Math.min(999, Math.max(1, Math.floor(number)));
+    return Math.min(MAX_QUANTITY, Math.max(1, Math.floor(number)));
+  }
+
+  function syncQuantityInput(options = {}) {
+    if (!quantityInput) {
+      return;
+    }
+    const previousQuantity = state.quantity;
+    const nextQuantity = normalizeQuantity(quantityInput.value);
+    quantityInput.value = String(nextQuantity);
+    state.quantity = nextQuantity;
+    if (options.reload && nextQuantity !== previousQuantity) {
+      loadPreview({ silent: true });
+    }
+  }
+
+  function blockInvalidQuantityKey(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) {
+      return;
+    }
+    if (!/^\d$/.test(event.key)) {
+      event.preventDefault();
+    }
+  }
+
+  function pasteQuantity(event) {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") || "";
+    const start = quantityInput.selectionStart ?? quantityInput.value.length;
+    const end = quantityInput.selectionEnd ?? quantityInput.value.length;
+    quantityInput.value = `${quantityInput.value.slice(0, start)}${pasted}${quantityInput.value.slice(end)}`;
+    syncQuantityInput({ reload: true });
   }
 
   async function loadPreview(options = {}) {
@@ -257,16 +297,11 @@
     return Number.isFinite(number) ? `¥${number.toFixed(2)}` : "¥0.00";
   }
 
-  quantityInput?.addEventListener("change", () => {
-    state.quantity = normalizeQuantity(quantityInput.value);
-    quantityInput.value = String(state.quantity);
-    loadPreview({ silent: true });
-  });
-
-  quantityInput?.addEventListener("blur", () => {
-    state.quantity = normalizeQuantity(quantityInput.value);
-    quantityInput.value = String(state.quantity);
-  });
+  quantityInput?.addEventListener("keydown", blockInvalidQuantityKey);
+  quantityInput?.addEventListener("input", () => syncQuantityInput());
+  quantityInput?.addEventListener("paste", pasteQuantity);
+  quantityInput?.addEventListener("change", () => syncQuantityInput({ reload: true }));
+  quantityInput?.addEventListener("blur", () => syncQuantityInput());
 
   couponListEl?.addEventListener("change", (event) => {
     const target = event.target;

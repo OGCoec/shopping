@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.user.security;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.controller.login.user.dto.LoginPhoneBindRequest;
 import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "用户安全手机", description = "用户安全手机绑定接口")
 @RestController
 @RequestMapping("/shopping/user/security/phone")
 public class UserSecurityPhoneController {
@@ -34,6 +37,7 @@ public class UserSecurityPhoneController {
         this.authTokenService = authTokenService;
     }
 
+    @Operation(summary = "发送安全手机绑定验证码")
     @PostMapping("/code")
     public ResponseEntity<SecurityPhoneBindingResponse> sendPhoneBindCode(@RequestBody LoginPhoneBindRequest body,
                                                                           Authentication authentication,
@@ -53,6 +57,7 @@ public class UserSecurityPhoneController {
         return phoneBindingResponse(result);
     }
 
+    @Operation(summary = "绑定安全手机")
     @PostMapping("/bind")
     public ResponseEntity<SecurityPhoneBindingResponse> bindPhone(@RequestBody LoginPhoneBindRequest body,
                                                                   Authentication authentication,

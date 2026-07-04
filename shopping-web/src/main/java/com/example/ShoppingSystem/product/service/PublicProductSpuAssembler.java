@@ -46,6 +46,7 @@ public class PublicProductSpuAssembler {
         }
         List<PublicProductSkuResponse> skus = new ArrayList<>();
         for (JsonNode skuNode : skusNode) {
+            int stockQuantity = jsonInt(skuNode, "stockQuantity", 0);
             skus.add(new PublicProductSkuResponse(
                     toSkuIdText(jsonText(skuNode, "id")),
                     jsonText(skuNode, "skuName"),
@@ -53,7 +54,9 @@ public class PublicProductSpuAssembler {
                     jsonNodeOrDefault(skuNode.get("skuImageUrls"), true),
                     jsonBigDecimal(skuNode, "priceYuan", BigDecimal.ZERO),
                     jsonNullableBigDecimal(skuNode, "originalPriceYuan"),
-                    jsonInt(skuNode, "stockQuantity", 0)));
+                    stockQuantity,
+                    jsonInt(skuNode, "remainingQuantity", stockQuantity),
+                    jsonBoolean(skuNode, "hotSku", false)));
         }
         return List.copyOf(skus);
     }
@@ -126,6 +129,18 @@ public class PublicProductSpuAssembler {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private boolean jsonBoolean(JsonNode node, String field, boolean defaultValue) {
+        JsonNode value = node == null ? null : node.get(field);
+        if (value == null || value.isNull()) {
+            return defaultValue;
+        }
+        if (value.isBoolean()) {
+            return value.booleanValue();
+        }
+        String text = toText(value.asText());
+        return text.isEmpty() ? defaultValue : Boolean.parseBoolean(text);
     }
 
     private BigDecimal jsonBigDecimal(JsonNode node, String field, BigDecimal defaultValue) {

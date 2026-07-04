@@ -240,7 +240,8 @@ body {
 .order-panel-heading h1,
 .order-detail-toolbar h1,
 .checkout-section-heading h2,
-.order-items h2 {
+.order-items h2,
+.order-card-secrets h2 {
   margin: 0;
   color: var(--order-ink);
   font-size: 24px;
@@ -515,6 +516,104 @@ body {
   gap: 12px;
 }
 
+.order-card-secrets {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.order-card-secrets-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.order-card-secrets-heading p {
+  margin: 0;
+  color: var(--order-muted);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.order-card-secret-list,
+.order-card-secret-rows {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.order-card-secret-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--order-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      var(--motion-angle),
+      hsla(var(--motion-hue), 82%, 70%, var(--motion-card-alpha)) 0%,
+      rgba(255, 255, 255, 0) 58%
+    ),
+    rgba(255, 255, 255, 0.56);
+  padding: 12px;
+}
+
+.order-card-secret-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.order-card-secret-group-heading strong {
+  min-width: 0;
+  color: var(--order-ink);
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.order-card-secret-group-heading span {
+  color: var(--order-muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.order-card-secret-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.62);
+  padding: 10px 12px;
+}
+
+.order-card-secret-row code {
+  min-width: 0;
+  color: #0f172a;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.order-card-secret-row span {
+  color: var(--order-muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .order-item {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr) auto auto;
@@ -697,6 +796,23 @@ body {
 
   .order-detail-grid dd {
     padding-top: 4px;
+  }
+
+  .order-card-secrets-heading,
+  .order-card-secret-group-heading,
+  .order-card-secret-row {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .order-card-secrets-heading,
+  .order-card-secret-group-heading {
+    flex-direction: column;
+  }
+
+  .order-card-secrets-heading p,
+  .order-card-secret-row span {
+    white-space: normal;
   }
 
   .checkout-product {

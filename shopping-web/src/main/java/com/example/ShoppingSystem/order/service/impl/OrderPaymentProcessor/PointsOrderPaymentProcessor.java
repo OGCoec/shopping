@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.example.ShoppingSystem.order.service.LockedOrderCoupon;
+import com.example.ShoppingSystem.order.service.HotSkuOrderGuardService;
 import com.example.ShoppingSystem.order.service.OrderCardSecretDeliveryService;
 import com.example.ShoppingSystem.order.service.OrderCouponService;
 import com.example.ShoppingSystem.order.service.OrderCouponUsageService;
@@ -48,6 +49,7 @@ public class PointsOrderPaymentProcessor implements OrderPaymentProcessor {
     private final OrderCouponUsageService orderCouponUsageService;
     private final OrderCardSecretDeliveryService orderCardSecretDeliveryService;
     private final RoutedTransactionExecutor routedTransactionExecutor;
+    private final HotSkuOrderGuardService hotSkuOrderGuardService;
     private final boolean orderLoadtestBypassGuards;
     private final boolean pointsPaymentFaultEnabled;
 
@@ -58,6 +60,7 @@ public class PointsOrderPaymentProcessor implements OrderPaymentProcessor {
                                        OrderCouponUsageService orderCouponUsageService,
                                        OrderCardSecretDeliveryService orderCardSecretDeliveryService,
                                        RoutedTransactionExecutor routedTransactionExecutor,
+                                       HotSkuOrderGuardService hotSkuOrderGuardService,
                                        @Value("${app.order.loadtest.bypass-guards:false}") boolean orderLoadtestBypassGuards,
                                        @Value("${app.order.loadtest.points-payment-fault-enabled:false}") boolean pointsPaymentFaultEnabled) {
         this.orderMapper = orderMapper;
@@ -67,6 +70,7 @@ public class PointsOrderPaymentProcessor implements OrderPaymentProcessor {
         this.orderCouponUsageService = orderCouponUsageService;
         this.orderCardSecretDeliveryService = orderCardSecretDeliveryService;
         this.routedTransactionExecutor = routedTransactionExecutor;
+        this.hotSkuOrderGuardService = hotSkuOrderGuardService;
         this.orderLoadtestBypassGuards = orderLoadtestBypassGuards;
         this.pointsPaymentFaultEnabled = pointsPaymentFaultEnabled;
     }
@@ -80,6 +84,7 @@ public class PointsOrderPaymentProcessor implements OrderPaymentProcessor {
     public OrderPaymentResponse pay(Long userId, String orderNo, OrderPaymentRequest request) {
         OffsetDateTime requestReceivedAt = OffsetDateTime.now();
         PointsPaymentResult result = payWithOrderLockRetry(userId, orderNo, request, requestReceivedAt);
+        hotSkuOrderGuardService.cleanupPaidOrder(orderNo);
         if (result.newlyPaid()) {
             cleanupRedisSnapshot(orderNo, userId);
         }

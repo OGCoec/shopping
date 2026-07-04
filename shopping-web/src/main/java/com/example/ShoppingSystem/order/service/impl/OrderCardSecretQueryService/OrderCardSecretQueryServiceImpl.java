@@ -13,11 +13,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import com.example.ShoppingSystem.order.service.OrderCardSecretQueryService;
 import com.example.ShoppingSystem.order.service.OrderCardSecretCryptoService;
-import com.example.ShoppingSystem.order.service.OrderRedisSnapshot;
-import com.example.ShoppingSystem.order.service.OrderRedisSnapshotService;
 import com.example.ShoppingSystem.order.service.OrderRowMapper;
 import com.example.ShoppingSystem.order.service.OrderServiceException;
 import com.example.ShoppingSystem.order.service.OrderStatus;
@@ -26,17 +25,18 @@ public class OrderCardSecretQueryServiceImpl implements OrderCardSecretQueryServ
 
     public static final String DELIVERY_STATUS_DELIVERED = "DELIVERED";
     public static final String DELIVERY_STATUS_PENDING = "PENDING";
+    private static final String VERSIONED_SECRET_PREFIX = "CARD_SECRET_V1|";
+    private static final Pattern UUID_PATTERN = Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    );
 
-    private final OrderRedisSnapshotService orderRedisSnapshotService;
     private final OrderCardSecretDeliveryMapper deliveryMapper;
     private final OrderCardSecretCryptoService cryptoService;
     private final OrderReadReplicaQueryExecutor orderReadReplicaQueryExecutor;
 
-    public OrderCardSecretQueryServiceImpl(OrderRedisSnapshotService orderRedisSnapshotService,
-                                       OrderCardSecretDeliveryMapper deliveryMapper,
+    public OrderCardSecretQueryServiceImpl(OrderCardSecretDeliveryMapper deliveryMapper,
                                        OrderCardSecretCryptoService cryptoService,
                                        OrderReadReplicaQueryExecutor orderReadReplicaQueryExecutor) {
-        this.orderRedisSnapshotService = orderRedisSnapshotService;
         this.deliveryMapper = deliveryMapper;
         this.cryptoService = cryptoService;
         this.orderReadReplicaQueryExecutor = orderReadReplicaQueryExecutor;
@@ -47,10 +47,10 @@ public class OrderCardSecretQueryServiceImpl implements OrderCardSecretQueryServ
             throw new OrderServiceException("ORDER_AUTH_REQUIRED", "Authentication is required.", HttpStatus.UNAUTHORIZED);
         }
         String normalizedOrderNo = normalizeOrderNo(orderNo);
-        return orderReadReplicaQueryExecutor.queryPrimary(() -> getForUserOnPrimary(userId, normalizedOrderNo));
+        return orderReadReplicaQueryExecutor.query(() -> getForUserFromDb(userId, normalizedOrderNo));
     }
 
-    private OrderCardSecretResponse getForUserOnPrimary(Long userId, String normalizedOrderNo) {
+    private OrderCardSecretResponse getForUserFromDb(Long userId, String normalizedOrderNo) {
         OrderAndItems orderAndItems = loadOrderAndItems(userId, normalizedOrderNo);
         if (!OrderStatus.PAID.equals(orderAndItems.orderStatus())) {
             throw new OrderServiceException(
@@ -96,13 +96,6 @@ public class OrderCardSecretQueryServiceImpl implements OrderCardSecretQueryServ
     }
 
     private OrderAndItems loadOrderAndItems(Long userId, String orderNo) {
-        OrderRedisSnapshot snapshot = orderRedisSnapshotService.findSnapshotForUser(orderNo, userId).orElse(null);
-        if (snapshot != null) {
-            return new OrderAndItems(
-                    OrderRowMapper.text(snapshot.order(), "status"),
-                    normalizeSnapshotItems(orderNo, userId, snapshot.items())
-            );
-        }
         List<Map<String, Object>> rows = deliveryMapper.listOrderItemsForUserOrder(userId, orderNo);
         if (rows == null || rows.isEmpty()) {
             throw new OrderServiceException(
@@ -118,25 +111,6 @@ public class OrderCardSecretQueryServiceImpl implements OrderCardSecretQueryServ
         return new OrderAndItems(orderStatus, items);
     }
 
-    private List<Map<String, Object>> normalizeSnapshotItems(String orderNo,
-                                                            Long userId,
-                                                            List<Map<String, Object>> items) {
-        if (items == null || items.isEmpty()) {
-            return List.of();
-        }
-        List<Map<String, Object>> rows = new ArrayList<>(items.size());
-        for (Map<String, Object> item : items) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("orderNo", orderNo);
-            row.put("userId", userId);
-            row.put("skuId", OrderRowMapper.text(item, "skuId"));
-            row.put("skuName", OrderRowMapper.text(item, "skuName"));
-            row.put("quantity", OrderRowMapper.intValue(item, "quantity", 0));
-            rows.add(row);
-        }
-        return rows;
-    }
-
     private Map<String, List<OrderCardSecretValueResponse>> secretsBySkuId(List<Map<String, Object>> rows) {
         Map<String, List<OrderCardSecretValueResponse>> result = new LinkedHashMap<>();
         if (rows == null || rows.isEmpty()) {
@@ -147,11 +121,11 @@ public class OrderCardSecretQueryServiceImpl implements OrderCardSecretQueryServ
             if (skuIdHex.isBlank()) {
                 continue;
             }
-            String secret = cryptoService.decrypt(
+            String secret = normalizeDisplaySecret(cryptoService.decrypt(
                     OrderRowMapper.text(row, "secretCiphertext"),
                     OrderRowMapper.text(row, "secretNonce"),
                     OrderRowMapper.text(row, "secretKeyVersion")
-            );
+            ));
             result.computeIfAbsent(skuIdHex, ignored -> new ArrayList<>())
                     .add(new OrderCardSecretValueResponse(
                             OrderRowMapper.text(row, "cardSecretId"),
@@ -160,6 +134,58 @@ public class OrderCardSecretQueryServiceImpl implements OrderCardSecretQueryServ
                     ));
         }
         return result;
+    }
+
+    private String normalizeDisplaySecret(String secret) {
+        String value = secret == null ? "" : secret;
+        String versioned = stripVersionedUuidPrefix(value);
+        if (!versioned.equals(value)) {
+            return versioned;
+        }
+        String leadingColon = stripLeadingUuid(value, ':');
+        if (!leadingColon.equals(value)) {
+            return leadingColon;
+        }
+        String leadingPipe = stripLeadingUuid(value, '|');
+        if (!leadingPipe.equals(value)) {
+            return leadingPipe;
+        }
+        String trailingColon = stripTrailingUuid(value, ':');
+        if (!trailingColon.equals(value)) {
+            return trailingColon;
+        }
+        return stripTrailingUuid(value, '|');
+    }
+
+    private String stripVersionedUuidPrefix(String value) {
+        if (!value.startsWith(VERSIONED_SECRET_PREFIX)) {
+            return value;
+        }
+        String rest = value.substring(VERSIONED_SECRET_PREFIX.length());
+        int separator = rest.indexOf('|');
+        if (separator <= 0) {
+            return value;
+        }
+        String uuid = rest.substring(0, separator);
+        return UUID_PATTERN.matcher(uuid).matches() ? rest.substring(separator + 1) : value;
+    }
+
+    private String stripLeadingUuid(String value, char separator) {
+        int index = value.indexOf(separator);
+        if (index <= 0) {
+            return value;
+        }
+        String uuid = value.substring(0, index);
+        return UUID_PATTERN.matcher(uuid).matches() ? value.substring(index + 1) : value;
+    }
+
+    private String stripTrailingUuid(String value, char separator) {
+        int index = value.lastIndexOf(separator);
+        if (index <= 0 || index >= value.length() - 1) {
+            return value;
+        }
+        String uuid = value.substring(index + 1);
+        return UUID_PATTERN.matcher(uuid).matches() ? value.substring(0, index) : value;
     }
 
     private String normalizeOrderNo(String orderNo) {

@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.product.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.product.dto.ProductCategoryRelationResponse;
 import com.example.ShoppingSystem.product.dto.PublicProductCategoryTreeNodeResponse;
 import com.example.ShoppingSystem.product.service.PublicProductCategoryBrowseService;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Tag(name = "商品分类", description = "前台商品分类浏览接口")
 @RestController
 @RequestMapping("/shopping/api/product-categories")
 public class PublicProductCategoryController {
@@ -25,16 +28,19 @@ public class PublicProductCategoryController {
         this.browseService = browseService;
     }
 
+    @Operation(summary = "查询前台商品分类树")
     @GetMapping("/tree")
     public List<PublicProductCategoryTreeNodeResponse> tree() {
         return browseService.tree();
     }
 
+    @Operation(summary = "搜索前台商品分类")
     @GetMapping("/search")
     public List<PublicProductCategoryTreeNodeResponse> search(@RequestParam(required = false) String keyword) {
         return browseService.search(keyword);
     }
 
+    @Operation(summary = "查询商品分类关联信息")
     @GetMapping("/{id}/relation")
     public ProductCategoryRelationResponse relation(@PathVariable Long id) {
         return relationService.getRelation(id);

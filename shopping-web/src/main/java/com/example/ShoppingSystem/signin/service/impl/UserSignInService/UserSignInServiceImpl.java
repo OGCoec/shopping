@@ -4,18 +4,13 @@ import com.example.ShoppingSystem.mapper.signin.UserSignInMapper;
 import com.example.ShoppingSystem.signin.config.UserSignInProperties;
 import com.example.ShoppingSystem.signin.dto.UserSignInResponse;
 import com.example.ShoppingSystem.signin.dto.UserSignInStatusResponse;
+import com.example.ShoppingSystem.signin.service.UserSignInService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
 import java.util.Map;
 
-import com.example.ShoppingSystem.signin.service.UserSignInService;
 @Service
 public class UserSignInServiceImpl implements UserSignInService {
 
@@ -24,12 +19,13 @@ public class UserSignInServiceImpl implements UserSignInService {
     private static final int THREE_DAY_REWARD_POINTS = 3;
     private static final int SEVEN_DAY_REWARD_POINTS = 10;
     private static final int THIRTY_DAY_REWARD_POINTS = 50;
+    private static final String PERIOD_UNIT_DAY = "DAY";
 
     private final UserSignInMapper userSignInMapper;
     private final UserSignInProperties properties;
 
     public UserSignInServiceImpl(UserSignInMapper userSignInMapper,
-                             UserSignInProperties properties) {
+                                 UserSignInProperties properties) {
         this.userSignInMapper = userSignInMapper;
         this.properties = properties;
     }
@@ -40,11 +36,12 @@ public class UserSignInServiceImpl implements UserSignInService {
             return UserSignInStatusResponse.authRequired();
         }
 
-        SignPeriod currentPeriod = currentPeriod();
+        LocalDate currentDate = LocalDate.now(properties.resolvedZoneId());
+        LocalDate previousDate = currentDate.minusDays(1);
         Map<String, Object> latestRecord = userSignInMapper.findLatestSignRecordByUserId(userId);
-        String latestPeriodKey = stringValue(latestRecord, "signPeriodKey");
-        boolean signedInCurrentPeriod = currentPeriod.signPeriodKey().equals(latestPeriodKey);
-        boolean streakStillActive = signedInCurrentPeriod || currentPeriod.previousPeriodKey().equals(latestPeriodKey);
+        LocalDate latestSignDate = localDateValue(latestRecord, "signDate");
+        boolean signedInCurrentPeriod = currentDate.equals(latestSignDate);
+        boolean streakStillActive = signedInCurrentPeriod || previousDate.equals(latestSignDate);
         int continuousCount = streakStillActive ? intValue(latestRecord, "continuousCount", 0) : 0;
         int cycleDay = streakStillActive ? intValue(latestRecord, "cycleDay", 0) : 0;
         Milestone next = nextMilestone(cycleDay);
@@ -59,7 +56,7 @@ public class UserSignInServiceImpl implements UserSignInService {
                 next.cycleDay(),
                 next.periodsToNext(),
                 next.rewardPoints(),
-                properties.resolvedPeriodUnit().name()
+                PERIOD_UNIT_DAY
         );
     }
 
@@ -69,15 +66,16 @@ public class UserSignInServiceImpl implements UserSignInService {
             return UserSignInResponse.authRequired();
         }
 
-        SignPeriod currentPeriod = currentPeriod();
+        LocalDate currentDate = LocalDate.now(properties.resolvedZoneId());
+        LocalDate previousDate = currentDate.minusDays(1);
         userSignInMapper.acquireUserSignInLock(userId);
         Map<String, Object> latestRecord = userSignInMapper.findLatestSignRecordByUserId(userId);
-        String latestPeriodKey = stringValue(latestRecord, "signPeriodKey");
-        if (currentPeriod.signPeriodKey().equals(latestPeriodKey)) {
+        LocalDate latestSignDate = localDateValue(latestRecord, "signDate");
+        if (currentDate.equals(latestSignDate)) {
             return alreadySigned(userId, latestRecord);
         }
 
-        int continuousCount = currentPeriod.previousPeriodKey().equals(latestPeriodKey)
+        int continuousCount = previousDate.equals(latestSignDate)
                 ? intValue(latestRecord, "continuousCount", 0) + 1
                 : 1;
         int cycleDay = cycleDay(continuousCount);
@@ -85,8 +83,7 @@ public class UserSignInServiceImpl implements UserSignInService {
 
         int inserted = userSignInMapper.insertSignRecordIgnore(
                 userId,
-                currentPeriod.signPeriodKey(),
-                currentPeriod.signDate(),
+                currentDate,
                 rewardPoints,
                 continuousCount,
                 cycleDay
@@ -124,35 +121,6 @@ public class UserSignInServiceImpl implements UserSignInService {
         );
     }
 
-    private SignPeriod currentPeriod() {
-        ZoneId zoneId = properties.resolvedZoneId();
-        ZonedDateTime now = ZonedDateTime.now(zoneId);
-        return switch (properties.resolvedPeriodUnit()) {
-            case SECOND -> secondPeriod(now);
-            case DAY -> dayPeriod(now);
-        };
-    }
-
-    private SignPeriod dayPeriod(ZonedDateTime now) {
-        OffsetDateTime signDate = now.toLocalDate().atStartOfDay(now.getZone()).toOffsetDateTime();
-        String periodDate = signDate.toLocalDate().toString();
-        return new SignPeriod(
-                "DAY:" + periodDate,
-                "DAY:" + signDate.toLocalDate().minusDays(1),
-                signDate
-        );
-    }
-
-    private SignPeriod secondPeriod(ZonedDateTime now) {
-        LocalDateTime currentSecond = now.toLocalDateTime().truncatedTo(ChronoUnit.SECONDS);
-        LocalDateTime previousSecond = currentSecond.minusSeconds(1);
-        return new SignPeriod(
-                "SECOND:" + currentSecond.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                "SECOND:" + previousSecond.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
-                currentSecond.atZone(now.getZone()).toOffsetDateTime()
-        );
-    }
-
     private int cycleDay(int continuousCount) {
         return ((Math.max(1, continuousCount) - 1) % CYCLE_LENGTH) + 1;
     }
@@ -179,12 +147,29 @@ public class UserSignInServiceImpl implements UserSignInService {
         return new Milestone(3, 3, THREE_DAY_REWARD_POINTS);
     }
 
-    private String stringValue(Map<String, Object> row, String key) {
+    private LocalDate localDateValue(Map<String, Object> row, String key) {
         if (row == null || row.isEmpty()) {
-            return "";
+            return null;
         }
         Object value = row.get(key);
-        return value == null ? "" : String.valueOf(value);
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.length() > 10) {
+            text = text.substring(0, 10);
+        }
+        try {
+            return LocalDate.parse(text);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private int intValue(Map<String, Object> row, String key, int defaultValue) {
@@ -221,11 +206,6 @@ public class UserSignInServiceImpl implements UserSignInService {
         } catch (NumberFormatException ignored) {
             return defaultValue;
         }
-    }
-
-    private record SignPeriod(String signPeriodKey,
-                              String previousPeriodKey,
-                              OffsetDateTime signDate) {
     }
 
     private record Milestone(int cycleDay,

@@ -16,4 +16,6 @@ public interface UserAuthFailureRiskService {
                                      UserAuthFailureType failureType,
                                      String ip,
                                      String deviceFingerprint);
+
+    void clearAuthFailureWindow(Long userId);
 }

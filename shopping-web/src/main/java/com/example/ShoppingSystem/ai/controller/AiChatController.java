@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.ai.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.ai.dto.AiChatStreamRequest;
 import com.example.ShoppingSystem.ai.dto.AiCompressionRequest;
 import com.example.ShoppingSystem.ai.dto.AiCompressionResponse;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+@Tag(name = "用户AI聊天", description = "用户AI聊天接口")
 @RestController
 @RequestMapping("/shopping/user/api/ai")
 public class AiChatController {
@@ -31,17 +34,20 @@ public class AiChatController {
         this.aiContextCompressionService = aiContextCompressionService;
     }
 
+    @Operation(summary = "查询AI模型列表")
     @GetMapping("/models")
     public AiModelsResponse models() {
         requireUserId();
         return aiChatService.models();
     }
 
+    @Operation(summary = "流式发送AI聊天消息")
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestBody AiChatStreamRequest request) {
         return aiChatService.stream(requireUserId(), request);
     }
 
+    @Operation(summary = "压缩AI聊天上下文")
     @PostMapping("/chat/compress")
     public AiCompressionResponse compress(@RequestBody AiCompressionRequest request) {
         requireUserId();

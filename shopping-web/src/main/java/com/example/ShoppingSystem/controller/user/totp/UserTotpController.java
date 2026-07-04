@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.user.totp;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.controller.user.totp.dto.TotpSetupConfirmRequest;
 import com.example.ShoppingSystem.controller.user.totp.dto.TotpSetupStartResponse;
 import com.example.ShoppingSystem.controller.user.totp.dto.TotpVerifyRequest;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "用户动态口令", description = "用户动态口令设置和验证接口")
 @RestController
 @RequestMapping("/shopping/user/totp")
 public class UserTotpController {
@@ -33,6 +36,7 @@ public class UserTotpController {
         this.userTotpService = userTotpService;
     }
 
+    @Operation(summary = "查询动态口令状态")
     @GetMapping("/status")
     public ResponseEntity<TotpStatusResponse> status(Authentication authentication,
                                                      HttpServletRequest request) {
@@ -40,6 +44,7 @@ public class UserTotpController {
         return ResponseEntity.ok(new TotpStatusResponse(true, userTotpService.isEnabled(userId)));
     }
 
+    @Operation(summary = "开始设置动态口令")
     @PostMapping("/setup")
     public ResponseEntity<TotpSetupStartResponse> startSetup(Authentication authentication,
                                                             HttpServletRequest request) {
@@ -48,6 +53,7 @@ public class UserTotpController {
         return ResponseEntity.ok(TotpSetupStartResponse.from(result));
     }
 
+    @Operation(summary = "确认设置动态口令")
     @PostMapping("/setup/confirm")
     public ResponseEntity<TotpVerifyResponse> confirmSetup(@RequestBody TotpSetupConfirmRequest body,
                                                            Authentication authentication,
@@ -58,6 +64,7 @@ public class UserTotpController {
                 .body(TotpVerifyResponse.from(result));
     }
 
+    @Operation(summary = "验证动态口令")
     @PostMapping("/verify")
     public ResponseEntity<TotpVerifyResponse> verify(@RequestBody TotpVerifyRequest body,
                                                      Authentication authentication,
@@ -68,6 +75,7 @@ public class UserTotpController {
                 .body(TotpVerifyResponse.from(result));
     }
 
+    @Operation(summary = "关闭动态口令")
     @DeleteMapping
     public ResponseEntity<TotpVerifyResponse> disable(Authentication authentication,
                                                      HttpServletRequest request) {

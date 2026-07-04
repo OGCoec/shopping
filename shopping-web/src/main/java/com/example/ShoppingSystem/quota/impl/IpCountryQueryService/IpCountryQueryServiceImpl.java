@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -67,11 +68,40 @@ public class IpCountryQueryServiceImpl implements IpCountryQueryService {
     }
 
     public CountryQueryResult queryCountry(String publicIp) {
-        GeoQueryResult result = queryGeo(publicIp);
-        if (result.success() && result.geo() != null && result.geo().hasCountry()) {
-            return CountryQueryResult.success(result.geo().country(), result.source());
+        if (!enabled) {
+            return CountryQueryResult.failed(SOURCE_NONE, "country_cache_disabled");
         }
-        return CountryQueryResult.failed(result.source(), result.reason());
+        if (isBlank(publicIp)) {
+            return CountryQueryResult.failed(SOURCE_NONE, "invalid_ip");
+        }
+
+        String ip = publicIp.trim();
+
+        IpGeoSnapshot localGeo = localCacheStore.getGeo(ip);
+        if (hasCountry(localGeo)) {
+            return CountryQueryResult.success(localGeo.country(), SOURCE_CAFFEINE);
+        }
+
+        IpGeoSnapshot redisGeo = readGeoFromRedis(ip);
+        if (hasCountry(redisGeo)) {
+            writeGeoToCache(ip, redisGeo, SOURCE_REDIS);
+            return CountryQueryResult.success(redisGeo.country(), SOURCE_REDIS);
+        }
+
+        IpGeoSnapshot dbGeo = readGeoFromDb(ip);
+        if (hasCountry(dbGeo)) {
+            writeGeoToCache(ip, dbGeo, SOURCE_DB);
+            return CountryQueryResult.success(dbGeo.country(), SOURCE_DB);
+        }
+
+        IpGeoSnapshot binGeo = ip2LocationBinCountryService.queryGeo(ip);
+        if (hasCountry(binGeo)) {
+            writeGeoToCache(ip, binGeo, SOURCE_BIN);
+            writeGeoToDb(ip, binGeo, SOURCE_BIN);
+            return CountryQueryResult.success(binGeo.country(), SOURCE_BIN);
+        }
+
+        return CountryQueryResult.failed(SOURCE_BIN, "country_not_found");
     }
 
     public GeoQueryResult queryGeo(String publicIp) {
@@ -103,8 +133,8 @@ public class IpCountryQueryServiceImpl implements IpCountryQueryService {
 
         IpGeoSnapshot binGeo = ip2LocationBinCountryService.queryGeo(ip);
         if (isUsableGeo(binGeo)) {
-            // BIN hits are cached locally and in Redis, but not written back to DB.
             writeGeoToCache(ip, binGeo, SOURCE_BIN);
+            writeGeoToDb(ip, binGeo, SOURCE_BIN);
             return GeoQueryResult.success(binGeo, SOURCE_BIN);
         }
 
@@ -143,6 +173,53 @@ public class IpCountryQueryServiceImpl implements IpCountryQueryService {
         } catch (Exception e) {
             log.debug("IP geo Redis read failed, ip={}, reason={}", ip, e.getMessage());
             return null;
+        }
+    }
+
+    private void writeGeoToDb(String ip, IpGeoSnapshot geo, String source) {
+        if (isBlank(ip) || !hasCountry(geo)) {
+            return;
+        }
+        IpGeoSnapshot normalized = normalizeGeo(geo);
+        if (!hasCountry(normalized)) {
+            return;
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        String sourceProvider = "IP2LOCATION_" + source;
+        try {
+            String rawJson = objectMapper.writeValueAsString(new DbIpGeoValue(
+                    normalized.country(),
+                    normalized.region(),
+                    normalized.city(),
+                    normalized.latitude(),
+                    normalized.longitude(),
+                    source,
+                    System.currentTimeMillis()));
+            if (ip.contains(":")) {
+                ipReputationProfileMapper.upsertIpv6GeoOnly(
+                        ip,
+                        normalized.country(),
+                        normalized.region(),
+                        normalized.city(),
+                        normalized.latitude(),
+                        normalized.longitude(),
+                        sourceProvider,
+                        rawJson,
+                        now);
+            } else {
+                ipReputationProfileMapper.upsertIpv4GeoOnly(
+                        ip,
+                        normalized.country(),
+                        normalized.region(),
+                        normalized.city(),
+                        normalized.latitude(),
+                        normalized.longitude(),
+                        sourceProvider,
+                        rawJson,
+                        now);
+            }
+        } catch (Exception e) {
+            log.debug("IP geo DB write failed, ip={}, country={}, reason={}", ip, normalized.country(), e.getMessage());
         }
     }
 
@@ -390,6 +467,10 @@ public class IpCountryQueryServiceImpl implements IpCountryQueryService {
         return geo != null && geo.hasAnyGeo();
     }
 
+    private boolean hasCountry(IpGeoSnapshot geo) {
+        return geo != null && geo.hasCountry();
+    }
+
     private String toStringValue(Object value) {
         return value == null ? null : value.toString();
     }
@@ -405,5 +486,14 @@ public class IpCountryQueryServiceImpl implements IpCountryQueryService {
                                         BigDecimal longitude,
                                         String source,
                                         long updatedAtEpochMillis) {
+    }
+
+    private record DbIpGeoValue(String country,
+                                String region,
+                                String city,
+                                BigDecimal latitude,
+                                BigDecimal longitude,
+                                String source,
+                                long updatedAtEpochMillis) {
     }
 }

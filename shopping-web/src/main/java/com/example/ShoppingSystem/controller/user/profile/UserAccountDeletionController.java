@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.user.profile;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.security.token.AuthTokenService;
 import com.example.ShoppingSystem.security.token.AuthUserContext;
@@ -18,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 
+@Tag(name = "用户注销", description = "用户账号注销申请接口")
 @RestController
 @RequestMapping("/shopping/user/profile/deletion")
 public class UserAccountDeletionController {
@@ -31,6 +34,7 @@ public class UserAccountDeletionController {
         this.authTokenService = authTokenService;
     }
 
+    @Operation(summary = "提交账号注销申请")
     @PostMapping
     public ResponseEntity<UserAccountDeletionResponse> submitDeletion(@RequestBody UserAccountDeletionRequest body,
                                                                       Authentication authentication,

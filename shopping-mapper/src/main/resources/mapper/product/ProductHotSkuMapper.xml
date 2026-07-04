@@ -126,6 +126,50 @@ WHERE h.sku_id = #{skuId}
         ]]>
     </select>
 
+    <select id="listRuntimeStocksBySkuIds" resultType="map">
+        <![CDATA[
+WITH requested(id) AS (
+    VALUES
+        ]]>
+        <foreach collection="ids" item="id" separator=",">
+            (#{id})
+        </foreach>
+        <![CDATA[
+),
+normalized AS (
+    SELECT DISTINCT id
+    FROM requested
+),
+target_sku AS (
+    SELECT s.id,
+           s.stock_quantity
+    FROM normalized n
+    INNER JOIN product_sku s ON s.id = n.id
+    WHERE s.spu_id = #{spuId}
+      AND s.status = 'ACTIVE'
+),
+active_hot AS (
+    SELECT h.sku_id,
+           h.stock_quantity,
+           h.remaining_quantity
+    FROM product_hot_sku h
+    INNER JOIN target_sku s ON s.id = h.sku_id
+    WHERE h.spu_id = #{spuId}
+      AND h.status = 'ENABLED'
+      AND (h.start_at IS NULL OR h.start_at <= #{now})
+      AND (h.end_at IS NULL OR h.end_at > #{now})
+)
+SELECT encode(s.id, 'hex') AS "skuId",
+       s.stock_quantity AS "skuStockQuantity",
+       h.stock_quantity AS "hotStockQuantity",
+       h.remaining_quantity AS "hotRemainingQuantity",
+       (h.sku_id IS NOT NULL) AS "hotSku"
+FROM target_sku s
+LEFT JOIN active_hot h ON h.sku_id = s.id
+ORDER BY encode(s.id, 'hex')
+        ]]>
+    </select>
+
     <select id="upsertHotSkus" resultType="map">
         <![CDATA[
 WITH target_spu AS (
@@ -239,6 +283,82 @@ SELECT (SELECT spu_exists FROM stats) AS "spuExists",
            FROM upserted
            INNER JOIN product_sku s ON s.id = upserted.sku_id
        ), '[]'::jsonb)::text AS "redisItemsJson"
+        ]]>
+    </select>
+
+    <select id="batchWritebackRuntimeStock" resultType="map">
+        <![CDATA[
+WITH raw AS (
+    SELECT raw.sku_id_hex AS sku_id_hex,
+           raw.sku_id_text AS sku_id_text,
+           raw.remaining_quantity AS remaining_quantity
+    FROM jsonb_to_recordset(CAST(#{itemsJson} AS jsonb)) AS raw(
+        sku_id_hex text,
+        sku_id_text text,
+        remaining_quantity integer
+    )
+),
+incoming AS (
+    SELECT DISTINCT ON (decode(sku_id_hex, 'hex'))
+           decode(sku_id_hex, 'hex') AS sku_id,
+           sku_id_text,
+           remaining_quantity
+    FROM raw
+    WHERE sku_id_hex IS NOT NULL
+      AND sku_id_hex ~ '^[0-9A-Fa-f]{32}$'
+      AND remaining_quantity IS NOT NULL
+      AND remaining_quantity >= 0
+    ORDER BY decode(sku_id_hex, 'hex'), sku_id_text
+),
+matched AS (
+    SELECT i.sku_id,
+           i.sku_id_text,
+           i.remaining_quantity AS new_remaining_quantity,
+           h.remaining_quantity AS old_remaining_quantity,
+           h.stock_quantity AS hot_stock_quantity,
+           s.stock_quantity AS sku_stock_quantity,
+           i.remaining_quantity - h.remaining_quantity AS quantity_diff
+    FROM incoming i
+    INNER JOIN product_hot_sku h ON h.sku_id = i.sku_id
+    INNER JOIN product_sku s ON s.id = h.sku_id
+),
+stats AS (
+    SELECT (SELECT COUNT(*) FROM incoming) AS requested_count,
+           (SELECT COUNT(*) FROM matched) AS matched_count,
+           COALESCE((
+               SELECT COUNT(*)
+               FROM matched
+               WHERE new_remaining_quantity > hot_stock_quantity
+                  OR sku_stock_quantity + quantity_diff < 0
+           ), 0) AS invalid_count
+),
+valid_target AS (
+    SELECT m.*
+    FROM matched m
+    CROSS JOIN stats st
+    WHERE st.invalid_count = 0
+),
+updated_hot AS (
+    UPDATE product_hot_sku h
+    SET remaining_quantity = v.new_remaining_quantity,
+        updated_at = NOW()
+    FROM valid_target v
+    WHERE h.sku_id = v.sku_id
+    RETURNING h.sku_id, v.quantity_diff
+),
+updated_sku AS (
+    UPDATE product_sku s
+    SET stock_quantity = s.stock_quantity + u.quantity_diff,
+        updated_at = NOW()
+    FROM updated_hot u
+    WHERE s.id = u.sku_id
+    RETURNING s.id
+)
+SELECT (SELECT requested_count FROM stats) AS "requestedCount",
+       (SELECT matched_count FROM stats) AS "matchedCount",
+       (SELECT invalid_count FROM stats) AS "invalidCount",
+       (SELECT COUNT(*) FROM updated_hot) AS "hotUpdatedCount",
+       (SELECT COUNT(*) FROM updated_sku) AS "skuUpdatedCount"
         ]]>
     </select>
 

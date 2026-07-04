@@ -2,7 +2,7 @@
 <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Sign In Points Test Plan" enabled="true">
-      <stringProp name="TestPlan.comments">Covers second-level sign-in milestones, break reset, and same-second concurrent idempotency.</stringProp>
+      <stringProp name="TestPlan.comments">Covers day-level duplicate clicks, same-day concurrent idempotency, and different-user same-day sign-in.</stringProp>
       <boolProp name="TestPlan.functional_mode">false</boolProp>
       <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
       <boolProp name="TestPlan.serialize_threadgroups">true</boolProp>
@@ -11,11 +11,11 @@
       </elementProp>
     </TestPlan>
     <hashTree>
-      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Continuous 33 Periods User 2" enabled="true">
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Same-Day Repeat User 2" enabled="true">
         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
           <boolProp name="LoopController.continue_forever">false</boolProp>
-          <stringProp name="LoopController.loops">${__P(CONTINUOUS_LOOPS,33)}</stringProp>
+          <stringProp name="LoopController.loops">${__P(REPEAT_LOOPS,2)}</stringProp>
         </elementProp>
         <stringProp name="ThreadGroup.num_threads">1</stringProp>
         <stringProp name="ThreadGroup.ramp_time">1</stringProp>
@@ -25,10 +25,10 @@
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
       </ThreadGroup>
       <hashTree>
-        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Continuous User Token CSV" enabled="true">
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Repeat User Token CSV" enabled="true">
           <stringProp name="delimiter">,</stringProp>
           <stringProp name="fileEncoding">UTF-8</stringProp>
-          <stringProp name="filename">${__P(TOKEN_CSV_CONTINUOUS,loadtest-output/sign-in-user-2-token.csv)}</stringProp>
+          <stringProp name="filename">${__P(TOKEN_CSV_REPEAT,loadtest-output/sign-in-user-2-token.csv)}</stringProp>
           <boolProp name="ignoreFirstLine">true</boolProp>
           <boolProp name="quotedData">true</boolProp>
           <boolProp name="recycle">true</boolProp>
@@ -54,7 +54,7 @@
           </collectionProp>
         </HeaderManager>
         <hashTree/>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Continuous POST Sign In" enabled="true">
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Repeat POST Sign In" enabled="true">
           <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
             <collectionProp name="Arguments.arguments"/>
           </elementProp>
@@ -72,40 +72,19 @@
           <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
         </HTTPSamplerProxy>
         <hashTree>
-          <JSR223Timer guiclass="TestBeanGUI" testclass="JSR223Timer" testname="Next Sign-In Second Boundary" enabled="true">
-            <stringProp name="cacheKey">sign-in-continuous-second-boundary</stringProp>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Repeat Sequence" enabled="true">
+            <stringProp name="cacheKey">sign-in-repeat-sequence</stringProp>
             <stringProp name="filename"></stringProp>
             <stringProp name="parameters"></stringProp>
             <stringProp name="script"><![CDATA[
-long offsetMs = ((props.get('CONTINUOUS_BOUNDARY_OFFSET_MS') ?: '120') as String) as long
-Long nextSecond = vars.getObject('continuousNextSecond') as Long
-long nowMs = System.currentTimeMillis()
-if (nextSecond == null) {
-    nextSecond = Math.floorDiv(nowMs, 1000L) + 1L
-}
-long targetMs = nextSecond * 1000L + offsetMs
-long sleepMs = targetMs - nowMs
-if (sleepMs > 0L) {
-    Thread.sleep(sleepMs)
-}
-vars.putObject('continuousNextSecond', nextSecond + 1L)
-]]></stringProp>
-            <stringProp name="scriptLanguage">groovy</stringProp>
-          </JSR223Timer>
-          <hashTree/>
-          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Continuous Sequence" enabled="true">
-            <stringProp name="cacheKey">sign-in-continuous-sequence</stringProp>
-            <stringProp name="filename"></stringProp>
-            <stringProp name="parameters"></stringProp>
-            <stringProp name="script"><![CDATA[
-def next = ((vars.get('continuousSeq') ?: '0') as int) + 1
-vars.put('continuousSeq', next.toString())
+def next = ((vars.get('repeatSeq') ?: '0') as int) + 1
+vars.put('repeatSeq', next.toString())
 ]]></stringProp>
             <stringProp name="scriptLanguage">groovy</stringProp>
           </JSR223PreProcessor>
           <hashTree/>
-          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Sign In Response" enabled="true">
-            <stringProp name="cacheKey">sign-in-capture-continuous</stringProp>
+          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Repeat Response" enabled="true">
+            <stringProp name="cacheKey">sign-in-capture-repeat</stringProp>
             <stringProp name="filename"></stringProp>
             <stringProp name="parameters"></stringProp>
             <stringProp name="script"><![CDATA[
@@ -118,15 +97,15 @@ try {
             " rewardPoints=${json.rewardPoints}" +
             " continuousCount=${json.continuousCount}" +
             " cycleDay=${json.cycleDay}" +
-            " seq=${vars.get('continuousSeq')}")
+            " seq=${vars.get('repeatSeq')}")
 } catch (Throwable ignored) {
 }
 ]]></stringProp>
             <stringProp name="scriptLanguage">groovy</stringProp>
           </JSR223PostProcessor>
           <hashTree/>
-          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Continuous Reward Assertion" enabled="true">
-            <stringProp name="cacheKey">sign-in-continuous-assertion</stringProp>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Repeat Same-Day Assertion" enabled="true">
+            <stringProp name="cacheKey">sign-in-repeat-assertion</stringProp>
             <stringProp name="filename"></stringProp>
             <stringProp name="parameters"></stringProp>
             <stringProp name="script"><![CDATA[
@@ -136,7 +115,7 @@ def fail = { msg ->
 }
 
 if ((prev.getResponseCode() ?: '') != '200') {
-    fail("Expected HTTP 200 but got ${prev.getResponseCode()}, seq=${vars.get('continuousSeq')}")
+    fail("Expected HTTP 200 but got ${prev.getResponseCode()}, seq=${vars.get('repeatSeq')}")
     return
 }
 
@@ -144,33 +123,26 @@ def json
 try {
     json = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString() ?: '{}')
 } catch (Throwable e) {
-    fail("Response is not valid JSON, seq=${vars.get('continuousSeq')}: ${e.message}")
+    fail("Response is not valid JSON, seq=${vars.get('repeatSeq')}: ${e.message}")
     return
 }
 
-def seq = (vars.get('continuousSeq') ?: '0') as int
-if (json.success != true || json.code != 'SIGN_IN_OK') {
-    fail("Expected SIGN_IN_OK success at seq=${seq}, body=${prev.getResponseDataAsString()}")
+def seq = (vars.get('repeatSeq') ?: '0') as int
+if (seq == 1) {
+    if (json.success != true || json.code != 'SIGN_IN_OK' ||
+            (json.rewardPoints as int) != 1 ||
+            (json.continuousCount as int) != 1 ||
+            (json.cycleDay as int) != 1) {
+        fail("Unexpected first same-day sign-in response: ${prev.getResponseDataAsString()}")
+    }
     return
 }
 
-def expected = [
-        1 : [reward: 1, continuous: 1, cycle: 1],
-        3 : [reward: 3, continuous: 3, cycle: 3],
-        7 : [reward: 10, continuous: 7, cycle: 7],
-        30: [reward: 50, continuous: 30, cycle: 30],
-        31: [reward: 1, continuous: 31, cycle: 1],
-        32: [reward: 1, continuous: 32, cycle: 2],
-        33: [reward: 3, continuous: 33, cycle: 3]
-]
-def row = expected[seq]
-if (row == null) {
-    return
-}
-if ((json.rewardPoints as int) != row.reward ||
-        (json.continuousCount as int) != row.continuous ||
-        (json.cycleDay as int) != row.cycle) {
-    fail("Unexpected milestone at seq=${seq}. expected=${row}, body=${prev.getResponseDataAsString()}")
+if (json.success != true || json.code != 'SIGN_IN_ALREADY_DONE' ||
+        (json.rewardPoints as int) != 0 ||
+        (json.continuousCount as int) != 1 ||
+        (json.cycleDay as int) != 1) {
+    fail("Duplicate same-day sign-in must be idempotent, seq=${seq}, body=${prev.getResponseDataAsString()}")
 }
 ]]></stringProp>
             <stringProp name="scriptLanguage">groovy</stringProp>
@@ -178,7 +150,7 @@ if ((json.rewardPoints as int) != row.reward ||
           <hashTree/>
         </hashTree>
       </hashTree>
-      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Break Reset User 3" enabled="true">
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Different Same-Day User 3" enabled="true">
         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
           <boolProp name="LoopController.continue_forever">false</boolProp>
@@ -192,10 +164,10 @@ if ((json.rewardPoints as int) != row.reward ||
         <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
       </ThreadGroup>
       <hashTree>
-        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Reset User Token CSV" enabled="true">
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Other User Token CSV" enabled="true">
           <stringProp name="delimiter">,</stringProp>
           <stringProp name="fileEncoding">UTF-8</stringProp>
-          <stringProp name="filename">${__P(TOKEN_CSV_RESET,loadtest-output/sign-in-user-3-token.csv)}</stringProp>
+          <stringProp name="filename">${__P(TOKEN_CSV_OTHER,loadtest-output/sign-in-user-3-token.csv)}</stringProp>
           <boolProp name="ignoreFirstLine">true</boolProp>
           <boolProp name="quotedData">true</boolProp>
           <boolProp name="recycle">true</boolProp>
@@ -221,7 +193,7 @@ if ((json.rewardPoints as int) != row.reward ||
           </collectionProp>
         </HeaderManager>
         <hashTree/>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Reset First POST Sign In" enabled="true">
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Other User POST Sign In" enabled="true">
           <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
             <collectionProp name="Arguments.arguments"/>
           </elementProp>
@@ -239,8 +211,8 @@ if ((json.rewardPoints as int) != row.reward ||
           <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
         </HTTPSamplerProxy>
         <hashTree>
-          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Reset First Response" enabled="true">
-            <stringProp name="cacheKey">sign-in-capture-reset-first</stringProp>
+          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Other User Response" enabled="true">
+            <stringProp name="cacheKey">sign-in-capture-other</stringProp>
             <stringProp name="filename"></stringProp>
             <stringProp name="parameters"></stringProp>
             <stringProp name="script"><![CDATA[
@@ -259,8 +231,8 @@ try {
             <stringProp name="scriptLanguage">groovy</stringProp>
           </JSR223PostProcessor>
           <hashTree/>
-          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Reset First Assertion" enabled="true">
-            <stringProp name="cacheKey">sign-in-reset-first-assertion</stringProp>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Other User Same-Day Assertion" enabled="true">
+            <stringProp name="cacheKey">sign-in-other-assertion</stringProp>
             <stringProp name="filename"></stringProp>
             <stringProp name="parameters"></stringProp>
             <stringProp name="script"><![CDATA[
@@ -277,74 +249,7 @@ if (json.success != true || json.code != 'SIGN_IN_OK' ||
         (json.rewardPoints as int) != 1 ||
         (json.continuousCount as int) != 1 ||
         (json.cycleDay as int) != 1) {
-    fail("Unexpected reset first response: ${prev.getResponseDataAsString()}")
-}
-]]></stringProp>
-            <stringProp name="scriptLanguage">groovy</stringProp>
-          </JSR223Assertion>
-          <hashTree/>
-        </hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="Reset Second POST Sign In After Break" enabled="true">
-          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
-            <collectionProp name="Arguments.arguments"/>
-          </elementProp>
-          <stringProp name="HTTPSampler.domain">${__P(HOST,127.0.0.1)}</stringProp>
-          <stringProp name="HTTPSampler.port">${__P(PORT,6655)}</stringProp>
-          <stringProp name="HTTPSampler.protocol">${__P(PROTOCOL,https)}</stringProp>
-          <stringProp name="HTTPSampler.path">/shopping/user/api/sign-in</stringProp>
-          <stringProp name="HTTPSampler.method">POST</stringProp>
-          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
-          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
-          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
-          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
-          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
-          <stringProp name="HTTPSampler.connect_timeout">${__P(CONNECT_TIMEOUT,)}</stringProp>
-          <stringProp name="HTTPSampler.response_timeout">${__P(RESPONSE_TIMEOUT,)}</stringProp>
-        </HTTPSamplerProxy>
-        <hashTree>
-          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="Break One Second Cycle" enabled="true">
-            <stringProp name="ConstantTimer.delay">${__P(RESET_BREAK_MS,2100)}</stringProp>
-          </ConstantTimer>
-          <hashTree/>
-          <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Capture Reset Second Response" enabled="true">
-            <stringProp name="cacheKey">sign-in-capture-reset-second</stringProp>
-            <stringProp name="filename"></stringProp>
-            <stringProp name="parameters"></stringProp>
-            <stringProp name="script"><![CDATA[
-try {
-    def json = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString() ?: '{}')
-    def code = (json.code ?: '').toString()
-    vars.put('businessCode', code)
-    prev.setResponseMessage((prev.getResponseMessage() ?: '') +
-            " businessCode=${code}" +
-            " rewardPoints=${json.rewardPoints}" +
-            " continuousCount=${json.continuousCount}" +
-            " cycleDay=${json.cycleDay}")
-} catch (Throwable ignored) {
-}
-]]></stringProp>
-            <stringProp name="scriptLanguage">groovy</stringProp>
-          </JSR223PostProcessor>
-          <hashTree/>
-          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Reset Second Assertion" enabled="true">
-            <stringProp name="cacheKey">sign-in-reset-second-assertion</stringProp>
-            <stringProp name="filename"></stringProp>
-            <stringProp name="parameters"></stringProp>
-            <stringProp name="script"><![CDATA[
-def fail = { msg ->
-    AssertionResult.setFailure(true)
-    AssertionResult.setFailureMessage(msg.toString())
-}
-if ((prev.getResponseCode() ?: '') != '200') {
-    fail("Expected HTTP 200 but got ${prev.getResponseCode()}")
-    return
-}
-def json = new groovy.json.JsonSlurper().parseText(prev.getResponseDataAsString() ?: '{}')
-if (json.success != true || json.code != 'SIGN_IN_OK' ||
-        (json.rewardPoints as int) != 1 ||
-        (json.continuousCount as int) != 1 ||
-        (json.cycleDay as int) != 1) {
-    fail("Unexpected reset second response after break: ${prev.getResponseDataAsString()}")
+    fail("Unexpected other-user same-day response: ${prev.getResponseDataAsString()}")
 }
 ]]></stringProp>
             <stringProp name="scriptLanguage">groovy</stringProp>
@@ -352,7 +257,7 @@ if (json.success != true || json.code != 'SIGN_IN_OK' ||
           <hashTree/>
         </hashTree>
       </hashTree>
-      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Same Second Concurrent User 1" enabled="true">
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Same-Day Concurrent User 1" enabled="true">
         <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
         <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
           <boolProp name="LoopController.continue_forever">false</boolProp>
@@ -395,33 +300,7 @@ if (json.success != true || json.code != 'SIGN_IN_OK' ||
           </collectionProp>
         </HeaderManager>
         <hashTree/>
-        <JSR223Timer guiclass="TestBeanGUI" testclass="JSR223Timer" testname="Concurrent Sign-In Second Boundary" enabled="true">
-          <stringProp name="cacheKey">sign-in-concurrent-second-boundary</stringProp>
-          <stringProp name="filename"></stringProp>
-          <stringProp name="parameters"></stringProp>
-          <stringProp name="script"><![CDATA[
-long offsetMs = ((props.get('CONCURRENT_BOUNDARY_OFFSET_MS') ?: '80') as String) as long
-String key = 'signInConcurrentTargetSecond'
-Long targetSecond = props.get(key) as Long
-if (targetSecond == null) {
-    synchronized (props) {
-        targetSecond = props.get(key) as Long
-        if (targetSecond == null) {
-            targetSecond = Math.floorDiv(System.currentTimeMillis(), 1000L) + 2L
-            props.put(key, targetSecond)
-        }
-    }
-}
-long targetMs = targetSecond * 1000L + offsetMs
-long sleepMs = targetMs - System.currentTimeMillis()
-if (sleepMs > 0L) {
-    Thread.sleep(sleepMs)
-}
-]]></stringProp>
-          <stringProp name="scriptLanguage">groovy</stringProp>
-        </JSR223Timer>
-        <hashTree/>
-        <SyncTimer guiclass="TestBeanGUI" testclass="SyncTimer" testname="Same Second Synchronizing Timer" enabled="true">
+        <SyncTimer guiclass="TestBeanGUI" testclass="SyncTimer" testname="Same-Day Synchronizing Timer" enabled="true">
           <intProp name="groupSize">50</intProp>
           <longProp name="timeoutInMs">5000</longProp>
         </SyncTimer>

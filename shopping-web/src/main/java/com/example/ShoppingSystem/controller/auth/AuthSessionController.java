@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.auth;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.security.token.AuthTokenRefreshResult;
 import com.example.ShoppingSystem.security.token.AuthTokenService;
 import com.example.ShoppingSystem.security.token.AuthUserContext;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "用户认证会话", description = "用户认证会话和令牌接口")
 @RestController
 @RequestMapping("/shopping/user/auth")
 public class AuthSessionController {
@@ -23,6 +26,7 @@ public class AuthSessionController {
         this.authTokenService = authTokenService;
     }
 
+    @Operation(summary = "查询当前用户会话")
     @GetMapping("/me")
     public ResponseEntity<AuthMeResponse> currentUser(Authentication authentication) {
         AuthUserContext context = currentUserContext(authentication);
@@ -33,6 +37,7 @@ public class AuthSessionController {
         return ResponseEntity.ok(new AuthMeResponse(true, context));
     }
 
+    @Operation(summary = "刷新用户登录令牌")
     @PostMapping("/refresh")
     public ResponseEntity<AuthActionResponse> refresh(HttpServletRequest request,
                                                       HttpServletResponse response) {
@@ -41,6 +46,7 @@ public class AuthSessionController {
                 .body(new AuthActionResponse(result.success(), result.error(), result.message()));
     }
 
+    @Operation(summary = "退出当前用户会话")
     @PostMapping("/logout")
     public AuthActionResponse logoutCurrent(HttpServletRequest request,
                                             HttpServletResponse response) {
@@ -48,6 +54,7 @@ public class AuthSessionController {
         return new AuthActionResponse(true, null, "logged_out");
     }
 
+    @Operation(summary = "退出全部用户会话")
     @PostMapping("/logout-all")
     public AuthActionResponse logoutAll(Authentication authentication,
                                         HttpServletRequest request,

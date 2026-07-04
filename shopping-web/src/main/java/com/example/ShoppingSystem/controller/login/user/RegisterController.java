@@ -59,7 +59,7 @@ import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Set;
 
-@Tag(name = "register", description = "register flow precheck, step guard, and email verification")
+@Tag(name = "用户注册", description = "用户注册流程和验证码接口")
 @RestController
 @RequestMapping("/shopping/user/register")
 public class RegisterController {
@@ -112,7 +112,7 @@ public class RegisterController {
         this.terminatedAccountEmailBloomService = terminatedAccountEmailBloomService;
     }
 
-    @Operation(summary = "Start or restart the server-side register flow after the email step.")
+    @Operation(summary = "启动用户注册流程")
     @PostMapping("/flow/start")
     public ResponseEntity<?> startRegisterFlow(@RequestBody RegisterFlowStartRequest request,
                                                HttpServletRequest httpServletRequest,
@@ -174,7 +174,7 @@ public class RegisterController {
         ));
     }
 
-    @Operation(summary = "Read current server-side register flow state.")
+    @Operation(summary = "查询当前注册流程")
     @GetMapping("/flow/current")
     public ResponseEntity<?> getCurrentRegisterFlow(HttpServletRequest request,
                                                     HttpServletResponse response) {
@@ -199,7 +199,7 @@ public class RegisterController {
         ));
     }
 
-    @Operation(summary = "Get register captcha image")
+    @Operation(summary = "获取注册图形验证码")
     @GetMapping("/hutoolcaptcha")
     public ResponseEntity<?> getRegisterCaptcha(@RequestParam(required = false) String uuid,
                                                 @RequestParam(required = false) String email,
@@ -238,7 +238,7 @@ public class RegisterController {
                 .build());
     }
 
-    @Operation(summary = "Get Tianai rotate captcha")
+    @Operation(summary = "获取注册旋转验证码")
     @GetMapping("/tianai/rotate")
     public ResponseEntity<?> getTianaiRotateCaptcha(@RequestParam(required = false) String captchaId,
                                                     @RequestParam(required = false) String email,
@@ -260,7 +260,7 @@ public class RegisterController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_ROTATE, captchaId)));
     }
 
-    @Operation(summary = "Get Tianai slider captcha")
+    @Operation(summary = "获取注册滑块验证码")
     @GetMapping("/tianai/slider")
     public ResponseEntity<?> getTianaiSliderCaptcha(@RequestParam(required = false) String captchaId,
                                                     @RequestParam(required = false) String email,
@@ -282,7 +282,7 @@ public class RegisterController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_SLIDER, captchaId)));
     }
 
-    @Operation(summary = "Get Tianai concat captcha")
+    @Operation(summary = "获取注册拼图验证码")
     @GetMapping("/tianai/concat")
     public ResponseEntity<?> getTianaiConcatCaptcha(@RequestParam(required = false) String captchaId,
                                                     @RequestParam(required = false) String email,
@@ -304,7 +304,7 @@ public class RegisterController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_CONCAT, captchaId)));
     }
 
-    @Operation(summary = "Get Tianai word click captcha")
+    @Operation(summary = "获取注册文字点选验证码")
     @GetMapping("/tianai/word-click")
     public ResponseEntity<?> getTianaiWordClickCaptcha(@RequestParam(required = false) String captchaId,
                                                        @RequestParam(required = false) String email,
@@ -326,7 +326,7 @@ public class RegisterController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_WORD_IMAGE_CLICK, captchaId)));
     }
 
-    @Operation(summary = "Verify Tianai rotate captcha")
+    @Operation(summary = "校验注册旋转验证码")
     @PostMapping("/tianai/rotate/check")
     public TianaiSimpleCheckResponse checkTianaiRotateCaptcha(@RequestBody TianaiRotateCheckRequest request) {
         return new TianaiSimpleCheckResponse(captchaStrategyRegistry.verify(new CaptchaVerifyRequest(
@@ -348,7 +348,7 @@ public class RegisterController {
         )).tianaiCaptcha();
     }
 
-    @Operation(summary = "Resolve whether register needs a challenge before sending email code")
+    @Operation(summary = "判断注册邮箱验证码挑战类型")
     @PostMapping("/email-code-type")
     public ResponseEntity<?> resolveRegisterEmailCodeChallenge(@RequestBody RegisterSendEmailCodeRequest request,
                                                                HttpServletRequest httpServletRequest,
@@ -396,7 +396,7 @@ public class RegisterController {
         return ResponseEntity.ok(toResponse(result));
     }
 
-    @Operation(summary = "Send register email code")
+    @Operation(summary = "发送注册邮箱验证码")
     @PostMapping("/email-code")
     public ResponseEntity<?> sendRegisterEmailCode(@RequestBody RegisterSendEmailCodeRequest request,
                                                    HttpServletRequest httpServletRequest,
@@ -453,7 +453,7 @@ public class RegisterController {
         return ResponseEntity.ok(toResponse(result));
     }
 
-    @Operation(summary = "Verify register email code and continue register flow")
+    @Operation(summary = "验证注册邮箱验证码")
     @PostMapping("/email-code/verify")
     public ResponseEntity<?> verifyRegisterEmailCode(@RequestBody RegisterVerifyEmailCodeRequest request,
                                                      HttpServletRequest httpServletRequest,
@@ -517,7 +517,7 @@ public class RegisterController {
                 .build());
     }
 
-    @Operation(summary = "Send SMS code for required phone binding during register flow.")
+    @Operation(summary = "发送注册手机绑定验证码")
     @PostMapping("/phone/code")
     public ResponseEntity<RegisterPhoneBindingResponse> sendRegisterPhoneBindCode(@RequestBody LoginPhoneBindRequest body,
                                                                                   HttpServletRequest request) {
@@ -536,7 +536,7 @@ public class RegisterController {
         return registerPhoneResponse(result);
     }
 
-    @Operation(summary = "Bind required phone and complete register flow.")
+    @Operation(summary = "绑定注册安全手机")
     @PostMapping("/phone/bind")
     public ResponseEntity<RegisterPhoneBindingResponse> bindRegisterPhone(@RequestBody LoginPhoneBindRequest body,
                                                                           HttpServletRequest request,

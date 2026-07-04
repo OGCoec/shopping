@@ -233,6 +233,58 @@ SET ip_type = EXCLUDED.ip_type,
         ]]>
     </update>
 
+    <update id="upsertIpv4GeoOnly">
+        <![CDATA[
+INSERT INTO ipv4_reputation_profile (
+    ip, ip_type, country, region, city, latitude, longitude,
+    is_datacenter, is_vpn, is_proxy, is_tor,
+    reference_score, base_score, current_score,
+    source_provider, raw_json, queried_at, last_seen_at
+) VALUES (
+    #{ip}, 'UNKNOWN', #{country}, #{region}, #{city}, #{latitude}, #{longitude},
+    FALSE, FALSE, FALSE, FALSE,
+    0, 0, 0,
+    #{sourceProvider}, CAST(#{rawJson} AS jsonb), #{queriedAt}, #{queriedAt}
+)
+ON CONFLICT (ip) DO UPDATE
+SET country = EXCLUDED.country,
+    region = COALESCE(EXCLUDED.region, ipv4_reputation_profile.region),
+    city = COALESCE(EXCLUDED.city, ipv4_reputation_profile.city),
+    latitude = COALESCE(EXCLUDED.latitude, ipv4_reputation_profile.latitude),
+    longitude = COALESCE(EXCLUDED.longitude, ipv4_reputation_profile.longitude),
+    source_provider = EXCLUDED.source_provider,
+    raw_json = COALESCE(ipv4_reputation_profile.raw_json, '{}'::jsonb) || EXCLUDED.raw_json,
+    queried_at = EXCLUDED.queried_at,
+    last_seen_at = EXCLUDED.last_seen_at
+        ]]>
+    </update>
+
+    <update id="upsertIpv6GeoOnly">
+        <![CDATA[
+INSERT INTO ipv6_reputation_profile (
+    ip, ip_type, country, region, city, latitude, longitude,
+    is_datacenter, is_vpn, is_proxy, is_tor,
+    reference_score, base_score, current_score,
+    source_provider, raw_json, queried_at, last_seen_at
+) VALUES (
+    #{ip}, 'UNKNOWN', #{country}, #{region}, #{city}, #{latitude}, #{longitude},
+    FALSE, FALSE, FALSE, FALSE,
+    0, 0, 0,
+    #{sourceProvider}, CAST(#{rawJson} AS jsonb), #{queriedAt}, #{queriedAt}
+)
+ON CONFLICT (ip) DO UPDATE
+SET country = EXCLUDED.country,
+    region = COALESCE(EXCLUDED.region, ipv6_reputation_profile.region),
+    city = COALESCE(EXCLUDED.city, ipv6_reputation_profile.city),
+    latitude = COALESCE(EXCLUDED.latitude, ipv6_reputation_profile.latitude),
+    longitude = COALESCE(EXCLUDED.longitude, ipv6_reputation_profile.longitude),
+    source_provider = EXCLUDED.source_provider,
+    raw_json = COALESCE(ipv6_reputation_profile.raw_json, '{}'::jsonb) || EXCLUDED.raw_json,
+    queried_at = EXCLUDED.queried_at,
+    last_seen_at = EXCLUDED.last_seen_at
+        ]]>
+    </update>
+
     <select id="applyIpv4AutomationPenalty" resultType="int">
         <![CDATA[
 INSERT INTO ipv4_reputation_profile (

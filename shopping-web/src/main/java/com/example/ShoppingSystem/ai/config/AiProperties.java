@@ -12,15 +12,14 @@ public class AiProperties {
     private String baseUrl = "http://127.0.0.1:8317/v1";
     private String apiKey = "your-api-key-1";
     private String completionsPath = "/chat/completions";
-    private String defaultModel = "kiro-haiku-4.5";
+    private String defaultModel = "gpt-5.4-mini";
     private int contextHardLimitTokens = 64000;
     private int compressionTriggerTokens = 52000;
     private int recentMessageRetainCount = 20;
     private int streamTimeoutMillis = 180000;
     private int gatewayTimeoutMillis = 120000;
     private List<Model> models = new ArrayList<>(List.of(
-            new Model("kiro-haiku-4.5", "kiro-haiku-4.5", "Kiro Haiku 4.5", true, 128000, 12000, 0.40),
-            new Model("kiro-minimax-m2.1", "kiro-minimax-m2.1", "Kiro MiniMax M2.1", true, 128000, 12000, 0.15)
+            new Model("gpt-5.4-mini", "gpt-5.4-mini", "GPT-5.4 Mini", true, 128000, 12000, 0.40)
     ));
 
     public String getBaseUrl() {

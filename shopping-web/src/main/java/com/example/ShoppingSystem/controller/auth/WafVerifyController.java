@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.auth;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.filter.preauth.PreAuthBindingService;
 import com.example.ShoppingSystem.admin.service.auth.AdminWafVerificationService;
 import com.example.ShoppingSystem.service.user.auth.login.LoginChallengeSessionService;
@@ -18,6 +20,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.io.IOException;
 import java.time.Duration;
 
+@Tag(name = "WAF验证", description = "WAF挑战验证入口接口")
 @Controller
 @RequestMapping("/shopping/auth/waf")
 public class WafVerifyController {
@@ -44,6 +47,7 @@ public class WafVerifyController {
         this.passwordResetService = passwordResetService;
     }
 
+    @Operation(summary = "验证WAF挑战状态")
     @GetMapping("/verify")
     public void verify(@RequestParam(value = "return", required = false) String returnPath,
                        HttpServletRequest request,

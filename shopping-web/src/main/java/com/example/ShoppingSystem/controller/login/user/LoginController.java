@@ -42,7 +42,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "login", description = "login flow, step guard, and factor verification")
+@Tag(name = "用户登录", description = "用户登录流程和因子验证接口")
 @RestController
 @RequestMapping("/shopping/user/login")
 public class LoginController {
@@ -85,7 +85,7 @@ public class LoginController {
         this.automationRiskGateService = automationRiskGateService;
     }
 
-    @Operation(summary = "Start login flow after identifier entry and risk challenge resolution.")
+    @Operation(summary = "启动用户登录流程")
     @PostMapping("/flow/start")
     public ResponseEntity<LoginFlowResponse> startLoginFlow(@RequestBody LoginFlowStartRequest body,
                                                             HttpServletRequest request,
@@ -141,7 +141,7 @@ public class LoginController {
         return request != null && "1".equals(StrUtil.blankToDefault(request.getHeader(LOGIN_WAF_RESUME_HEADER), "").trim());
     }
 
-    @Operation(summary = "Get current login flow state.")
+    @Operation(summary = "查询当前登录流程")
     @GetMapping("/flow/current")
     public ResponseEntity<LoginFlowResponse> currentLoginFlow(HttpServletRequest request,
                                                               HttpServletResponse response) {
@@ -155,7 +155,7 @@ public class LoginController {
         return ResponseEntity.ok(LoginFlowResponse.fromSession(session));
     }
 
-    @Operation(summary = "Generate login Hutool captcha.")
+    @Operation(summary = "获取登录图形验证码")
     @GetMapping("/hutoolcaptcha")
     public ResponseEntity<?> getLoginCaptcha(@RequestParam(required = false) String uuid,
                                              @RequestParam(required = false) String email,
@@ -173,7 +173,7 @@ public class LoginController {
                 .build());
     }
 
-    @Operation(summary = "Get login Tianai rotate captcha.")
+    @Operation(summary = "获取登录旋转验证码")
     @GetMapping("/tianai/rotate")
     public ResponseEntity<?> getLoginTianaiRotateCaptcha(@RequestParam(required = false) String captchaId,
                                                          @RequestParam(required = false) String email,
@@ -182,7 +182,7 @@ public class LoginController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_ROTATE, captchaId)));
     }
 
-    @Operation(summary = "Get login Tianai slider captcha.")
+    @Operation(summary = "获取登录滑块验证码")
     @GetMapping("/tianai/slider")
     public ResponseEntity<?> getLoginTianaiSliderCaptcha(@RequestParam(required = false) String captchaId,
                                                          @RequestParam(required = false) String email,
@@ -191,7 +191,7 @@ public class LoginController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_SLIDER, captchaId)));
     }
 
-    @Operation(summary = "Get login Tianai concat captcha.")
+    @Operation(summary = "获取登录拼图验证码")
     @GetMapping("/tianai/concat")
     public ResponseEntity<?> getLoginTianaiConcatCaptcha(@RequestParam(required = false) String captchaId,
                                                          @RequestParam(required = false) String email,
@@ -200,7 +200,7 @@ public class LoginController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_CONCAT, captchaId)));
     }
 
-    @Operation(summary = "Get login Tianai word click captcha.")
+    @Operation(summary = "获取登录文字点选验证码")
     @GetMapping("/tianai/word-click")
     public ResponseEntity<?> getLoginTianaiWordClickCaptcha(@RequestParam(required = false) String captchaId,
                                                             @RequestParam(required = false) String email,
@@ -209,7 +209,7 @@ public class LoginController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(TIANAI_SUBTYPE_WORD_IMAGE_CLICK, captchaId)));
     }
 
-    @Operation(summary = "Verify Tianai rotate captcha.")
+    @Operation(summary = "校验登录旋转验证码")
     @PostMapping("/tianai/rotate/check")
     public TianaiSimpleCheckResponse checkLoginTianaiRotateCaptcha(@RequestBody TianaiRotateCheckRequest body) {
         return new TianaiSimpleCheckResponse(captchaStrategyRegistry.verify(new CaptchaVerifyRequest(
@@ -231,7 +231,7 @@ public class LoginController {
         )).tianaiCaptcha();
     }
 
-    @Operation(summary = "Verify password factor.")
+    @Operation(summary = "验证登录密码")
     @PostMapping("/password")
     public ResponseEntity<LoginFlowResponse> verifyPassword(@RequestBody LoginPasswordVerifyRequest body,
                                                             HttpServletRequest request,
@@ -248,7 +248,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Send login email code.")
+    @Operation(summary = "发送登录邮箱验证码")
     @PostMapping("/email-code")
     public ResponseEntity<LoginFlowResponse> sendEmailCode(HttpServletRequest request,
                                                            HttpServletResponse response) {
@@ -263,7 +263,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Verify login email code factor.")
+    @Operation(summary = "验证登录邮箱验证码")
     @PostMapping("/email-code/verify")
     public ResponseEntity<LoginFlowResponse> verifyEmailCode(@RequestBody LoginEmailCodeVerifyRequest body,
                                                              HttpServletRequest request,
@@ -280,7 +280,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Verify TOTP factor.")
+    @Operation(summary = "验证登录动态口令")
     @PostMapping("/totp/verify")
     public ResponseEntity<LoginFlowResponse> verifyTotp(@RequestBody LoginTotpVerifyRequest body,
                                                         HttpServletRequest request,
@@ -297,7 +297,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Check phone login candidate through counting bloom filter.")
+    @Operation(summary = "检查手机号登录资格")
     @PostMapping("/phone/check")
     public ResponseEntity<LoginFlowResponse> checkPhoneLoginCandidate(@RequestBody LoginPhoneBindRequest body) {
         LoginFlowResponse responseBody = LoginFlowResponse.fromVerify(
@@ -306,7 +306,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Bind required phone after risky login.")
+    @Operation(summary = "发送登录后绑定手机验证码")
     @PostMapping("/phone/code")
     public ResponseEntity<LoginFlowResponse> sendPhoneBindCode(@RequestBody LoginPhoneBindRequest body,
                                                                HttpServletRequest request,
@@ -335,7 +335,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Send SMS code for phone-first login after SMS risk challenge.")
+    @Operation(summary = "发送手机号登录短信验证码")
     @PostMapping("/phone-login/code")
     public ResponseEntity<LoginFlowResponse> sendPhoneLoginCode(@RequestBody LoginPhoneBindRequest body,
                                                                 HttpServletRequest request) {
@@ -357,7 +357,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Verify phone-first login SMS code and issue login tokens.")
+    @Operation(summary = "验证手机号登录短信验证码")
     @PostMapping("/phone-login/verify")
     public ResponseEntity<LoginFlowResponse> verifyPhoneLoginCode(@RequestBody LoginPhoneBindRequest body,
                                                                   HttpServletRequest request,
@@ -386,7 +386,7 @@ public class LoginController {
         return ResponseEntity.status(responseBody.success() ? HttpStatus.OK : HttpStatus.BAD_REQUEST).body(responseBody);
     }
 
-    @Operation(summary = "Bind required phone after SMS verification.")
+    @Operation(summary = "绑定登录安全手机")
     @PostMapping("/phone/bind")
     public ResponseEntity<LoginFlowResponse> bindPhone(@RequestBody LoginPhoneBindRequest body,
                                                        HttpServletRequest request,

@@ -5,11 +5,13 @@ public final class OrderRedisKeys {
     private static final String HOT_SKU_META_KEY_PREFIX = "shopping:product:hot-sku:meta:";
     private static final String HOT_SKU_STOCK_KEY_PREFIX = "shopping:product:hot-sku:stock:";
     private static final String HOT_SKU_USER_KEY_PREFIX = "shopping:order:hot-sku:user:";
-    private static final String HOT_SKU_PENDING_KEY_PREFIX = "shopping:order:hot-sku:pending:";
+    private static final String HOT_SKU_PENDING_USER_KEY_PREFIX = "shopping:order:hot-sku:pending-user:";
+    private static final String HOT_SKU_HOLD_KEY_PREFIX = "shopping:order:hot-sku:hold:";
     private static final String ORDER_DETAIL_KEY_PREFIX = "shopping:order:detail:";
     private static final String ORDER_ITEM_KEY_PREFIX = "shopping:order:item:";
     private static final String USER_ORDER_KEY_PREFIX = "shopping:order:user:";
     private static final String IDEMPOTENCY_KEY_PREFIX = "shopping:order:idempotency:";
+    private static final String ORDER_CREATE_USER_SKU_LOCK_KEY_PREFIX = "shopping:order:create:user-sku:";
     private static final String PAYMENT_CALLBACK_RECEIVED_ORDER_KEY_PREFIX = "shopping:payment:callback:received-order:";
 
     public static final String ORDER_EXPIRE_ZSET_KEY = "shopping:order:expire";
@@ -19,6 +21,8 @@ public final class OrderRedisKeys {
     public static final String ORDER_PERSIST_PROCESSING_ZSET_KEY = "shopping:order:persist:processing";
     public static final String ORDER_PERSIST_LOCK_KEY = "shopping:order:persist:lock";
     public static final String ORDER_CLOSING_COMPENSATE_LOCK_KEY = "shopping:order:closing:compensate:lock";
+    public static final String HOT_SKU_STOCK_DIRTY_KEY = "shopping:product:hot-sku:stock:dirty";
+    public static final String HOT_SKU_STOCK_WRITEBACK_LOCK_KEY = "shopping:product:hot-sku:stock:writeback:lock";
 
     private OrderRedisKeys() {
     }
@@ -31,12 +35,20 @@ public final class OrderRedisKeys {
         return HOT_SKU_STOCK_KEY_PREFIX + skuId;
     }
 
-    public static String hotSkuUserKey(String skuId) {
-        return HOT_SKU_USER_KEY_PREFIX + skuId;
+    public static String hotSkuLegacyUserKeyPattern() {
+        return HOT_SKU_USER_KEY_PREFIX + "*";
     }
 
-    public static String hotSkuPendingKey(String orderNo) {
-        return HOT_SKU_PENDING_KEY_PREFIX + orderNo;
+    public static String hotSkuPendingUserKey(String skuId, Long userId) {
+        return HOT_SKU_PENDING_USER_KEY_PREFIX + skuId + ":" + userId;
+    }
+
+    public static String hotSkuPendingUserKeyPrefix() {
+        return HOT_SKU_PENDING_USER_KEY_PREFIX;
+    }
+
+    public static String hotSkuHoldKey(String orderNo) {
+        return HOT_SKU_HOLD_KEY_PREFIX + orderNo;
     }
 
     public static String orderDetailKey(String orderNo) {
@@ -53,6 +65,10 @@ public final class OrderRedisKeys {
 
     public static String idempotencyKey(Long userId, String idempotencyKey) {
         return IDEMPOTENCY_KEY_PREFIX + userId + ":" + idempotencyKey;
+    }
+
+    public static String orderCreateUserSkuLockKey(Long userId, String skuId) {
+        return ORDER_CREATE_USER_SKU_LOCK_KEY_PREFIX + userId + ":" + skuId;
     }
 
     public static String paymentCallbackReceivedOrderKey(String orderNo) {

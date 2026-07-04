@@ -310,6 +310,40 @@ ON CONFLICT (order_no, sku_id) DO NOTHING
           AND user_id = #{userId}
     </select>
 
+    <select id="findReusableOrderByUserSku" resultType="map">
+        <![CDATA[
+SELECT o.id AS "id",
+       o.order_no AS "orderNo",
+       o.user_id AS "userId",
+       o.status,
+       o.total_amount_yuan AS "totalAmountYuan",
+       o.discount_amount_yuan AS "discountAmountYuan",
+       o.pay_amount_yuan AS "payAmountYuan",
+       o.required_points AS "requiredPoints",
+       o.payment_type AS "paymentType",
+       o.used_points AS "usedPoints",
+       encode(o.user_coupon_id, 'hex') AS "userCouponId",
+       o.idempotency_key AS "idempotencyKey",
+       o.expire_at AS "expireAt",
+       o.paid_at AS "paidAt",
+       o.closing_at AS "closingAt",
+       o.closing_deadline_at AS "closingDeadlineAt",
+       o.cancelled_at AS "cancelledAt",
+       o.closed_at AS "closedAt",
+       o.version,
+       o.created_at AS "createdAt",
+       o.updated_at AS "updatedAt"
+FROM trade_order o
+INNER JOIN trade_order_item i ON i.order_no = o.order_no
+WHERE o.user_id = #{userId}
+  AND i.sku_id = #{skuId}
+  AND o.status IN ('PENDING_PAYMENT', 'STOCK_CONFIRMING')
+  AND (o.expire_at IS NULL OR o.expire_at > #{now})
+ORDER BY o.created_at DESC, o.id DESC
+LIMIT 1
+        ]]>
+    </select>
+
     <select id="listOrderItems" resultType="map">
         SELECT id AS "id",
                order_no AS "orderNo",

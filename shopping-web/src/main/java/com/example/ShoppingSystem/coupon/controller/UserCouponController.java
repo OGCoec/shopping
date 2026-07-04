@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.coupon.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import com.example.ShoppingSystem.coupon.dto.CouponClaimResponse;
 import com.example.ShoppingSystem.coupon.dto.UserCouponMineDetailResponse;
 import com.example.ShoppingSystem.coupon.dto.UserCouponMinePageResponse;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+@Tag(name = "用户优惠券", description = "用户优惠券查询和领取接口")
 @RestController
 @RequestMapping("/shopping/user/api/coupons")
 public class UserCouponController {
@@ -37,6 +40,7 @@ public class UserCouponController {
         this.userCouponQueryService = userCouponQueryService;
     }
 
+    @Operation(summary = "分页查询可领取优惠券")
     @GetMapping
     public UserCouponTemplatePageResponse page(@RequestParam(value = "page", required = false) Integer page,
                                                @RequestParam(value = "pageSize", required = false) Integer pageSize,
@@ -46,6 +50,7 @@ public class UserCouponController {
         return userCouponQueryService.receivablePage(requireCurrentUserId(authentication, request), page, pageSize, name);
     }
 
+    @Operation(summary = "查询我的优惠券列表")
     @GetMapping("/mine")
     public UserCouponMinePageResponse mine(@RequestParam(value = "page", required = false) Integer page,
                                            @RequestParam(value = "pageSize", required = false) Integer pageSize,
@@ -55,6 +60,7 @@ public class UserCouponController {
         return userCouponQueryService.minePage(requireCurrentUserId(authentication, request), page, pageSize, status);
     }
 
+    @Operation(summary = "查询我的优惠券详情")
     @GetMapping("/mine/{userCouponId}")
     public UserCouponMineDetailResponse mineDetail(@PathVariable String userCouponId,
                                                    Authentication authentication,
@@ -62,6 +68,7 @@ public class UserCouponController {
         return userCouponQueryService.mineDetail(requireCurrentUserId(authentication, request), userCouponId);
     }
 
+    @Operation(summary = "查询优惠券详情")
     @GetMapping("/{couponTemplateId}")
     public UserCouponTemplateDetailResponse detail(@PathVariable String couponTemplateId,
                                                    Authentication authentication,
@@ -69,6 +76,7 @@ public class UserCouponController {
         return userCouponQueryService.receivableDetail(requireCurrentUserId(authentication, request), couponTemplateId);
     }
 
+    @Operation(summary = "领取优惠券")
     @PostMapping("/{couponTemplateId}/claim")
     public ResponseEntity<CouponClaimResponse> claim(@PathVariable String couponTemplateId,
                                                      Authentication authentication,

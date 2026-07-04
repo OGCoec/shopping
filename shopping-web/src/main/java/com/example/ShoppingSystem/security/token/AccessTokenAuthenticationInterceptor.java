@@ -1,8 +1,6 @@
 package com.example.ShoppingSystem.security.token;
 
-import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,7 +17,6 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletionException;
 
 @Component
 public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor {
@@ -47,60 +44,35 @@ public class AccessTokenAuthenticationInterceptor implements HandlerInterceptor 
             return true;
         }
 
-        try {
-            String accessToken = authTokenService.resolveAccessToken(request);
-            if (StrUtil.isBlank(accessToken)) {
-                if (redirectLoginForHtmlNavigation(response, request)) {
-                    return false;
-                }
-                writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED,
-                        "AUTH_REQUIRED", "Authentication is required.");
-                return false;
-            }
-
-            String riskLevel = request.getAttribute("preAuthRiskLevel") instanceof String text ? text : "L1";
-            AuthUserContext context = authTokenService.authenticateAccessToken(
-                    accessToken,
-                    riskLevel,
-                    shouldUseOrderLoadtestAuthCache(request)
-            );
-            AuthUserContextHolder.set(context);
-            request.setAttribute("authUserContext", context);
-            request.setAttribute("authUserId", context.userId());
-
-            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                    context,
-                    null,
-                    authorities(context)
-            );
-            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-            return true;
-        } catch (Exception e) {
+        String riskLevel = request.getAttribute("preAuthRiskLevel") instanceof String text ? text : "L1";
+        AuthTokenAuthenticationResult result = authTokenService.authenticateOrRefresh(
+                request,
+                response,
+                riskLevel,
+                shouldUseOrderLoadtestAuthCache(request)
+        );
+        if (!result.success()) {
             clearAuthenticationContext();
-            Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
-            if (cause instanceof ExpiredJwtException) {
-                if (redirectLoginForHtmlNavigation(response, request)) {
-                    return false;
-                }
-                writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED,
-                        "ACCESS_TOKEN_EXPIRED", "Access token has expired.");
-                return false;
-            }
-            if (cause instanceof AuthTokenException authError) {
-                if (redirectLoginForHtmlNavigation(response, request)) {
-                    return false;
-                }
-                writeJsonError(response, request, authError.status(), authError.error(), authError.getMessage());
-                return false;
-            }
             if (redirectLoginForHtmlNavigation(response, request)) {
                 return false;
             }
-            writeJsonError(response, request, HttpServletResponse.SC_UNAUTHORIZED,
-                    "ACCESS_TOKEN_INVALID", "Access token is invalid.");
+            writeJsonError(response, request, result.status(), result.error(), result.message());
             return false;
         }
+
+        AuthUserContext context = result.context();
+        AuthUserContextHolder.set(context);
+        request.setAttribute("authUserContext", context);
+        request.setAttribute("authUserId", context.userId());
+
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                context,
+                null,
+                authorities(context)
+        );
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        return true;
     }
 
     @Override

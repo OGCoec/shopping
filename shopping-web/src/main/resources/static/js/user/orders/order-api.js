@@ -81,6 +81,10 @@
     return request(`${API_BASE}/${encodeURIComponent(String(orderNo || ""))}`);
   }
 
+  function cardSecrets(orderNo) {
+    return request(`${API_BASE}/${encodeURIComponent(String(orderNo || ""))}/card-secrets`);
+  }
+
   function cancel(orderNo, reason) {
     return request(`${API_BASE}/${encodeURIComponent(String(orderNo || ""))}/cancel`, {
       method: "POST",
@@ -100,6 +104,7 @@
     create,
     page,
     detail,
+    cardSecrets,
     cancel,
     pay
   };

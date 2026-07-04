@@ -1,8 +1,7 @@
 (function () {
   const API_BASE = "/shopping/user/api/sign-in";
   const PERIOD_LABELS = {
-    DAY: "每日签到",
-    SECOND: "秒级测试周期"
+    DAY: "每日签到"
   };
 
   const statusEl = document.getElementById("sign-in-page-status");
@@ -71,7 +70,7 @@
 
   function periodLabelText(periodUnit) {
     const key = String(periodUnit || "").trim().toUpperCase();
-    return PERIOD_LABELS[key] || "本周期签到";
+    return PERIOD_LABELS[key] || "每日签到";
   }
 
   function normalizeState(payload) {
@@ -110,17 +109,17 @@
     periodLabel.textContent = periodLabelText(state.periodUnit);
     statusBadge.textContent = state.signedInCurrentPeriod ? "已签到" : "待签到";
     statusBadge.classList.toggle("is-signed", state.signedInCurrentPeriod);
-    statusTitle.textContent = state.signedInCurrentPeriod ? "本周期已签到" : "本周期待签到";
+    statusTitle.textContent = state.signedInCurrentPeriod ? "今日已签到" : "今日待签到";
     statusCopy.textContent = state.signedInCurrentPeriod
-      ? "积分已入账，可以继续保持连续签到。"
-      : "点击签到后，本周期奖励会立即计入可用积分。";
+      ? "今天的签到积分已入账，可以继续保持连续签到。"
+      : "点击签到后，今日奖励会立即计入可用积分。";
 
     cycleDayEl.textContent = formatNumber(state.cycleDay);
     const percent = progressPercent(state);
     cycleRing?.style.setProperty("--sign-in-progress", String(percent));
     progressFill?.style.setProperty("--sign-in-progress", String(percent));
     nextRewardEl.textContent = state.periodsToNextMilestone > 0
-      ? `距离第 ${state.nextMilestoneCycleDay} 周期奖励还差 ${state.periodsToNextMilestone} 周期`
+      ? `距离第 ${state.nextMilestoneCycleDay} 天奖励还差 ${state.periodsToNextMilestone} 天`
       : "下一档奖励等待刷新";
 
     availablePointsEl.textContent = formatNumber(state.availablePoints);
@@ -129,7 +128,7 @@
     nextPointsEl.textContent = `${formatNumber(state.nextMilestoneRewardPoints)} 分`;
 
     signButton.disabled = state.signedInCurrentPeriod;
-    signButton.textContent = state.signedInCurrentPeriod ? "本周期已签到" : "立即签到";
+    signButton.textContent = state.signedInCurrentPeriod ? "今日已签到" : "立即签到";
   }
 
   async function loadStatus() {
@@ -153,7 +152,7 @@
       const payload = await fetchJson(API_BASE, { method: "POST" });
       renderState(payload);
       if (payload.code === "SIGN_IN_ALREADY_DONE") {
-        setStatus("本周期已经签到", "ok");
+        setStatus("今日已经签到", "ok");
         return;
       }
       setStatus(payload.message || `签到成功，+${formatNumber(payload.rewardPoints)} 积分`, "ok");

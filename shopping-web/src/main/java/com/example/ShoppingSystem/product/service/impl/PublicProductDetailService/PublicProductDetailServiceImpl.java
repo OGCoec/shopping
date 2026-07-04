@@ -12,27 +12,32 @@ import java.util.Map;
 import com.example.ShoppingSystem.product.service.PublicProductDetailService;
 import com.example.ShoppingSystem.product.service.PublicProductDetailCacheService;
 import com.example.ShoppingSystem.product.service.PublicProductSpuAssembler;
+import com.example.ShoppingSystem.product.service.PublicProductRuntimeStockService;
 @Service
 public class PublicProductDetailServiceImpl implements PublicProductDetailService {
 
     private final ProductSpuMapper productSpuMapper;
     private final PublicProductSpuAssembler assembler;
     private final PublicProductDetailCacheService detailCacheService;
+    private final PublicProductRuntimeStockService runtimeStockService;
     private final ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor;
 
     public PublicProductDetailServiceImpl(ProductSpuMapper productSpuMapper,
                                       PublicProductSpuAssembler assembler,
                                       PublicProductDetailCacheService detailCacheService,
+                                      PublicProductRuntimeStockService runtimeStockService,
                                       ProductReadReplicaQueryExecutor productReadReplicaQueryExecutor) {
         this.productSpuMapper = productSpuMapper;
         this.assembler = assembler;
         this.detailCacheService = detailCacheService;
+        this.runtimeStockService = runtimeStockService;
         this.productReadReplicaQueryExecutor = productReadReplicaQueryExecutor;
     }
 
     public PublicProductDetailResponse detail(String id) {
         Long spuId = normalizeProductId(id);
-        return detailCacheService.getDetail(spuId, () -> findDetail(spuId));
+        PublicProductDetailResponse detail = detailCacheService.getDetail(spuId, () -> findDetail(spuId));
+        return runtimeStockService.overlayRuntimeStock(detail);
     }
 
     private PublicProductDetailResponse findDetail(Long spuId) {

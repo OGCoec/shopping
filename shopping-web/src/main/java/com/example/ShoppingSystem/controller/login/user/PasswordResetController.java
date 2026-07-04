@@ -1,5 +1,7 @@
 package com.example.ShoppingSystem.controller.login.user;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import cn.hutool.core.util.StrUtil;
 import com.example.ShoppingSystem.controller.login.user.dto.PasswordResetEmailRequest;
 import com.example.ShoppingSystem.controller.login.user.dto.PasswordResetResponse;
@@ -33,6 +35,7 @@ import static com.example.ShoppingSystem.service.user.auth.register.model.Regist
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.SUBTYPE_TIANAI_SLIDER;
 import static com.example.ShoppingSystem.service.user.auth.register.model.RegisterChallengeConstants.SUBTYPE_TIANAI_WORD_IMAGE_CLICK;
 
+@Tag(name = "找回密码", description = "用户找回密码和重置密码接口")
 @RestController
 @RequestMapping("/shopping/user/forgot-password")
 public class PasswordResetController {
@@ -58,11 +61,13 @@ public class PasswordResetController {
         this.captchaStrategyRegistry = captchaStrategyRegistry;
     }
 
+    @Operation(summary = "获取密码重置加密公钥")
     @PostMapping("/crypto-key")
     public ResponseEntity<PasswordResetResponse> issueCryptoKey() {
         return ResponseEntity.ok(PasswordResetResponse.from(passwordResetService.issueCryptoKey()));
     }
 
+    @Operation(summary = "发送密码重置链接")
     @PostMapping("/reset-link")
     public ResponseEntity<PasswordResetResponse> sendResetLink(@RequestBody PasswordResetEmailRequest body,
                                                                HttpServletRequest request) {
@@ -75,6 +80,7 @@ public class PasswordResetController {
                 resolveBaseUrl(request))));
     }
 
+    @Operation(summary = "发送密码重置邮箱验证码")
     @PostMapping("/email-code")
     public ResponseEntity<PasswordResetResponse> sendEmailCode(@RequestBody PasswordResetEmailRequest body,
                                                                HttpServletRequest request) {
@@ -90,6 +96,7 @@ public class PasswordResetController {
                 body.captchaCode())));
     }
 
+    @Operation(summary = "获取密码重置图形验证码")
     @GetMapping("/hutoolcaptcha")
     public ResponseEntity<?> getPasswordResetCaptcha(@RequestParam(required = false) String uuid,
                                                      @RequestParam(required = false) String email,
@@ -107,6 +114,7 @@ public class PasswordResetController {
                 .build());
     }
 
+    @Operation(summary = "获取密码重置旋转验证码")
     @GetMapping("/tianai/rotate")
     public ResponseEntity<?> getPasswordResetTianaiRotateCaptcha(@RequestParam(required = false) String captchaId,
                                                                 @RequestParam(required = false) String email,
@@ -115,6 +123,7 @@ public class PasswordResetController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(SUBTYPE_TIANAI_ROTATE, captchaId)));
     }
 
+    @Operation(summary = "获取密码重置滑块验证码")
     @GetMapping("/tianai/slider")
     public ResponseEntity<?> getPasswordResetTianaiSliderCaptcha(@RequestParam(required = false) String captchaId,
                                                                 @RequestParam(required = false) String email,
@@ -123,6 +132,7 @@ public class PasswordResetController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(SUBTYPE_TIANAI_SLIDER, captchaId)));
     }
 
+    @Operation(summary = "获取密码重置拼图验证码")
     @GetMapping("/tianai/concat")
     public ResponseEntity<?> getPasswordResetTianaiConcatCaptcha(@RequestParam(required = false) String captchaId,
                                                                 @RequestParam(required = false) String email,
@@ -131,6 +141,7 @@ public class PasswordResetController {
         return ResponseEntity.ok(TianaiRotateCaptchaResponse.from(generateTianaiCaptcha(SUBTYPE_TIANAI_CONCAT, captchaId)));
     }
 
+    @Operation(summary = "获取密码重置文字点选验证码")
     @GetMapping("/tianai/word-click")
     public ResponseEntity<?> getPasswordResetTianaiWordClickCaptcha(@RequestParam(required = false) String captchaId,
                                                                    @RequestParam(required = false) String email,
@@ -148,6 +159,7 @@ public class PasswordResetController {
         )).tianaiCaptcha();
     }
 
+    @Operation(summary = "通过链接重置密码")
     @PostMapping("/reset-by-link")
     public ResponseEntity<PasswordResetResponse> resetByLink(@RequestBody PasswordResetSubmitRequest body,
                                                              HttpServletRequest request) {
@@ -161,6 +173,7 @@ public class PasswordResetController {
                 body.timestamp())));
     }
 
+    @Operation(summary = "验证密码重置邮箱验证码")
     @PostMapping("/verify-code")
     public ResponseEntity<PasswordResetResponse> verifyCode(@RequestBody PasswordResetSubmitRequest body,
                                                             HttpServletRequest request) {
@@ -176,6 +189,7 @@ public class PasswordResetController {
         return response.body(PasswordResetResponse.from(result));
     }
 
+    @Operation(summary = "通过邮箱验证码重置密码")
     @PostMapping("/reset-by-code")
     public ResponseEntity<PasswordResetResponse> resetByCode(@RequestBody PasswordResetSubmitRequest body,
                                                              HttpServletRequest request) {

@@ -44,6 +44,10 @@ public interface OrderMapper {
     Map<String, Object> findOrderByIdempotencyKey(@Param("idempotencyKey") String idempotencyKey,
                                                   @Param("userId") Long userId);
 
+    Map<String, Object> findReusableOrderByUserSku(@Param("userId") Long userId,
+                                                   @Param("skuId") byte[] skuId,
+                                                   @Param("now") OffsetDateTime now);
+
     List<Map<String, Object>> listOrderItems(@Param("orderNo") String orderNo);
 
     Map<String, Object> summarizeOrderItemPoints(@Param("orderNo") String orderNo);

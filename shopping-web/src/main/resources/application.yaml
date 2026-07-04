@@ -210,27 +210,20 @@ app:
     base-url: ${AI_GATEWAY_BASE_URL:http://127.0.0.1:8317/v1}
     api-key: ${AI_GATEWAY_API_KEY:your-api-key-1}
     completions-path: ${AI_GATEWAY_COMPLETIONS_PATH:/chat/completions}
-    default-model: ${AI_DEFAULT_MODEL:kiro-haiku-4.5}
+    default-model: ${AI_DEFAULT_MODEL:gpt-5.4-mini}
     context-hard-limit-tokens: 64000
     compression-trigger-tokens: 52000
     recent-message-retain-count: 20
     stream-timeout-millis: 180000
     gateway-timeout-millis: 120000
     models:
-      - model-key: kiro-haiku-4.5
-        provider-model-name: kiro-haiku-4.5
-        display-name: Kiro Haiku 4.5
+      - model-key: gpt-5.4-mini
+        provider-model-name: gpt-5.4-mini
+        display-name: GPT-5.4 Mini
         enabled: true
         context-tokens: 128000
         output-reserve-tokens: 12000
         temperature: 0.40
-      - model-key: kiro-minimax-m2.1
-        provider-model-name: kiro-minimax-m2.1
-        display-name: Kiro MiniMax M2.1
-        enabled: true
-        context-tokens: 128000
-        output-reserve-tokens: 12000
-        temperature: 0.15
   # 优惠券业务配置。
   coupon:
     # 压测放行配置。
@@ -956,7 +949,6 @@ shopping:
       account-risk-recovery-started-risk: ${FAULT_PROB_ACCOUNT_RISK_RECOVERY:0.0}
   sign-in:
     zone-id: ${SHOPPING_SIGN_IN_ZONE_ID:Asia/Shanghai}
-    period-unit: ${SHOPPING_SIGN_IN_PERIOD_UNIT:SECOND}
   order:
     redis-persist-delay-ms: ${ORDER_REDIS_PERSIST_DELAY_MS:5000}
     redis-persist-batch-size: ${ORDER_REDIS_PERSIST_BATCH_SIZE:100}

@@ -11,6 +11,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -30,6 +32,9 @@ public class HotOrderInventoryStrategy implements OrderInventoryStrategy {
     private static final int LUA_ALREADY_ORDERED = 5;
     private static final int LUA_QUANTITY_INVALID = 6;
     private static final int LUA_SOLD_OUT = 7;
+    private static final Duration PENDING_USER_GRACE = Duration.ofSeconds(60);
+    private static final Duration DEFAULT_PENDING_USER_TTL = Duration.ofMinutes(30);
+    private static final Duration HOLD_TTL = Duration.ofHours(24);
 
     private final StringRedisTemplate stringRedisTemplate;
     private final DefaultRedisScript<List> deductScript;
@@ -55,14 +60,17 @@ public class HotOrderInventoryStrategy implements OrderInventoryStrategy {
                 List.of(
                         OrderRedisKeys.hotSkuMetaKey(context.sku().skuIdText()),
                         OrderRedisKeys.hotSkuStockKey(context.sku().skuIdText()),
-                        OrderRedisKeys.hotSkuUserKey(context.sku().skuIdText()),
-                        OrderRedisKeys.hotSkuPendingKey(context.orderNo())
+                        OrderRedisKeys.hotSkuPendingUserKey(context.sku().skuIdText(), context.userId()),
+                        OrderRedisKeys.hotSkuHoldKey(context.orderNo()),
+                        OrderRedisKeys.HOT_SKU_STOCK_DIRTY_KEY
                 ),
                 String.valueOf(context.now().toInstant().toEpochMilli()),
                 String.valueOf(context.userId()),
                 context.orderNo(),
                 context.sku().skuIdText(),
-                String.valueOf(context.quantity())
+                String.valueOf(context.quantity()),
+                String.valueOf(pendingUserTtlMillis(context.now(), context.expireAt())),
+                String.valueOf(HOLD_TTL.toMillis())
         );
         int code = resultCode(result);
         if (code == LUA_OK) {
@@ -87,12 +95,14 @@ public class HotOrderInventoryStrategy implements OrderInventoryStrategy {
                     compensateScript,
                     List.of(
                             OrderRedisKeys.hotSkuStockKey(item.skuIdText()),
-                            OrderRedisKeys.hotSkuUserKey(item.skuIdText()),
-                            OrderRedisKeys.hotSkuPendingKey(item.orderNo())
+                            OrderRedisKeys.hotSkuPendingUserKey(item.skuIdText(), item.userId()),
+                            OrderRedisKeys.hotSkuHoldKey(item.orderNo()),
+                            OrderRedisKeys.HOT_SKU_STOCK_DIRTY_KEY
                     ),
                     String.valueOf(item.userId()),
                     item.orderNo(),
-                    String.valueOf(item.quantity())
+                    String.valueOf(item.quantity()),
+                    item.skuIdText()
             );
         } catch (Exception e) {
             log.warn("[Order] hot SKU inventory release failed, orderNo={}, skuId={}",
@@ -111,19 +121,22 @@ public class HotOrderInventoryStrategy implements OrderInventoryStrategy {
         if (validItems.isEmpty()) {
             return;
         }
-        List<String> keys = validItems.stream()
-                .flatMap(item -> Stream.of(
-                        OrderRedisKeys.hotSkuStockKey(item.skuIdText()),
-                        OrderRedisKeys.hotSkuUserKey(item.skuIdText()),
-                        OrderRedisKeys.hotSkuPendingKey(item.orderNo())
-                ))
+        List<String> keys = Stream.concat(
+                        Stream.of(OrderRedisKeys.HOT_SKU_STOCK_DIRTY_KEY),
+                        validItems.stream().flatMap(item -> Stream.of(
+                                OrderRedisKeys.hotSkuStockKey(item.skuIdText()),
+                                OrderRedisKeys.hotSkuPendingUserKey(item.skuIdText(), item.userId()),
+                                OrderRedisKeys.hotSkuHoldKey(item.orderNo())
+                        ))
+                )
                 .toList();
         List<String> args = Stream.concat(
                         Stream.of(String.valueOf(validItems.size())),
                         validItems.stream().flatMap(item -> Stream.of(
                                 String.valueOf(item.userId()),
                                 item.orderNo(),
-                                String.valueOf(item.quantity())
+                                String.valueOf(item.quantity()),
+                                item.skuIdText()
                         ))
                 )
                 .toList();
@@ -153,6 +166,13 @@ public class HotOrderInventoryStrategy implements OrderInventoryStrategy {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private long pendingUserTtlMillis(OffsetDateTime now, OffsetDateTime expireAt) {
+        long ttl = expireAt == null || now == null
+                ? DEFAULT_PENDING_USER_TTL.toMillis()
+                : Duration.between(now, expireAt).toMillis();
+        return Math.max(1_000L, ttl + PENDING_USER_GRACE.toMillis());
     }
 
     private DefaultRedisScript<List> redisScript(String location) {

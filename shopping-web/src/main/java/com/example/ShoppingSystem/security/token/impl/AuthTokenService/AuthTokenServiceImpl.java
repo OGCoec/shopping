@@ -41,6 +41,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import com.example.ShoppingSystem.security.token.AuthTokenService;
+import com.example.ShoppingSystem.security.token.AuthTokenAuthenticationResult;
 import com.example.ShoppingSystem.security.token.AuthTokenException;
 import com.example.ShoppingSystem.security.token.AuthTokenProperties;
 import com.example.ShoppingSystem.security.token.AuthTokenRefreshResult;
@@ -150,6 +151,7 @@ public class AuthTokenServiceImpl implements AuthTokenService {
                 resolveClientIp(request),
                 StrUtil.blankToDefault(scene, SCENE_LOGIN_SUCCESS)
         );
+        userAuthFailureRiskService.clearAuthFailureWindow(userId);
     }
 
     public AuthUserContext authenticateAccessToken(String accessToken, String riskLevel) {
@@ -186,15 +188,44 @@ public class AuthTokenServiceImpl implements AuthTokenService {
         return context;
     }
 
-    public AuthTokenRefreshResult refresh(HttpServletRequest request, HttpServletResponse response) {
-        String refreshToken = readCookie(request, properties.getRefreshCookieName());
-        if (StrUtil.isBlank(refreshToken)) {
-            clearAuthCookies(response, request);
-            return AuthTokenRefreshResult.failed(
+    public AuthTokenAuthenticationResult authenticateOrRefresh(HttpServletRequest request,
+                                                               HttpServletResponse response,
+                                                               String riskLevel,
+                                                               boolean allowCachedContextFastPath) {
+        String accessToken = resolveAccessToken(request);
+        if (StrUtil.isBlank(accessToken)) {
+            return AuthTokenAuthenticationResult.failed(
                     HttpServletResponse.SC_UNAUTHORIZED,
-                    "REFRESH_TOKEN_MISSING",
-                    "Refresh token is missing.");
+                    "AUTH_REQUIRED",
+                    "Authentication is required.");
         }
+
+        try {
+            AuthUserContext context = authenticateAccessToken(accessToken, riskLevel, allowCachedContextFastPath);
+            return AuthTokenAuthenticationResult.authenticated(context);
+        } catch (Exception e) {
+            Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof ExpiredJwtException) {
+                RefreshAttemptResult refreshResult = refreshWithAccessToken(request, response, accessToken);
+                if (refreshResult.success()) {
+                    return AuthTokenAuthenticationResult.authenticated(refreshResult.context());
+                }
+                return AuthTokenAuthenticationResult.failed(
+                        refreshResult.status(),
+                        refreshResult.error(),
+                        refreshResult.message());
+            }
+            if (cause instanceof AuthTokenException authError) {
+                return AuthTokenAuthenticationResult.failed(authError.status(), authError.error(), authError.getMessage());
+            }
+            return AuthTokenAuthenticationResult.failed(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "ACCESS_TOKEN_INVALID",
+                    "Access token is invalid.");
+        }
+    }
+
+    public AuthTokenRefreshResult refresh(HttpServletRequest request, HttpServletResponse response) {
         String currentAccessToken = resolveAccessToken(request);
         if (StrUtil.isBlank(currentAccessToken)) {
             clearAuthCookies(response, request);
@@ -203,10 +234,28 @@ public class AuthTokenServiceImpl implements AuthTokenService {
                     "ACCESS_TOKEN_MISSING",
                     "Access token is missing.");
         }
+        RefreshAttemptResult refreshResult = refreshWithAccessToken(request, response, currentAccessToken);
+        if (refreshResult.success()) {
+            return AuthTokenRefreshResult.ok();
+        }
+        return AuthTokenRefreshResult.failed(refreshResult.status(), refreshResult.error(), refreshResult.message());
+    }
+
+    private RefreshAttemptResult refreshWithAccessToken(HttpServletRequest request,
+                                                        HttpServletResponse response,
+                                                        String currentAccessToken) {
+        String refreshToken = readCookie(request, properties.getRefreshCookieName());
+        if (StrUtil.isBlank(refreshToken)) {
+            clearAuthCookies(response, request);
+            return RefreshAttemptResult.failed(
+                    HttpServletResponse.SC_UNAUTHORIZED,
+                    "REFRESH_TOKEN_MISSING",
+                    "Refresh token is missing.");
+        }
         Long userId = resolveUserIdFromAccessTokenAllowExpired(currentAccessToken);
         if (userId == null) {
             clearAuthCookies(response, request);
-            return AuthTokenRefreshResult.failed(
+            return RefreshAttemptResult.failed(
                     HttpServletResponse.SC_UNAUTHORIZED,
                     "ACCESS_TOKEN_INVALID",
                     "Access token is invalid.");
@@ -216,7 +265,7 @@ public class AuthTokenServiceImpl implements AuthTokenService {
         RefreshSession session = loadRefreshSession(refreshKey);
         if (session == null) {
             clearAuthCookies(response, request);
-            return AuthTokenRefreshResult.failed(
+            return RefreshAttemptResult.failed(
                     HttpServletResponse.SC_UNAUTHORIZED,
                     "REFRESH_TOKEN_EXPIRED",
                     "Refresh token has expired.");
@@ -228,12 +277,12 @@ public class AuthTokenServiceImpl implements AuthTokenService {
         } catch (AuthTokenException e) {
             stringRedisTemplate.delete(refreshKey);
             clearAuthCookies(response, request);
-            return AuthTokenRefreshResult.failed(e.status(), e.error(), e.getMessage());
+            return RefreshAttemptResult.failed(e.status(), e.error(), e.getMessage());
         }
         if (!StrUtil.equals(session.tokenVersion(), identity.getTokenVersion())) {
             stringRedisTemplate.delete(refreshKey);
             clearAuthCookies(response, request);
-            return AuthTokenRefreshResult.failed(
+            return RefreshAttemptResult.failed(
                     HttpServletResponse.SC_UNAUTHORIZED,
                     "TOKEN_VERSION_MISMATCH",
                     "Login session has been invalidated.");
@@ -257,7 +306,7 @@ public class AuthTokenServiceImpl implements AuthTokenService {
         touchPreAuthBinding(session.preAuthToken());
         touchUserContext(session.userId());
         addLoginCookies(response, request, accessToken, refreshToken);
-        return AuthTokenRefreshResult.ok();
+        return RefreshAttemptResult.refreshed(context);
     }
 
     public void logoutCurrentDevice(HttpServletRequest request, HttpServletResponse response) {
@@ -675,6 +724,21 @@ public class AuthTokenServiceImpl implements AuthTokenService {
             return Base64.getUrlEncoder().withoutPadding().encodeToString(hashed);
         } catch (Exception ignored) {
             return "";
+        }
+    }
+
+    private record RefreshAttemptResult(boolean success,
+                                        AuthUserContext context,
+                                        int status,
+                                        String error,
+                                        String message) {
+
+        private static RefreshAttemptResult refreshed(AuthUserContext context) {
+            return new RefreshAttemptResult(true, context, 200, null, "refreshed");
+        }
+
+        private static RefreshAttemptResult failed(int status, String error, String message) {
+            return new RefreshAttemptResult(false, null, status, error, message);
         }
     }
 }
